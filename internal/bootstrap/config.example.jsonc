@@ -1,27 +1,25 @@
 {
-  // 默认使用的 provider 和 model。
-  // ★ provider 的值是下面 providers 里的一个 key 名（一根“指针”），不是协议名——
-  //   改 provider 必须保证 providers 里有同名条目，否则启动会报“未配置凭证”。
-  //   运行时用 /model 面板切换不会自动回写这里。
+  // Default provider and model.
+  // ★ provider is a pointer/reference to a key in the providers map below, not a protocol name.
+  //   If you change provider, make sure providers contains a matching entry or startup will fail with "missing credentials".
+  //   Switching models in the /model panel at runtime does not write back here automatically.
   "provider": "openrouter",
   "model": "google/gemini-2.5-flash",
 
-  // Provider 凭证库。key 自定义，用作上面 provider 字段引用的目标。
-  // 已知 provider（openai/anthropic/gemini/openrouter/deepseek/qwen/glm/grok/mimo/ollama/bedrock）
-  // 可省略 type；自定义代理必须显式声明 type 指明 API 协议。
+  // Provider credential store. Keys are user-defined and referenced by the provider field above.
+  // Known providers (openai/anthropic/gemini/openrouter/deepseek/qwen/glm/grok/mimo/ollama/bedrock)
+  // may omit type; custom proxies must declare type explicitly.
   "providers": {
     "openrouter": {
       "api_key": "sk-or-v1-xxx",
       "base_url": "https://openrouter.ai/api/v1",
-      // 可选。声明 /model 面板候选；省略时回退到配置中已出现过的同 provider 模型。
+      // Optional. Declare /model panel candidates; if omitted, fall back to models already seen for this provider.
       "models": ["google/gemini-3.0-flash", "google/gemini-3.1-pro"],
-      // 可选。透传给该 provider 每次请求的额外参数（采样参数如 temperature/top_p/
-      // min_p，或厂商特有键如 nvidia 开 think 的 chat_template_kwargs），逐字并入请求体。
-      // 仅对 OpenAI 兼容类 provider 生效（openrouter/deepseek/qwen/glm/grok/ollama…）；
-      // type:"openai" 会按官方参数白名单过滤。值由用户自负其责。
+      // Optional. Pass through extra request parameters (sampling parameters like temperature/top_p/min_p,
+      // or vendor-specific keys such as NVIDIA chat_template_kwargs) directly into the request body.
+      // Only applies to OpenAI-compatible providers; type:"openai" will filter by the official parameter whitelist.
       "extra_body": { "temperature": 0.8, "min_p": 0.05 },
-      // 可选。provider 级配置，透传给 HTTP 客户端层（不是请求体），用于需要
-      // 自定义 User-Agent / headers / anthropic_beta 的代理。
+      // Optional. Provider-level configuration passed to the HTTP client layer, not the request body.
       "extra": {
         "user_agent": "my-client/1.0",
         "headers": { "X-Custom-Client": "my-client" }
@@ -32,14 +30,13 @@
       "models": ["claude-sonnet-4", "claude-opus-4"]
     },
     "ollama": {
-      // ollama / bedrock / 显式 type 的自定义代理可以省略 api_key
-      // base_url 需带 /v1（ollama 的 OpenAI 兼容端点在 /v1 下）
+      // ollama / bedrock / custom proxies with explicit type can omit api_key
+      // base_url must include /v1 (Ollama's OpenAI-compatible endpoint is under /v1)
       "base_url": "http://localhost:11434/v1",
       "models": ["qwen3:14b"]
     },
     "my-proxy": {
-      // 自定义 Anthropic 代理。需要代理识别客户端时，使用 extra 透传
-      // user_agent / anthropic_beta / headers；base_url 不需要带 /v1。
+      // Custom Anthropic proxy. Use extra to pass user_agent / anthropic_beta / headers when the proxy needs client identification.
       "type": "anthropic",
       "api_key": "sk-xxx",
       "base_url": "https://proxy.example.com",
@@ -56,9 +53,9 @@
     }
   },
 
-  // 可选。按角色覆盖默认模型；未配的角色使用上面的 model。
-  // 角色：coordinator / architect / writer / editor。fallbacks 在主模型失败时按序尝试。
-  // 注意：这里的 provider 同样是“指针”，必须指向 providers 里存在的 key。
+  // Optional. Override the default model per role; unconfigured roles use the model above.
+  // Roles: coordinator / architect / writer / editor. fallbacks are tried in order if the main model fails.
+  // Note: provider here is also a key reference and must point to an existing providers entry.
   // "roles": {
   //   "writer": {
   //     "provider": "anthropic",
@@ -68,32 +65,29 @@
   //   "architect": { "provider": "openrouter", "model": "google/gemini-3.1-pro" }
   // },
 
-  // 写作风格：default / suspense / fantasy / romance。
+  // Writing style: default / suspense / fantasy / romance.
   "style": "default"
 
-  // 可选。显式指定上下文压缩使用的窗口大小。省略 / 0 = 按模型名自动解析
-  //（registry 命中用真实窗口，未命中兜底 200k）。配了就优先用：既能给 registry
-  // 查不到的自定义模型指定真实窗口，也能把名义 1M 窗口钉在 300k 提前触发压缩，
-  // 避免在注意力衰退区才压缩。仅影响压缩阈值，不改变 API 实际请求长度。
+  // Optional. Explicitly set the window size used for context compaction. Omit / 0 to resolve from the model name
+  // (registered models use their real window, unknown ones fall back to 200k). When set, it takes priority.
   // "context_window": 300000
 
-  // 可选。单本书（output 目录）的成本预算，挂机保险丝。book_usd > 0 才启用。
-  // 累计花费达到 warn_ratio 时告警不停机；达到 100% 在当前子代理任务结束后
-  // 优雅停机（hard_stop=true 则越线立即停）。停机后上调 book_usd 即可恢复续跑。
-  // 注意：自定义模型若注册表查不到价格且 provider 不自报 cost，预算形同虚设。
+  // Optional. Cost budget for a single book (the output directory). Enabled when book_usd > 0.
+  // At warn_ratio the run warns but keeps going; at 100% it stops after the current subagent task completes
+  // (hard_stop=true stops immediately once the limit is crossed).
   // "budget": {
   //   "book_usd": 50,
   //   "warn_ratio": 0.8,
   //   "hard_stop": false
   // },
 
-  // 可选。无人值守告警，缺省启用（macOS osascript / Linux notify-send 桌面通知）。
-  // 配置 command 后改走自定义命令（手机推送走这里）：字段经环境变量
-  // $NOTIFY_TITLE / $NOTIFY_BODY / $NOTIFY_KIND / $NOTIFY_LEVEL 传入，完整 JSON 同时写 stdin。
-  // events 可选过滤：run_end（完成/停止）/ repeat（指令重复，疑似空转）/ budget（预算）。
+  // Optional. Unattended alerts, enabled by default (macOS osascript / Linux notify-send desktop notifications).
+  // If command is set, alerts go through a custom command instead.
+  // Passed via $NOTIFY_TITLE / $NOTIFY_BODY / $NOTIFY_KIND / $NOTIFY_LEVEL; the full JSON is also written to stdin.
+  // events can be filtered: run_end (complete/stop) / repeat (repeated instruction, likely a stall) / budget (budget).
   // "notify": {
   //   "enabled": true,
-  //   // 标题/正文含中文与空格，必须经 --data-urlencode 传参，不可拼进 URL 路径或 HTTP 头。
+  //   // If the title/body contains spaces or non-ASCII text, pass them via --data-urlencode instead of stuffing them into the URL path or HTTP headers.
   //   // Bark (iOS):         "command": "curl -s --data-urlencode \"title=$NOTIFY_TITLE\" --data-urlencode \"body=$NOTIFY_BODY\" https://api.day.app/<key>"
   //   // ntfy (iOS/Android): "command": "curl -s -G --data-urlencode \"title=$NOTIFY_TITLE\" --data-urlencode \"message=$NOTIFY_BODY\" ntfy.sh/<topic>/publish"
   //   "events": ["run_end", "repeat", "budget"]

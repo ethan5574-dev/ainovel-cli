@@ -54,8 +54,8 @@ func TestAppendSteerEntry(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)
 
-	// 首次追加（meta/run.json 不存在）
-	e1 := domain.SteerEntry{Input: "主角改成女性", Timestamp: "2026-03-07T10:01:00+08:00"}
+	// First append (meta/run.json does not exist)
+	e1 := domain.SteerEntry{Input: "change protagonist to female", Timestamp: "2026-03-07T10:01:00+08:00"}
 	if err := store.RunMeta.AppendSteerEntry(e1); err != nil {
 		t.Fatalf("AppendSteerEntry 1: %v", err)
 	}
@@ -64,12 +64,12 @@ func TestAppendSteerEntry(t *testing.T) {
 	if len(meta.SteerHistory) != 1 {
 		t.Fatalf("expected 1 entry, got %d", len(meta.SteerHistory))
 	}
-	if meta.SteerHistory[0].Input != "主角改成女性" {
+	if meta.SteerHistory[0].Input != "change protagonist to female" {
 		t.Errorf("input mismatch: %s", meta.SteerHistory[0].Input)
 	}
 
-	// 追加第二条
-	e2 := domain.SteerEntry{Input: "加入反转", Timestamp: "2026-03-07T10:02:00+08:00"}
+	// Append the second entry
+	e2 := domain.SteerEntry{Input: "add twist", Timestamp: "2026-03-07T10:02:00+08:00"}
 	_ = store.RunMeta.AppendSteerEntry(e2)
 
 	meta, _ = store.RunMeta.Load()
@@ -128,7 +128,7 @@ func TestAppendSteerEntry_PreservesExistingMeta(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)
 
-	// 先保存 RunMeta
+	// Save RunMeta first
 	_ = store.RunMeta.Save(domain.RunMeta{
 		StartedAt: "2026-03-07T10:00:00+08:00",
 		Provider:  "openrouter",
@@ -136,7 +136,7 @@ func TestAppendSteerEntry_PreservesExistingMeta(t *testing.T) {
 		Model:     "gpt-4o",
 	})
 
-	// 追加 Steer 不应覆盖其他字段
+	// Appending Steer should not overwrite other fields
 	_ = store.RunMeta.AppendSteerEntry(domain.SteerEntry{Input: "test", Timestamp: "now"})
 
 	meta, _ := store.RunMeta.Load()
@@ -158,17 +158,17 @@ func TestInitRunMeta_PreservesHistory(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)
 
-	// 先建立带历史的 RunMeta
+	// Establish RunMeta with history first
 	_ = store.RunMeta.Save(domain.RunMeta{
 		StartedAt:    "old",
 		Provider:     "openai",
 		Style:        "fantasy",
 		Model:        "old-model",
-		SteerHistory: []domain.SteerEntry{{Input: "历史干预", Timestamp: "ts"}},
-		PendingSteer: "待处理",
+		SteerHistory: []domain.SteerEntry{{Input: "historical intervention", Timestamp: "ts"}},
+		PendingSteer: "pending",
 	})
 
-	// InitRunMeta 应保留 SteerHistory 和 PendingSteer
+	// InitRunMeta should retain SteerHistory and PendingSteer
 	_ = store.RunMeta.Init("suspense", "openrouter", "new-model")
 
 	meta, _ := store.RunMeta.Load()
@@ -181,10 +181,10 @@ func TestInitRunMeta_PreservesHistory(t *testing.T) {
 	if meta.Model != "new-model" {
 		t.Errorf("model should be updated, got %s", meta.Model)
 	}
-	if len(meta.SteerHistory) != 1 || meta.SteerHistory[0].Input != "历史干预" {
+	if len(meta.SteerHistory) != 1 || meta.SteerHistory[0].Input != "historical intervention" {
 		t.Errorf("steer history should be preserved, got %v", meta.SteerHistory)
 	}
-	if meta.PendingSteer != "待处理" {
+	if meta.PendingSteer != "pending" {
 		t.Errorf("pending steer should be preserved, got %s", meta.PendingSteer)
 	}
 }
@@ -193,16 +193,16 @@ func TestSetAndClearPendingSteer(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)
 
-	// 设置 PendingSteer
-	if err := store.RunMeta.SetPendingSteer("主角改成女性"); err != nil {
+	// Set PendingSteer
+	if err := store.RunMeta.SetPendingSteer("change protagonist to female"); err != nil {
 		t.Fatalf("SetPendingSteer: %v", err)
 	}
 	meta, _ := store.RunMeta.Load()
-	if meta.PendingSteer != "主角改成女性" {
+	if meta.PendingSteer != "change protagonist to female" {
 		t.Errorf("expected pending steer, got %s", meta.PendingSteer)
 	}
 
-	// 清除
+	// Clear
 	if err := store.RunMeta.ClearPendingSteer(); err != nil {
 		t.Fatalf("ClearPendingSteer: %v", err)
 	}
@@ -236,7 +236,7 @@ func TestClearPendingSteer_Noop(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)
 
-	// 空 meta 上调用不报错
+	// Calling on empty meta should not return an error
 	if err := store.RunMeta.ClearPendingSteer(); err != nil {
 		t.Fatalf("ClearPendingSteer on empty: %v", err)
 	}

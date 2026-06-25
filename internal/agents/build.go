@@ -21,24 +21,24 @@ import (
 	"github.com/voocel/ainovel-cli/internal/tools"
 )
 
-// logRulesLoaded 在装配期打印规则加载实况：本书规则目录、实际读到的来源、字数检查生效值。
-// 规则文件放错路径会被 loader 静默跳过、来源又不进 LLM（仅 /diag 面板可见），放错零反馈是
-// 用户排查的最大障碍。这一行启动日志让"路径错 / 字数没写进 front matter"一眼可见。
+// logRulesLoaded prints the rule loading status during assembly: project rules directory, actual loaded sources, and the effective word count check value.
+// If rule files are placed in the wrong path, they will be silently skipped by the loader, and the sources will not enter the LLM (only visible in the /diag panel).
+// Zero feedback on misplaced files is the biggest obstacle for user troubleshooting. This startup log line makes "wrong path / word count not written in front matter" visible at a glance.
 func logRulesLoaded(opts rules.LoadOptions) {
 	b := rules.Merge(rules.Load(opts))
-	words := "未设置（不做字数检查）"
+	words := "Not set (no word count check)"
 	if w := b.Structured.ChapterWords; w != nil {
 		words = fmt.Sprintf("%d-%d", w.Min, w.Max)
 	}
-	slog.Info("规则加载",
-		"本书规则目录", opts.ProjectRulesDir,
-		"已加载来源", b.Sources,
-		"章节字数", words)
+	slog.Info("rules loaded",
+		"project_rules_dir", opts.ProjectRulesDir,
+		"sources", b.Sources,
+		"chapter_words", words)
 }
 
-// agentToRole 把 subagent name 归一为 ModelSet 认得的 role 名。
-// architect_short / architect_long 都共用同一个 architect role 配置。
-// 跟 host.agentRoleName 同义，因为 build 与 host 互不依赖故各持一份。
+// agentToRole normalizes the subagent name into a role name recognized by ModelSet.
+// Both architect_short and architect_long share the same architect role configuration.
+// Synonymous with host.agentRoleName, kept separately because build and host do not depend on each other.
 func agentToRole(name string) string {
 	if strings.HasPrefix(name, "architect_") {
 		return "architect"
@@ -46,25 +46,25 @@ func agentToRole(name string) string {
 	return name
 }
 
-// subagentMaxRetries 给所有 SubAgentConfig 与 Coordinator 统一的 LLM retry 上限。
-// 退避策略：指数 1s/2s/4s/8s/16s（受 maxDelay 上限约束），优先服从 server Retry-After。
-// 配合 ToolsAreIdempotent=true 让 stream-idle / 503 / 短暂网络抖动这类 retryable
-// 错误能在 subagent 层就近重试，而不是把整个 subagent 抛回 coordinator 重派发。
-// 项目铁律一保证写类工具走 checkpoint+digest 幂等，重试是安全的。
+// subagentMaxRetries gives a uniform LLM retry upper limit for all SubAgentConfigs and the Coordinator.
+// Backoff strategy: exponential 1s/2s/4s/8s/16s (constrained by maxDelay upper limit), prioritizing server Retry-After.
+// Combined with ToolsAreIdempotent=true, this allows retryable errors like stream-idle / 503 / short network jitter
+// to be retried locally at the subagent layer, instead of throwing the entire subagent back to the coordinator for rescheduling.
+// Project rule 1 guarantees that writing tools are idempotent via checkpoint+digest, making retries safe.
 const subagentMaxRetries = 5
 
-// UsageRecorder 是 BuildCoordinator 可选的用量回调；签名与 OnMessage 一致，
-// 每条 agent 消息都会调一次，由 Host 层负责聚合。nil 表示不追踪。
+// UsageRecorder is an optional usage callback for BuildCoordinator; its signature is consistent with OnMessage,
+// called once for each agent message, and aggregated by the Host layer. nil means no tracking.
 type UsageRecorder func(agentName string, msg agentcore.AgentMessage)
 
-// ApplyThinking 把某具体角色的思考强度应用到 live agent（运行时 /model 调整用）。
-// coordinator → Agent.SetThinkingLevel；architect → 两个 architect_* 子代理；
-// writer/editor → 对应子代理。空 level = 沿用模型/provider 默认。其它 role 名忽略。
+// ApplyThinking applies the thinking level of a specific role to the live agent (used for runtime /model adjustments).
+// coordinator -> Agent.SetThinkingLevel; architect -> two architect_* subagents;
+// writer/editor -> corresponding subagents. Empty level = follow model/provider default. Other role names are ignored.
 type ApplyThinking func(role string, level agentcore.ThinkingLevel)
 
-// ParseThinkingLevel 把配置字符串转 agentcore.ThinkingLevel。
-// "" 合法（= 不覆盖/继承）；其余须是 off/minimal/low/medium/high/xhigh 之一，
-// 否则返回 error（启动时降级当空并 warn，运行时把 error 回显给用户）。
+// ParseThinkingLevel converts a configuration string to agentcore.ThinkingLevel.
+// "" is valid (= no override/inheritance); others must be one of off/minimal/low/medium/high/xhigh,
+// otherwise returns an error (downgraded to empty and warned at startup, error echoed to user at runtime).
 func ParseThinkingLevel(s string) (agentcore.ThinkingLevel, error) {
 	lv := agentcore.ThinkingLevel(strings.ToLower(strings.TrimSpace(s)))
 	switch lv {
@@ -72,26 +72,27 @@ func ParseThinkingLevel(s string) (agentcore.ThinkingLevel, error) {
 		agentcore.ThinkingMedium, agentcore.ThinkingHigh, agentcore.ThinkingXHigh:
 		return lv, nil
 	default:
-		return "", fmt.Errorf("无效思考强度 %q（可选：off/minimal/low/medium/high/xhigh）", s)
+		return "", fmt.Errorf("invalid thinking level %q (options: off/minimal/low/medium/high/xhigh)", s)
 	}
 }
 
-// roleThinking 解析某角色生效的思考强度；非法值降级为空（不覆盖）并 warn。
+// roleThinking resolves the effective thinking level of a role; invalid values downgrade to empty (no override) and warn.
 func roleThinking(cfg bootstrap.Config, role string) agentcore.ThinkingLevel {
 	lv, err := ParseThinkingLevel(cfg.ResolveThinking(role))
 	if err != nil {
-		slog.Warn("忽略无效思考强度配置", "module", "agent", "role", role, "err", err)
+		slog.Warn("ignore invalid thinking level configuration", "module", "agent", "role", role, "err", err)
 		return ""
 	}
 	return lv
 }
 
-// BuildCoordinator 组装 Coordinator Agent 及其 SubAgent。
-// 返回 Agent、AskUserTool、WriterRestorePack、Coordinator 的 ContextEngine 引用，
-// 以及 ApplyThinking 闭包——Host 层 /model 切换时需要直接调 SetContextWindow +
-// SetReserveTokens 联动新模型的窗口（writer/architect/editor 走 ContextManagerFactory
-// 自动重建，不需要 ref；只有常驻的 coordinator 需要），并通过 ApplyThinking 联动各角色
-// 思考强度。Host 层通过 Agent.Subscribe 获取事件流,不再需要 emit 回调。
+// BuildCoordinator assembles the Coordinator Agent and its SubAgents.
+// Returns references to the Agent, AskUserTool, WriterRestorePack, and the Coordinator's ContextEngine,
+// as well as the ApplyThinking closure—Host layer needs to directly call SetContextWindow +
+// SetReserveTokens when switching /model to link the window of the new model (writer/architect/editor are
+// dynamically reconstructed by ContextManagerFactory and do not need a reference; only the resident coordinator needs one),
+// and uses ApplyThinking to link the thinking strength of each role. The Host layer subscribes to the event stream
+// through Agent.Subscribe, so emit callbacks are no longer needed.
 func BuildCoordinator(
 	cfg bootstrap.Config,
 	store *store.Store,
@@ -99,7 +100,7 @@ func BuildCoordinator(
 	bundle assets.Bundle,
 	recordUsage UsageRecorder,
 ) (*agentcore.Agent, *tools.AskUserTool, *ctxpack.WriterRestorePack, *corecontext.ContextEngine, ApplyThinking) {
-	// 共享工具
+	// Shared tools
 	rulesOpts := rules.DefaultOptions(bundle.RulesFS)
 	logRulesLoaded(rulesOpts)
 	contextTool := tools.NewContextTool(store, bundle.References, cfg.Style, rulesOpts)
@@ -127,9 +128,9 @@ func BuildCoordinator(
 		tools.NewSaveVolumeSummaryTool(store),
 	}
 
-	// Provider failover 只记日志,不通知宿主
+	// Provider failover only logs, does not notify host
 	reportFailover := func(ev bootstrap.FailoverEvent) {
-		slog.Warn("provider 切换",
+		slog.Warn("provider failover",
 			"module", "agent",
 			"role", ev.Role,
 			"reason", ev.Reason,
@@ -144,18 +145,18 @@ func BuildCoordinator(
 	editorModel := models.ForRoleWithFailover("editor", reportFailover)
 	coordinatorModel := models.ForRoleWithFailover("coordinator", reportFailover)
 
-	// Coordinator 的 ContextManager 在 Agent 构造时一次性生成，按启动模型解析。
-	// 运行中 /model 切换到更小窗口的模型时，建议用户显式配置 context_window 兜底。
+	// The Coordinator's ContextManager is generated once during Agent construction, resolved by the startup model.
+	// When switching to a model with a smaller window via /model during runtime, users are advised to explicitly configure context_window as a fallback.
 	_, coordinatorModelName, _ := models.CurrentSelection("coordinator")
 	coordinatorContextWindow, coordinatorSource := cfg.ResolveContextWindow(coordinatorModelName)
-	// Writer 的 ContextManager 由工厂每次调用重建，窗口随模型 swap 动态跟随（见下方工厂）。
+	// The Writer's ContextManager is rebuilt by the factory on every call, with the window dynamically following the model swap (see factory below).
 	_, writerModelName, _ := models.CurrentSelection("writer")
 	writerContextWindow, writerSource := cfg.ResolveContextWindow(writerModelName)
 	bootstrap.LogContextWindowChoice("coordinator", coordinatorModelName, coordinatorContextWindow, coordinatorSource)
 	bootstrap.LogContextWindowChoice("writer", writerModelName, writerContextWindow, writerSource)
 
-	// modelLookup 写入 session 时给每条 assistant 消息附 _meta:{provider,model}，
-	// 让 replay 不再依赖"当前 ModelSet"来反推历史 cost，运行中切换模型也能精确算。
+	// modelLookup appends _meta:{provider,model} to each assistant message when writing to the session,
+	// so that replay no longer depends on the "current ModelSet" to infer historical cost, enabling precise calculation even when switching models at runtime.
 	modelLookup := func(agentName string) (string, string) {
 		role := agentToRole(agentName)
 		provider, name, _ := models.CurrentSelection(role)
@@ -182,7 +183,7 @@ func BuildCoordinator(
 	architectThinking := roleThinking(cfg, "architect")
 	architectShort := subagent.Config{
 		Name:               "architect_short",
-		Description:        "短篇规划师：为单卷、单冲突、高密度故事生成紧凑设定与扁平大纲",
+		Description:        "Short planner: generates compact settings and flat outlines for single-volume, single-conflict, high-density stories",
 		Model:              architectModel,
 		SystemPrompt:       bundle.Prompts.ArchitectShort,
 		Tools:              architectTools,
@@ -199,7 +200,7 @@ func BuildCoordinator(
 	}
 	architectLong := subagent.Config{
 		Name:               "architect_long",
-		Description:        "长篇规划师：为连载型、可持续升级的故事生成分层设定与卷弧大纲",
+		Description:        "Long planner: generates hierarchical settings and volume-arc outlines for serialized, continuously upgrading stories",
 		Model:              architectModel,
 		SystemPrompt:       bundle.Prompts.ArchitectLong,
 		Tools:              architectTools,
@@ -230,7 +231,7 @@ func BuildCoordinator(
 
 	writer := subagent.Config{
 		Name:               "writer",
-		Description:        "创作者：自主完成一章的构思、写作、自审和提交",
+		Description:        "Writer: independently completes the conception, writing, self-review, and submission of a chapter",
 		Model:              writerModel,
 		SystemPrompt:       writerPrompt,
 		Tools:              writerTools,
@@ -244,8 +245,8 @@ func BuildCoordinator(
 			return reminder.NewWriterStopGuard(store)
 		},
 		ContextManagerFactory: func(model agentcore.ChatModel) agentcore.ContextManager {
-			// 每次 subagent(writer) 调用都会重建，从当前 runModel 读取最新模型名。
-			// /model 切换 writer 后下一章自动用新窗口。
+			// Rebuilt on each subagent(writer) call, reading the latest model name from the current runModel.
+			// After switching writer via /model, the next chapter automatically uses the new window.
 			window, _ := cfg.ResolveContextWindow(bootstrap.ModelName(model))
 			return newContextManager(contextManagerConfig{
 				Model:            model,
@@ -275,7 +276,7 @@ func BuildCoordinator(
 
 	editor := subagent.Config{
 		Name:               "editor",
-		Description:        "审阅者：阅读原文，从结构和审美两个层面发现问题",
+		Description:        "Editor: reads the draft to identify problems from both structural and aesthetic levels",
 		Model:              editorModel,
 		SystemPrompt:       bundle.Prompts.Editor,
 		Tools:              editorTools,
@@ -284,10 +285,10 @@ func BuildCoordinator(
 		ThinkingLevel:      roleThinking(cfg, "editor"),
 		ToolsAreIdempotent: true,
 		OnMessage:          onMsg,
-		// 仅摘要类终态产物命中即停；save_review 不再硬停——StopAfterTool 退出会绕过
-		// StopGuard（agentcore loop.go），若 save_review 硬停，"被派生成弧摘要却先复核"
-		// 的 editor 会在 save_review 处被砍断、够不到 save_arc_summary。评审/摘要任务的
-		// 收尾改由任务感知的 NewEditorStopGuard 把关。
+		// Only summary-like terminal products stop immediately; save_review no longer hard-stops—StopAfterTool exit would bypass
+		// StopGuard (agentcore loop.go). If save_review hard-stopped, an editor "dispatched to generate arc summary but reviewing first"
+		// would be cut off at save_review and unable to reach save_arc_summary. The wrap-up of review/summary tasks
+		// is instead managed by the task-aware NewEditorStopGuard.
 		StopAfterToolResult: func(toolName string, _ json.RawMessage) bool {
 			return toolName == "save_arc_summary" || toolName == "save_volume_summary"
 		},
@@ -314,20 +315,20 @@ func BuildCoordinator(
 		agentcore.WithMaxTurns(100_000),
 		agentcore.WithOnMessage(coordinatorOnMessage),
 		agentcore.WithToolsAreIdempotent(true),
-		// subagent 是流程主通道；真实错误应显式返回给 Host，而不是在单次 run 内永久禁用工具。
+		// subagent is the main channel of the process; real errors should be explicitly returned to the Host, instead of permanently disabling tools in a single run.
 		agentcore.WithMaxToolErrors(0),
 		agentcore.WithMaxRetries(subagentMaxRetries),
 		agentcore.WithContextManager(coordinatorEngine),
 		agentcore.WithStopGuard(reminder.NewStopGuard(store, nil)),
-		// phase=complete 时硬拦截 subagent 派发，防止 Writer 死循环。
+		// hard intercept of subagent dispatch when phase=complete, preventing Writer infinite loops.
 		agentcore.WithToolGate(completePhaseGate(store)),
 	)
-	// Coordinator 思考强度：无条件应用解析结果。未配置时为空（不发 thinking，用 provider
-	// 默认），与各子代理（Config.ThinkingLevel 默认空）一致——避免覆盖 agentcore 默认
-	// ThinkingLow 而对所有 provider 强制发 low（含会被强制开思考的 GLM/Ollama）。
+	// Coordinator thinking level: unconditionally apply resolved results. Empty when unconfigured (does not send thinking, using provider
+	// default), consistent with each subagent (Config.ThinkingLevel defaults to empty)—avoiding overriding agentcore default
+	// ThinkingLow which would force low on all providers (including GLM/Ollama which would be forced to turn on thinking).
 	agent.SetThinkingLevel(roleThinking(cfg, "coordinator"))
 
-	// 运行时联动各角色思考强度：coordinator 走 Agent，子代理走 subagentTool override。
+	// runtime linkage of each role's thinking strength: coordinator goes through Agent, subagents go through subagentTool override.
 	applyThinking := func(role string, level agentcore.ThinkingLevel) {
 		switch role {
 		case "coordinator":
@@ -343,20 +344,20 @@ func BuildCoordinator(
 	return agent, askUser, restore, coordinatorEngine, applyThinking
 }
 
-// completePhaseGate 返回一个 ToolGate：phase=complete 时拒绝所有 subagent 派发。
-// 防止 Coordinator LLM 在书完成后仍调用 Writer/Architect 导致死循环。
+// completePhaseGate returns a ToolGate: rejects all subagent dispatches when phase=complete.
+// Prevents Coordinator LLM from calling Writer/Architect after the book is completed, causing infinite loops.
 func completePhaseGate(st *store.Store) agentcore.ToolGate {
 	return func(_ context.Context, req agentcore.GateRequest) (*agentcore.GateDecision, error) {
 		if req.Call.Name != "subagent" {
 			return nil, nil
 		}
-		// fail-open：Load 出错或 progress 为空时一律放行，不因瞬时读错误卡死正常派发。
-		// 唯一代价是 complete 期恰逢读失败时死锁可能复现（概率极低，可接受）。
+		// fail-open: always allow when Load fails or progress is nil, to prevent locking normal dispatch due to transient read errors.
+		// The only cost is that the deadlock might recur if a read failure happens precisely during the complete phase (extremely low probability, acceptable).
 		progress, _ := st.Progress.Load()
 		if progress != nil && progress.Phase == domain.PhaseComplete {
 			return &agentcore.GateDecision{
 				Allowed: false,
-				Reason:  "全书已完成（phase=complete），不能直接派子代理。若用户要返工已写章节，请先调用 reopen_book(chapters=[...]) 把书重新打开进入返工态（之后会自动派 writer 重写）；若用户要新增剧情，告知需新建项目。",
+				Reason:  "The book is already completed (phase=complete), cannot dispatch subagents directly. If the user wants to rework already written chapters, please call reopen_book(chapters=[...]) first to reopen the book into rework status (writer will be automatically dispatched to rewrite thereafter); if the user wants to add new plotlines, inform them that a new project needs to be created.",
 			}, nil
 		}
 		return nil, nil

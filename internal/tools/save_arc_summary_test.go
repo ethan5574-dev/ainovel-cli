@@ -19,18 +19,18 @@ func TestSaveArcSummaryPersistsStyleRulesDialogueObjects(t *testing.T) {
 	args, err := json.Marshal(map[string]any{
 		"volume":     1,
 		"arc":        2,
-		"title":      "入山",
-		"summary":    "主角完成入山试炼，确认后续追索方向。",
-		"key_events": []string{"通过试炼", "发现旧案线索"},
+		"title":      "Entering the Mountain",
+		"summary":    "The protagonist completes the mountain trial and confirms the direction of future investigation.",
+		"key_events": []string{"Pass the trial", "Discover clues to the old case"},
 		"character_snapshots": []map[string]any{
-			{"name": "沈渊", "status": "存活", "motivation": "追查旧案"},
+			{"name": "Shen Yuan", "status": "Alive", "motivation": "Investigate the old case"},
 		},
 		"style_rules": map[string]any{
-			"prose": []string{"环境描写优先触觉和嗅觉", "动作戏用短句推进", "心理描写不解释结论"},
+			"prose": []string{"Priority on tactile and olfactory descriptions in environment", "Action scenes use short sentences to progress", "Psychological description does not explain conclusions"},
 			"dialogue": []map[string]any{
-				{"name": "沈渊", "rules": []string{"对话极简", "少用疑问句"}},
+				{"name": "Shen Yuan", "rules": []string{"Dialogue is minimalist", "Use fewer questions"}},
 			},
-			"taboos": []string{"避免章末长独白"},
+			"taboos": []string{"Avoid long monologues at the end of chapters"},
 		},
 	})
 	if err != nil {
@@ -48,7 +48,7 @@ func TestSaveArcSummaryPersistsStyleRulesDialogueObjects(t *testing.T) {
 	if rules == nil || len(rules.Dialogue) != 1 {
 		t.Fatalf("expected one dialogue rule, got %+v", rules)
 	}
-	if rules.Dialogue[0].Name != "沈渊" || len(rules.Dialogue[0].Rules) != 2 {
+	if rules.Dialogue[0].Name != "Shen Yuan" || len(rules.Dialogue[0].Rules) != 2 {
 		t.Fatalf("unexpected dialogue rule: %+v", rules.Dialogue[0])
 	}
 }
@@ -63,13 +63,13 @@ func TestSaveArcSummaryRejectsDialogueStringArray(t *testing.T) {
 	args, err := json.Marshal(map[string]any{
 		"volume":              1,
 		"arc":                 2,
-		"title":               "入山",
-		"summary":             "主角完成入山试炼，确认后续追索方向。",
-		"key_events":          []string{"通过试炼"},
+		"title":               "Entering the Mountain",
+		"summary":             "The protagonist completes the mountain trial and confirms the direction of future investigation.",
+		"key_events":          []string{"Pass the trial"},
 		"character_snapshots": []map[string]any{},
 		"style_rules": map[string]any{
-			"prose":    []string{"环境描写优先触觉和嗅觉"},
-			"dialogue": []string{"沈渊对话极简"},
+			"prose":    []string{"Priority on tactile and olfactory descriptions in environment"},
+			"dialogue": []string{"Shen Yuan's dialogue is minimalist"},
 		},
 	})
 	if err != nil {

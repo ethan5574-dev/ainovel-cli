@@ -25,16 +25,16 @@ func setupLayered(t *testing.T, volumes []domain.VolumeOutline) *Store {
 }
 
 func TestCheckArcBoundaryNeedsNewVolume(t *testing.T) {
-	// 只有 1 卷 1 弧 1 章，且非 Final → 应触发 NeedsNewVolume
+	// Only 1 volume, 1 arc, 1 chapter, and not Final -> should trigger NeedsNewVolume
 	s := setupLayered(t, []domain.VolumeOutline{{
-		Index: 1, Title: "第一卷", Theme: "起步",
+		Index: 1, Title: "Volume 1", Theme: "Starting Point",
 		Arcs: []domain.ArcOutline{{
-			Index: 1, Title: "首弧", Goal: "目标",
-			Chapters: []domain.OutlineEntry{{Title: "第一章", CoreEvent: "开局", Hook: "继续"}},
+			Index: 1, Title: "First Arc", Goal: "Goal",
+			Chapters: []domain.OutlineEntry{{Title: "Chapter 1", CoreEvent: "Opening", Hook: "Continue"}},
 		}},
 	}})
 
-	b, err := s.Outline.CheckArcBoundary(1) // 第 1 章 = 弧/卷最后一章
+	b, err := s.Outline.CheckArcBoundary(1) // Chapter 1 = last chapter of the arc/volume
 	if err != nil {
 		t.Fatalf("CheckArcBoundary: %v", err)
 	}
@@ -53,13 +53,13 @@ func TestCheckArcBoundaryNeedsNewVolume(t *testing.T) {
 }
 
 func TestCheckArcBoundaryLastVolumeRequiresDecision(t *testing.T) {
-	// 单卷最后一章 → 触发 NeedsNewVolume，让 Router 让架构师二选一：
-	// append_volume 续写 / complete_book 收尾。
+	// Single volume last chapter -> triggers NeedsNewVolume, prompting Router to let architect choose:
+	// append_volume to continue writing / complete_book to finish.
 	s := setupLayered(t, []domain.VolumeOutline{{
-		Index: 1, Title: "唯一卷", Theme: "主题",
+		Index: 1, Title: "Single Volume", Theme: "Theme",
 		Arcs: []domain.ArcOutline{{
-			Index: 1, Title: "唯一弧", Goal: "收束",
-			Chapters: []domain.OutlineEntry{{Title: "终章", CoreEvent: "结局", Hook: "无"}},
+			Index: 1, Title: "Single Arc", Goal: "Resolution",
+			Chapters: []domain.OutlineEntry{{Title: "Final Chapter", CoreEvent: "Ending", Hook: "None"}},
 		}},
 	}})
 
@@ -76,12 +76,12 @@ func TestCheckArcBoundaryLastVolumeRequiresDecision(t *testing.T) {
 }
 
 func TestCheckArcBoundaryNextArcInSameVolume(t *testing.T) {
-	// 2 弧：第 1 弧结束应指向第 2 弧，不触发 NeedsNewVolume
+	// 2 arcs: end of arc 1 should point to arc 2, without triggering NeedsNewVolume
 	s := setupLayered(t, []domain.VolumeOutline{{
-		Index: 1, Title: "第一卷", Theme: "起步",
+		Index: 1, Title: "Volume 1", Theme: "Starting Point",
 		Arcs: []domain.ArcOutline{
-			{Index: 1, Title: "首弧", Goal: "目标", Chapters: []domain.OutlineEntry{{Title: "章一", CoreEvent: "事件", Hook: "钩子"}}},
-			{Index: 2, Title: "次弧", Goal: "目标2", EstimatedChapters: 10},
+			{Index: 1, Title: "First Arc", Goal: "Goal", Chapters: []domain.OutlineEntry{{Title: "Chapter 1", CoreEvent: "Event", Hook: "Hook"}}},
+			{Index: 2, Title: "Second Arc", Goal: "Goal 2", EstimatedChapters: 10},
 		},
 	}})
 
@@ -108,51 +108,51 @@ func TestCheckArcBoundaryNextArcInSameVolume(t *testing.T) {
 
 func TestAppendVolumeValidation(t *testing.T) {
 	s := setupLayered(t, []domain.VolumeOutline{{
-		Index: 1, Title: "第一卷", Theme: "起步",
+		Index: 1, Title: "Volume 1", Theme: "Starting Point",
 		Arcs: []domain.ArcOutline{{
-			Index: 1, Title: "首弧", Goal: "目标",
-			Chapters: []domain.OutlineEntry{{Title: "章", CoreEvent: "事件", Hook: "钩子"}},
+			Index: 1, Title: "First Arc", Goal: "Goal",
+			Chapters: []domain.OutlineEntry{{Title: "Chapter", CoreEvent: "Event", Hook: "Hook"}},
 		}},
 	}})
 
 	validVol := domain.VolumeOutline{
-		Index: 2, Title: "第二卷", Theme: "升级",
+		Index: 2, Title: "Volume 2", Theme: "Progression",
 		Arcs: []domain.ArcOutline{{
-			Index: 1, Title: "弧一", Goal: "目标",
-			Chapters: []domain.OutlineEntry{{Title: "新章", CoreEvent: "推进", Hook: "钩子"}},
+			Index: 1, Title: "Arc 1", Goal: "Goal",
+			Chapters: []domain.OutlineEntry{{Title: "New Chapter", CoreEvent: "Advance", Hook: "Hook"}},
 		}},
 	}
 
-	// 正常追加应成功
+	// Normal append should succeed
 	if err := s.AppendVolume(validVol); err != nil {
 		t.Fatalf("AppendVolume valid: %v", err)
 	}
 
-	// Index 不递增 → 失败
+	// Index not increasing -> fail
 	if err := s.AppendVolume(domain.VolumeOutline{
-		Index: 1, Title: "重复", Theme: "x",
-		Arcs: []domain.ArcOutline{{Index: 1, Title: "弧", Goal: "g", Chapters: []domain.OutlineEntry{{Title: "ch", CoreEvent: "e", Hook: "h"}}}},
+		Index: 1, Title: "Duplicate", Theme: "x",
+		Arcs: []domain.ArcOutline{{Index: 1, Title: "Arc", Goal: "g", Chapters: []domain.OutlineEntry{{Title: "ch", CoreEvent: "e", Hook: "h"}}}},
 	}); err == nil {
 		t.Fatal("expected error for non-increasing index")
 	}
 
-	// 无弧 → 失败
-	if err := s.AppendVolume(domain.VolumeOutline{Index: 3, Title: "空", Theme: "x"}); err == nil {
+	// No arcs -> fail
+	if err := s.AppendVolume(domain.VolumeOutline{Index: 3, Title: "Empty", Theme: "x"}); err == nil {
 		t.Fatal("expected error for volume with no arcs")
 	}
 
-	// 首弧无章节 → 失败
+	// First arc without chapters -> fail
 	if err := s.AppendVolume(domain.VolumeOutline{
-		Index: 3, Title: "骨架", Theme: "x",
-		Arcs: []domain.ArcOutline{{Index: 1, Title: "弧", Goal: "g", EstimatedChapters: 10}},
+		Index: 3, Title: "Skeleton", Theme: "x",
+		Arcs: []domain.ArcOutline{{Index: 1, Title: "Arc", Goal: "g", EstimatedChapters: 10}},
 	}); err == nil {
 		t.Fatal("expected error for first arc without chapters")
 	}
 }
 
-// 注：原先用 Final 卷拒绝 append 的语义已下沉到 save_foundation 层（Phase=Complete 拒绝），
-// 见 save_foundation_test.go::TestSaveFoundationAppendVolumeRejectsAfterComplete。
-// store 层只保留结构性校验（Index 递增 / 首弧含章节等）。
+// Note: The previous logic that rejected append on Final volumes has been moved to save_foundation layer (Phase=Complete reject),
+// see save_foundation_test.go::TestSaveFoundationAppendVolumeRejectsAfterComplete.
+// The store layer only keeps structural validations (e.g. index increasing / first arc containing chapters).
 
 func TestSaveAndLoadCompass(t *testing.T) {
 	s := NewStore(t.TempDir())
@@ -160,16 +160,16 @@ func TestSaveAndLoadCompass(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 
-	// 空 direction 应失败
-	if err := s.Outline.SaveCompass(domain.StoryCompass{EstimatedScale: "3 卷"}); err == nil {
+	// Empty direction should fail
+	if err := s.Outline.SaveCompass(domain.StoryCompass{EstimatedScale: "3 volumes"}); err == nil {
 		t.Fatal("expected error for empty ending_direction")
 	}
 
-	// 正常保存
+	// Normal save
 	compass := domain.StoryCompass{
-		EndingDirection: "主角面对最终抉择",
-		OpenThreads:     []string{"线索A", "关系B"},
-		EstimatedScale:  "预计 4-6 卷",
+		EndingDirection: "protagonist faces the final choice",
+		OpenThreads:     []string{"Clue A", "Relationship B"},
+		EstimatedScale:  "estimated 4-6 volumes",
 		LastUpdated:     12,
 	}
 	if err := s.Outline.SaveCompass(compass); err != nil {
@@ -183,8 +183,8 @@ func TestSaveAndLoadCompass(t *testing.T) {
 	if loaded == nil {
 		t.Fatal("expected compass, got nil")
 	}
-	if loaded.EndingDirection != "主角面对最终抉择" {
-		t.Fatalf("expected direction %q, got %q", "主角面对最终抉择", loaded.EndingDirection)
+	if loaded.EndingDirection != "protagonist faces the final choice" {
+		t.Fatalf("expected direction %q, got %q", "protagonist faces the final choice", loaded.EndingDirection)
 	}
 	if len(loaded.OpenThreads) != 2 {
 		t.Fatalf("expected 2 threads, got %d", len(loaded.OpenThreads))

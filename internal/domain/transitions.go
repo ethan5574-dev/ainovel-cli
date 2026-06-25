@@ -6,15 +6,16 @@ import (
 	"github.com/voocel/ainovel-cli/internal/errs"
 )
 
-// 状态迁移规则（最小版）
+// State Transition Rules (Minimal Version)
 //
-// Phase 表示大阶段，采用“只前进不回退”的约束：
+// Phase represents the macro-stage, applying the "forward-only, no-regression" constraint:
 //
 //	init -> premise -> outline -> writing -> complete
 //	  \---------> outline ------^
 //	  \-----------------> writing
 //
-// Flow 表示当前活跃流程，允许在写作期内切换，但不允许明显反常的跳转：
+// Flow represents the currently active flow process, allowed to switch within the writing phase,
+// but preventing obviously anomalous jumps:
 //
 //	writing   -> reviewing / rewriting / polishing / steering / writing
 //	reviewing -> writing / rewriting / polishing / steering / reviewing
@@ -22,7 +23,7 @@ import (
 //	polishing -> writing / steering / polishing
 //	steering  -> writing / reviewing / rewriting / polishing / steering
 //
-// 空状态（零值）视为“未初始化”，允许迁移到任意合法非空状态。
+// Empty state (zero value) is treated as "uninitialized", allowing transition to any valid non-empty state.
 
 var phaseOrder = map[Phase]int{
 	PhaseInit:     1,
@@ -32,8 +33,8 @@ var phaseOrder = map[Phase]int{
 	PhaseComplete: 5,
 }
 
-// CanTransitionPhase 判断 Phase 是否允许迁移。
-// 规则保持简单：允许同态迁移、允许前进，不允许回退。
+// CanTransitionPhase checks if Phase transition is allowed.
+// Rules remain simple: allow same-state transition, allow forward progress, forbid regression.
 func CanTransitionPhase(from, to Phase) bool {
 	if to == "" {
 		return false
@@ -49,7 +50,7 @@ func CanTransitionPhase(from, to Phase) bool {
 	return toOrder >= fromOrder
 }
 
-// ValidatePhaseTransition 校验 Phase 迁移是否合法。
+// ValidatePhaseTransition validates if a Phase transition is legal.
 func ValidatePhaseTransition(from, to Phase) error {
 	if CanTransitionPhase(from, to) {
 		return nil
@@ -57,7 +58,7 @@ func ValidatePhaseTransition(from, to Phase) error {
 	return fmt.Errorf("invalid phase transition: %q -> %q: %w", from, to, errs.ErrPhaseTransition)
 }
 
-// CanTransitionFlow 判断 FlowState 是否允许迁移。
+// CanTransitionFlow checks if FlowState transition is allowed.
 func CanTransitionFlow(from, to FlowState) bool {
 	if to == "" {
 		return false
@@ -82,7 +83,7 @@ func CanTransitionFlow(from, to FlowState) bool {
 	}
 }
 
-// ValidateFlowTransition 校验 FlowState 迁移是否合法。
+// ValidateFlowTransition validates if a FlowState transition is legal.
 func ValidateFlowTransition(from, to FlowState) error {
 	if CanTransitionFlow(from, to) {
 		return nil

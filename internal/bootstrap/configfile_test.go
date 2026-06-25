@@ -16,7 +16,7 @@ const validGlobal = `{
   "providers": { "openrouter": { "api_key": "sk-test-123456" } }
 }`
 
-// writeGlobal 在隔离的 HOME 下写入全局配置，并返回该 HOME。
+// writeGlobal writes a global config under an isolated HOME and returns that HOME.
 func writeGlobal(t *testing.T, content string) string {
 	t.Helper()
 	home := t.TempDir()
@@ -33,8 +33,8 @@ func writeGlobal(t *testing.T, content string) string {
 	return home
 }
 
-// writeProjectConfig 在当前工作目录的 ./.ainovel/ 下写入项目级配置。
-// 调用前需先 t.Chdir 到目标目录。
+// writeProjectConfig writes project-level configuration under ./.ainovel/ in the current working directory.
+// t.Chdir must be called beforehand to change to the target directory.
 func writeProjectConfig(t *testing.T, content string) {
 	t.Helper()
 	if err := os.MkdirAll(".ainovel", 0o755); err != nil {
@@ -45,21 +45,21 @@ func writeProjectConfig(t *testing.T, content string) {
 	}
 }
 
-// 根因 3：项目级 ./.ainovel/config.json 存在但是坏 JSON，必须报错，不能静默吞掉退回全局。
+// Root cause 3: a malformed project-level ./.ainovel/config.json must fail loudly instead of silently falling back to global.
 func TestLoadConfig_CorruptProjectFailsLoud(t *testing.T) {
 	writeGlobal(t, validGlobal)
 	proj := t.TempDir()
 	t.Chdir(proj)
-	// 手抄示例多了个尾逗号——最常见的坏 JSON。
+	// A copied example with a trailing comma is the most common broken JSON.
 	writeProjectConfig(t, `{ "model": "x", }`)
 
 	if _, err := LoadConfig(""); err == nil {
-		t.Fatal("坏的 ./.ainovel/config.json 应当报错，却被静默忽略了")
+		t.Fatal("a broken ./.ainovel/config.json should fail, but it was silently ignored")
 	}
 }
 
-// 全局是最低优先级基底：坏文件不得阻断更高优先级的 --config 覆盖（回归守卫——
-// 上一版误把全局也 fail-loud，导致"坏全局 + 有效 --config"的用户被无关文件挡住）。
+// Global is the lowest priority baseline: bad files must not block higher-priority --config overrides (regression guard —
+// the previous version mistakenly made global fail-loud as well, causing users with "bad global + valid --config" to be blocked by unrelated files).
 func TestLoadConfig_CorruptGlobalDoesNotBlockOverride(t *testing.T) {
 	writeGlobal(t, `{ not json`)
 	proj := t.TempDir()
@@ -71,25 +71,25 @@ func TestLoadConfig_CorruptGlobalDoesNotBlockOverride(t *testing.T) {
 
 	cfg, err := LoadConfig(good)
 	if err != nil {
-		t.Fatalf("坏全局不应阻断有效 --config，得到: %v", err)
+		t.Fatalf("bad global should not block valid --config, got: %v", err)
 	}
 	if cfg.Provider != "openrouter" {
-		t.Errorf("应使用 --config 的值，得到 provider=%q", cfg.Provider)
+		t.Errorf("expected the --config value to win, got provider=%q", cfg.Provider)
 	}
 }
 
-// 文件不存在是正常情况（便携/首次），不能报错。
+// File not existing is a normal situation (portable/first-run), should not error.
 func TestLoadConfig_MissingFilesNoError(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home) // ~/.ainovel/config.json 不存在
-	t.Chdir(t.TempDir())   // 也没有 ./.ainovel/config.json
+	t.Setenv("HOME", home) // ~/.ainovel/config.json does not exist
+	t.Chdir(t.TempDir())   // ./.ainovel/config.json does not exist either
 
 	if _, err := LoadConfig(""); err != nil {
-		t.Fatalf("缺失配置文件不应报错，得到: %v", err)
+		t.Fatalf("missing config files should not error, got: %v", err)
 	}
 }
 
-// 正常路径：全局 + 项目级合并生效。
+// Happy path: global + project-level merge successfully.
 func TestLoadConfig_ValidMergeWorks(t *testing.T) {
 	writeGlobal(t, validGlobal)
 	proj := t.TempDir()
@@ -98,13 +98,13 @@ func TestLoadConfig_ValidMergeWorks(t *testing.T) {
 
 	cfg, err := LoadConfig("")
 	if err != nil {
-		t.Fatalf("有效配置不应报错: %v", err)
+		t.Fatalf("valid config should not error: %v", err)
 	}
 	if cfg.Provider != "openrouter" {
-		t.Errorf("provider 应保留全局值 openrouter，得到 %q", cfg.Provider)
+		t.Errorf("provider should keep the global openrouter value, got %q", cfg.Provider)
 	}
 	if cfg.ModelName != "google/gemini-2.5-pro" {
-		t.Errorf("model 应被项目级覆盖，得到 %q", cfg.ModelName)
+		t.Errorf("model should be overridden by the project config, got %q", cfg.ModelName)
 	}
 }
 
@@ -167,8 +167,8 @@ func TestMergeConfig_ProviderExtraFields(t *testing.T) {
 	}
 }
 
-// 根因 2（issue #37 核心复现）：项目级覆盖 provider 但没声明对应 providers 凭证，
-// ValidateBase 必须报 config 错误（而非放行后在更深处崩溃）。
+// Root cause 2 (the key issue #37 repro): overriding provider in the project config without declaring matching provider credentials
+// must fail validation instead of crashing deeper in the stack.
 func TestValidateBase_ProviderOverrideWithoutCredentials(t *testing.T) {
 	cfg := Config{
 		Provider:  "mimo",
@@ -180,31 +180,31 @@ func TestValidateBase_ProviderOverrideWithoutCredentials(t *testing.T) {
 	cfg.FillDefaults()
 	err := cfg.ValidateBase()
 	if err == nil {
-		t.Fatal("provider 缺凭证应报错")
+		t.Fatal("missing provider credentials should error")
 	}
 	if !errors.Is(err, errs.ErrConfig) {
-		t.Errorf("应包装 errs.ErrConfig，得到: %v", err)
+		t.Errorf("should wrap errs.ErrConfig, got: %v", err)
 	}
 }
 
-// 内置示例（go:embed 的 config.example.jsonc）必须自洽：去注释后是合法 JSON、
-// 顶层 provider 指针不悬空、且点破了“指针”心智——它是用户照抄的样板，自己坏了就坑人。
+// The embedded example (go:embed config.example.jsonc) must be self-consistent: after stripping comments it must be valid JSON,
+// the top-level provider must point at an existing provider entry, and the example should make the "provider is a pointer" model explicit.
 func TestExampleConfigIsValidAndSelfConsistent(t *testing.T) {
 	if exampleConfig == "" {
-		t.Fatal("go:embed 未生效，exampleConfig 为空")
+		t.Fatal("go:embed failed to take effect, exampleConfig is empty")
 	}
 	var cfg Config
 	if err := json.Unmarshal(stripJSONComments([]byte(exampleConfig)), &cfg); err != nil {
-		t.Fatalf("内置示例去注释后不是合法 JSON（用户照抄即坑）: %v", err)
+		t.Fatalf("the embedded example is not valid JSON after stripping comments: %v", err)
 	}
 	if cfg.Provider == "" || cfg.ModelName == "" {
-		t.Fatal("示例应给出默认 provider/model")
+		t.Fatal("the example should provide a default provider/model")
 	}
 	if _, ok := cfg.Providers[cfg.Provider]; !ok {
-		t.Errorf("示例顶层 provider %q 未指向 providers 中的条目——指针正面样板自己悬空了", cfg.Provider)
+		t.Errorf("example top-level provider %q does not point at an entry in providers", cfg.Provider)
 	}
-	if !contains(exampleConfig, "指针") {
-		t.Error("示例应点破“provider 是指针”——别让 #37 的认知陷阱回潮")
+	if !contains(exampleConfig, "pointer") {
+		t.Error("example should explicitly say that provider is a pointer reference")
 	}
 }
 
@@ -214,14 +214,14 @@ func TestWriteStartupError(t *testing.T) {
 
 	path := WriteStartupError("boom: provider not configured")
 	if path == "" {
-		t.Fatal("应返回落盘路径")
+		t.Fatal("should return a written path")
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("读取 last-error.log: %v", err)
+		t.Fatalf("read last-error.log: %v", err)
 	}
 	if want := "boom: provider not configured"; !contains(string(data), want) {
-		t.Errorf("日志应包含 %q，实际: %s", want, data)
+		t.Errorf("log should contain %q, got: %s", want, data)
 	}
 }
 

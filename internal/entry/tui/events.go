@@ -12,11 +12,11 @@ import (
 	"github.com/voocel/ainovel-cli/internal/store"
 )
 
-// 消息类型
+// Message types
 type (
 	eventMsg       host.Event
 	snapshotMsg    host.UISnapshot
-	doneMsg        struct{ complete bool } // complete=true 全书完成，false 出错停止
+	doneMsg        struct{ complete bool } // complete=true whole book completed, false stopped with error
 	abortResultMsg struct{ stopped bool }
 	bootstrapMsg   struct {
 		replay  []domain.RuntimeQueueItem
@@ -26,7 +26,7 @@ type (
 	reportLoadedMsg struct {
 		reqID      int
 		report     diag.Report
-		exportPath string // 脱敏诊断文件绝对路径；空 = 导出失败
+		exportPath string // redacted diagnostic file absolute path; empty = export failed
 		finishedAt time.Time
 	}
 	askUserMsg       askUserRequest
@@ -36,7 +36,7 @@ type (
 		kind  string // host.CoCreateProgressThinking | host.CoCreateProgressReply
 		text  string
 	}
-	// cocreateStreamItem 是 deltaCh 内部载荷，把流式 kind 与累积文本一起送达 TUI。
+	// cocreateStreamItem is the internal payload of deltaCh, carrying streaming kind and accumulated text to TUI.
 	cocreateStreamItem struct {
 		kind string
 		text string
@@ -49,15 +49,15 @@ type (
 	steerResultMsg     struct{}
 	continueResultMsg  struct{ err error }
 	spinnerTickMsg     time.Time
-	toolSpinnerTickMsg time.Time // 事件流工具 spinner 独立 tick（更快、独立于顶栏/星星）
-	cursorTickMsg      time.Time // 流式光标独立 tick
-	streamDeltaMsg     string    // 流式 token 增量
-	streamClearMsg     struct{}  // 清空流式缓冲（新消息开始）
-	streamFlushTickMsg struct{}  // 60fps 节流刷新流式面板（合并 token 级 delta）
-	quitResetMsg       struct{}  // 双次 Ctrl+C 超时重置
+	toolSpinnerTickMsg time.Time // independent tick for event stream tool spinner (faster, separate from header/stars)
+	cursorTickMsg      time.Time // independent tick for streaming cursor
+	streamDeltaMsg     string    // streaming token increment
+	streamClearMsg     struct{}  // clear streaming buffer (new message starts)
+	streamFlushTickMsg struct{}  // 60fps throttled refresh of streaming panel (merges token-level deltas)
+	quitResetMsg       struct{}  // double Ctrl+C timeout reset
 )
 
-// --- Cmd 函数 ---
+// --- Cmd Functions ---
 
 func listenEvents(rt *host.Host) tea.Cmd {
 	return func() tea.Msg {
@@ -122,7 +122,7 @@ func runCoCreate(rt *host.Host, state *cocreateState) tea.Cmd {
 	state.cancel = cancel
 	state.deltaCh = make(chan cocreateStreamItem, 64)
 	state.doneCh = make(chan cocreateDoneMsg, 1)
-	// 阶段共创带故事状态摘要、产出"后续方向 brief"；冷启动从零澄清需求。两者签名一致。
+	// Mid-stage co-creation carries story state summary and outputs "subsequent direction brief"; cold start clarifies requirements from scratch. Both share the same signature.
 	stream := rt.CoCreateStream
 	if state.stage {
 		stream = rt.StageCoCreateStream
@@ -148,8 +148,8 @@ func listenCoCreateDelta(state *cocreateState) tea.Cmd {
 	if state == nil || state.deltaCh == nil {
 		return nil
 	}
-	// 抓取 channel 局部引用：避免后续 state.deltaCh 被 reassign 时
-	// 旧 listen 闭包错读新 channel（虽然当前流程不触发，留作维护陷阱不应该）。
+	// Capture channel local reference: to prevent old listen closure from reading the new channel if state.deltaCh is reassigned later
+	// (though not triggered in current flow, it is a maintenance trap that should be avoided).
 	reqID := state.reqID
 	ch := state.deltaCh
 	return func() tea.Msg {
@@ -191,8 +191,8 @@ func continueRuntime(rt *host.Host, text string) tea.Cmd {
 	}
 }
 
-// resumeFromCoCreate 把阶段共创产出的后续方向 brief 注入并恢复创作。
-// 复用 continueResultMsg：成功即接 listenDone 续跑，失败回显错误。
+// resumeFromCoCreate injects subsequent direction brief produced by mid-stage co-creation and resumes writing.
+// Reuses continueResultMsg: success links to listenDone to continue execution, failure displays the error.
 func resumeFromCoCreate(rt *host.Host, draft string) tea.Cmd {
 	return func() tea.Msg {
 		err := rt.ResumeFromCoCreate(draft)
@@ -200,7 +200,7 @@ func resumeFromCoCreate(rt *host.Host, draft string) tea.Cmd {
 	}
 }
 
-// cancelCoCreate 放弃阶段共创：清占用标记、保持暂停。事件经 events 通道回流，无需返回消息。
+// cancelCoCreate discards mid-stage co-creation: clears occupation flag, keeps paused. Events return via events channel, no message needed.
 func cancelCoCreate(rt *host.Host) tea.Cmd {
 	return func() tea.Msg {
 		rt.CancelCoCreate()
@@ -217,9 +217,9 @@ func abortRuntime(rt *host.Host) tea.Cmd {
 func loadReport(dir string, reqID int) tea.Cmd {
 	return func() tea.Msg {
 		s := store.NewStore(dir)
-		// Diagnose = 创作诊断 + 运行时检测，运行时 Finding 也进屏上报告。
+		// Diagnose = writing diagnostics + runtime checks, runtime Finding also goes to on-screen report.
 		rep, rc := diag.Diagnose(s)
-		// 复用 rep+rc 写出脱敏诊断文件（导出失败不影响屏上报告）。
+		// Reuses rep+rc to write redacted diagnostic files (export failure does not affect on-screen reports).
 		exportPath, _ := diag.WriteExport(s, rep, rc)
 		return reportLoadedMsg{
 			reqID:      reqID,
@@ -236,7 +236,7 @@ func tickSpinner() tea.Cmd {
 	})
 }
 
-// tickToolSpinner 驱动事件流"进行中"行的 spinner。独立于 tickSpinner，节奏更快（150ms）。
+// tickToolSpinner drives the spinner of the event stream "in progress" line. Independent of tickSpinner, pace is faster (150ms).
 func tickToolSpinner() tea.Cmd {
 	return tea.Tick(150*time.Millisecond, func(t time.Time) tea.Msg {
 		return toolSpinnerTickMsg(t)
@@ -249,9 +249,9 @@ func tickCursor() tea.Cmd {
 	})
 }
 
-// tickStreamFlush 驱动流式面板节流刷新。streamDelta 不再每个 token 立即重渲，
-// 而是 mark dirty；本 tick 每 16ms（~60fps）检查并合并刷新一次，把 LLM 高速流式
-// 期的"每秒数十次全量重渲"压回 60 次上限。
+// tickStreamFlush drives throttled refresh of streaming panel. streamDelta no longer triggers immediate re-rendering per token,
+// but marks as dirty; this tick checks and merges refresh once every 16ms (~60fps) to compress LLM high-speed streaming
+// phase's "dozens of full re-renders per second" to the 60fps limit.
 func tickStreamFlush() tea.Cmd {
 	return tea.Tick(16*time.Millisecond, func(t time.Time) tea.Msg {
 		return streamFlushTickMsg{}
@@ -264,9 +264,8 @@ func listenStream(rt *host.Host) tea.Cmd {
 		if !ok {
 			return nil
 		}
-		// sentinel 派发为 streamClearMsg，保证与正常 delta 在同一通道里按 emit
-		// 顺序到达 TUI。双通道时 clearCh 与 streamCh 之间无序，✻ header 经常被
-		// 错塞到上一段 thinking 末尾。
+		// sentinel is dispatched as streamClearMsg, ensuring it arrives at the TUI in the same channel in the emit order relative to normal delta.
+		// With double channels, clearCh and streamCh are out of order, and the * header is often incorrectly appended to the end of the previous thinking segment.
 		if delta == host.StreamClearSentinel {
 			return streamClearMsg{}
 		}

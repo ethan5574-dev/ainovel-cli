@@ -20,7 +20,7 @@ var (
 	date    = "unknown"
 )
 
-// headlessMode 记录本次是否 headless 启动，供 die 决定错误退出时是否暂停。
+// headlessMode records whether this run started in headless mode so die can decide whether to pause on errors.
 var headlessMode bool
 
 func main() {
@@ -41,21 +41,21 @@ func main() {
 	}
 	headlessMode = opts.Headless
 
-	// 首次引导
+	// First-run setup
 	if bootstrap.NeedsSetup(opts.ConfigPath) {
 		if opts.Headless {
-			die("error: headless 模式不支持首次引导，请先运行一次 TUI 完成配置")
+			die("error: headless mode does not support first-run setup; please run the TUI once to finish configuration")
 		}
 		setupCfg, err := bootstrap.RunSetup()
 		if err != nil {
 			die("setup: %v", err)
 		}
-		// 引导完成后使用生成的配置继续
+		// Continue with the generated config after setup
 		runWithConfig(setupCfg, opts, args)
 		return
 	}
 
-	// 加载配置
+	// Load config
 	cfg, err := bootstrap.LoadConfig(opts.ConfigPath)
 	if err != nil {
 		die("config: %v", err)
@@ -64,24 +64,22 @@ func main() {
 	runWithConfig(cfg, opts, args)
 }
 
-// die 统一处理致命错误退出：打印到 stderr、落盘到 ~/.ainovel/last-error.log，
-// 并在交互式终端（非 headless）下暂停等待回车——双击启动时控制台会随进程退出
-// 立即关闭，不暂停的话错误一闪而过，正是 issue #37 里用户无从排查的根因。
+// die handles fatal exits uniformly: print to stderr, write ~/.ainovel/last-error.log,
+// and pause for Enter in interactive terminals so the message does not vanish immediately.
 func die(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	fmt.Fprintln(os.Stderr, msg)
 	if path := bootstrap.WriteStartupError(msg); path != "" {
-		fmt.Fprintf(os.Stderr, "（详细错误已记录到 %s）\n", path)
+		fmt.Fprintf(os.Stderr, "(Detailed error written to %s)\n", path)
 	}
 	if !headlessMode && stdinIsTerminal() {
-		fmt.Fprint(os.Stderr, "\n按回车键退出...")
+		fmt.Fprint(os.Stderr, "\nPress Enter to exit...")
 		fmt.Fscanln(os.Stdin)
 	}
 	os.Exit(1)
 }
 
-// stdinIsTerminal 判断标准输入是否连接到终端（字符设备）。双击启动 / 交互式终端
-// 为 true；管道、重定向、CI 为 false。零依赖近似，足够区分要不要暂停。
+// stdinIsTerminal reports whether stdin is connected to a terminal (character device).
 func stdinIsTerminal() bool {
 	fi, err := os.Stdin.Stat()
 	if err != nil {
@@ -94,7 +92,7 @@ func runWithConfig(cfg bootstrap.Config, opts cliOptions, args []string) {
 	rules.EnsureHomeRulesDir()
 
 	if len(args) > 0 {
-		die("error: 不再支持命令行直接传入小说需求，请启动后在 TUI 输入框中输入")
+		die("error: passing the novel prompt on the command line is no longer supported; please enter it in the TUI after launch")
 	}
 
 	bundle := assets.Load(cfg.Style)
@@ -109,7 +107,7 @@ func runWithConfig(cfg bootstrap.Config, opts cliOptions, args []string) {
 		return
 	}
 	if opts.Prompt != "" || opts.PromptFile != "" {
-		die("error: --prompt/--prompt-file 仅能在 --headless 模式下使用")
+		die("error: --prompt/--prompt-file can only be used with --headless")
 	}
 	if err := tui.Run(cfg, bundle, versionInfo().Version); err != nil {
 		die("error: %v", err)
@@ -126,7 +124,7 @@ type cliOptions struct {
 	UpdateVersion string
 }
 
-// parseCLIOptions 提取 CLI flag，返回选项和剩余参数。
+// parseCLIOptions parses CLI flags and returns the options plus any remaining args.
 func parseCLIOptions(argv []string) (cliOptions, []string, error) {
 	var opts cliOptions
 	var args []string
@@ -136,27 +134,27 @@ func parseCLIOptions(argv []string) (cliOptions, []string, error) {
 			opts.Version = true
 		case "version":
 			if i+1 < len(argv) {
-				return opts, nil, fmt.Errorf("version 不接受参数")
+				return opts, nil, fmt.Errorf("version does not accept arguments")
 			}
 			opts.Version = true
 		case "update":
 			if opts.Update {
-				return opts, nil, fmt.Errorf("update 只能指定一次")
+				return opts, nil, fmt.Errorf("update can only be specified once")
 			}
 			opts.Update = true
 			if i+1 < len(argv) {
 				if strings.HasPrefix(argv[i+1], "-") {
-					return opts, nil, fmt.Errorf("update 只接受一个可选版本参数")
+					return opts, nil, fmt.Errorf("update accepts at most one optional version argument")
 				}
 				opts.UpdateVersion = argv[i+1]
 				i++
 			}
 			if i+1 < len(argv) {
-				return opts, nil, fmt.Errorf("update 只接受一个可选版本参数")
+				return opts, nil, fmt.Errorf("update accepts at most one optional version argument")
 			}
 		case "--config":
 			if i+1 >= len(argv) {
-				return opts, nil, fmt.Errorf("--config 缺少值")
+				return opts, nil, fmt.Errorf("--config is missing a value")
 			}
 			opts.ConfigPath = argv[i+1]
 			i++
@@ -164,13 +162,13 @@ func parseCLIOptions(argv []string) (cliOptions, []string, error) {
 			opts.Headless = true
 		case "--prompt":
 			if i+1 >= len(argv) {
-				return opts, nil, fmt.Errorf("--prompt 缺少值")
+				return opts, nil, fmt.Errorf("--prompt is missing a value")
 			}
 			opts.Prompt = argv[i+1]
 			i++
 		case "--prompt-file":
 			if i+1 >= len(argv) {
-				return opts, nil, fmt.Errorf("--prompt-file 缺少值")
+				return opts, nil, fmt.Errorf("--prompt-file is missing a value")
 			}
 			opts.PromptFile = argv[i+1]
 			i++
@@ -179,13 +177,13 @@ func parseCLIOptions(argv []string) (cliOptions, []string, error) {
 		}
 	}
 	if opts.Prompt != "" && opts.PromptFile != "" {
-		return opts, nil, fmt.Errorf("--prompt 和 --prompt-file 不能同时使用")
+		return opts, nil, fmt.Errorf("--prompt and --prompt-file cannot be used together")
 	}
 	if opts.Version && (opts.Update || opts.ConfigPath != "" || opts.Headless || opts.Prompt != "" || opts.PromptFile != "" || len(args) > 0) {
-		return opts, nil, fmt.Errorf("version 不能与其他启动参数混用")
+		return opts, nil, fmt.Errorf("version cannot be combined with other startup flags")
 	}
 	if opts.Update && (opts.ConfigPath != "" || opts.Headless || opts.Prompt != "" || opts.PromptFile != "" || len(args) > 0) {
-		return opts, nil, fmt.Errorf("update 不能与其他启动参数混用")
+		return opts, nil, fmt.Errorf("update cannot be combined with other startup flags")
 	}
 	return opts, args, nil
 }
@@ -210,11 +208,11 @@ func runSelfUpdate(target string) error {
 		return err
 	}
 	if !result.Updated {
-		fmt.Printf("ainovel-cli 已是最新版本 %s\n", result.Version)
+		fmt.Printf("ainovel-cli is already at version %s\n", result.Version)
 		return nil
 	}
-	fmt.Printf("ainovel-cli 已更新到 %s\n", result.Version)
-	fmt.Printf("安装位置：%s\n", result.Path)
+	fmt.Printf("ainovel-cli updated to %s\n", result.Version)
+	fmt.Printf("Installed at: %s\n", result.Path)
 	return nil
 }
 
@@ -231,7 +229,7 @@ func loadPrompt(opts cliOptions) (string, error) {
 		data, err = os.ReadFile(opts.PromptFile)
 	}
 	if err != nil {
-		return "", fmt.Errorf("读取 prompt 失败: %w", err)
+		return "", fmt.Errorf("failed to read prompt: %w", err)
 	}
 	return strings.TrimSpace(string(data)), nil
 }

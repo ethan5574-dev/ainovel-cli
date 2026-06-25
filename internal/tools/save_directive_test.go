@@ -32,32 +32,32 @@ func TestSaveDirectiveAddAndRemove(t *testing.T) {
 	}
 	tool := NewSaveDirectiveTool(s)
 
-	// add：结果含带序号的全量列表
-	payload := execDirective(t, tool, map[string]any{"action": "add", "text": "对话占比提高"})
-	execDirective(t, tool, map[string]any{"action": "add", "text": "标题只用中文"})
+		// add: result contains full list with indices
+	payload := execDirective(t, tool, map[string]any{"action": "add", "text": "increase dialogue ratio"})
+	execDirective(t, tool, map[string]any{"action": "add", "text": "use only English for titles"})
 
 	directives, ok := payload["directives"].([]any)
 	if !ok || len(directives) != 1 {
 		t.Fatalf("unexpected directives after first add: %v", payload["directives"])
 	}
 	first, _ := directives[0].(map[string]any)
-	if first["text"] != "对话占比提高" || first["index"] != float64(1) {
+	if first["text"] != "increase dialogue ratio" || first["index"] != float64(1) {
 		t.Errorf("unexpected first entry: %v", first)
 	}
-	// 进度快照由工具从 Progress 读取，不依赖 LLM 传参：
-	// Progress.Init("test", 10) 后 NextChapter=1、TotalChapters=10
+	// Progress snapshot is read from Progress by the tool, not dependent on LLM parameters:
+	// Progress.Init("test", 10) after NextChapter=1, TotalChapters=10
 	if first["at_chapter"] != float64(1) || first["at_total_chapters"] != float64(10) {
 		t.Errorf("entry should carry progress snapshot, got %v", first)
 	}
 
-	// remove：按序号删除
+	// remove: delete by index
 	payload = execDirective(t, tool, map[string]any{"action": "remove", "index": 1})
 	directives, _ = payload["directives"].([]any)
 	if len(directives) != 1 {
 		t.Fatalf("expected 1 entry after remove, got %d", len(directives))
 	}
 	remaining, _ := directives[0].(map[string]any)
-	if remaining["text"] != "标题只用中文" || remaining["index"] != float64(1) {
+	if remaining["text"] != "use only English for titles" || remaining["index"] != float64(1) {
 		t.Errorf("remaining entry should be renumbered: %v", remaining)
 	}
 }
@@ -67,11 +67,11 @@ func TestSaveDirectiveRejectsBadArgs(t *testing.T) {
 	tool := NewSaveDirectiveTool(s)
 
 	cases := []map[string]any{
-		{"action": "add"},                // 缺 text
-		{"action": "add", "text": "  "},  // 空白 text
-		{"action": "remove"},             // 缺 index
-		{"action": "remove", "index": 9}, // 越界
-		{"action": "merge", "text": "x"}, // 未知 action
+		{"action": "add"},                // missing text
+		{"action": "add", "text": "  "},  // blank text
+		{"action": "remove"},             // missing index
+		{"action": "remove", "index": 9}, // out of bounds
+		{"action": "merge", "text": "x"}, // unknown action
 	}
 	for _, args := range cases {
 		raw, _ := json.Marshal(args)

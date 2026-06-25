@@ -1,8 +1,8 @@
-// Package notify 提供无人值守告警通道。
+// Package notify provides unattended notification alerts.
 //
-// 合宪定位（architecture.md §2.3）：纯观察层动作——告警永不介入控制流
-// （不重试、不改派、不停机），只是把 TUI 内已有的事件"喊"到屏幕之外。
-// Send 异步执行、永不阻塞 Host、失败只记 slog。
+// Alignment (architecture.md §2.3): Pure observation layer action—alerts never intervene in control flow
+// (no retries, no redirection, no shutdown), they just broadcast existing TUI events externally.
+// Send runs asynchronously, never blocks the Host, and logs errors to slog.
 package notify
 
 import (
@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-// Notification 一条告警的全部事实。
+// Notification represents all factual data of a single alert.
 type Notification struct {
 	Kind  string `json:"kind"`  // run_end / repeat / budget
 	Level string `json:"level"` // info / warn / error
@@ -24,15 +24,15 @@ type Notification struct {
 	Body  string `json:"body"`
 }
 
-// Notifier 按配置分发通知。零值不可用，必须经 New 创建；nil 安全（Send noop）。
+// Notifier distributes notifications based on configuration. Zero value is unusable, must be created via New; nil-safe (Send is a no-op).
 type Notifier struct {
-	command string          // 非空时替代 system 通道（手机推送走这里）
-	events  map[string]bool // nil = 全部 kind 放行
+	command string          // When non-empty, replaces the system channel (e.g., mobile push goes here)
+	events  map[string]bool // nil = allow all kinds
 	timeout time.Duration
 }
 
-// New 创建 Notifier。command 为空走内置 system 通道（macOS osascript /
-// Linux notify-send，找不到命令静默降级为仅 slog）；events 非空时只放行列出的 kind。
+// New creates a Notifier. Empty command runs on the built-in system channel (macOS osascript /
+// Linux notify-send, falls back silently to slog if command is missing); non-empty events whitelist only the listed kinds.
 func New(command string, events []string) *Notifier {
 	n := &Notifier{command: strings.TrimSpace(command), timeout: 10 * time.Second}
 	if len(events) > 0 {
@@ -44,7 +44,7 @@ func New(command string, events []string) *Notifier {
 	return n
 }
 
-// Send 异步发送一条通知。过滤、执行、失败处理全部不影响调用方。
+// Send asynchronously sends a notification. Filtering, execution, and error handling do not block the caller.
 func (n *Notifier) Send(nt Notification) {
 	if !n.allows(nt.Kind) {
 		return
@@ -52,7 +52,7 @@ func (n *Notifier) Send(nt Notification) {
 	go n.deliver(nt)
 }
 
-// allows 返回该 kind 是否放行（nil Notifier / 未列入 events 时拦截）。
+// allows reports whether the kind is allowed (intercepts if Notifier is nil or kind is not whitelisted).
 func (n *Notifier) allows(kind string) bool {
 	if n == nil {
 		return false
@@ -60,7 +60,7 @@ func (n *Notifier) allows(kind string) bool {
 	return n.events == nil || n.events[kind]
 }
 
-// deliver 同步执行一次发送（goroutine 内运行；测试可直接调用以同步断言）。
+// deliver synchronously executes a transmission (runs in a goroutine; tests can invoke this directly to assert synchronously).
 func (n *Notifier) deliver(nt Notification) {
 	defer func() { recover() }()
 	ctx, cancel := context.WithTimeout(context.Background(), n.timeout)
@@ -73,12 +73,12 @@ func (n *Notifier) deliver(nt Notification) {
 		err = runSystem(ctx, nt)
 	}
 	if err != nil {
-		slog.Warn("通知发送失败", "module", "notify", "kind", nt.Kind, "err", err)
+		slog.Warn("notification delivery failed", "module", "notify", "kind", nt.Kind, "err", err)
 	}
 }
 
-// runCommand 执行用户配置的命令：字段经环境变量传入（一行 curl 零依赖、无注入
-// 风险），完整 JSON 同时写 stdin（复杂分发场景自行解析）。超时由 ctx 强杀。
+// runCommand runs a user-configured command: fields are passed via environment variables (zero dependency,
+// no injection risk), and the full JSON payload is piped to stdin. Timeouts are enforced by ctx.
 func runCommand(ctx context.Context, command string, nt Notification) error {
 	cmd := exec.CommandContext(ctx, "sh", "-c", command)
 	cmd.Env = append(os.Environ(),
@@ -92,7 +92,7 @@ func runCommand(ctx context.Context, command string, nt Notification) error {
 	return cmd.Run()
 }
 
-// runSystem 内置桌面通知：只覆盖"人在电脑旁"的场景，找不到命令静默降级。
+// runSystem executes built-in desktop alerts: covers only interactive environments, degrades to logging if command is missing.
 func runSystem(ctx context.Context, nt Notification) error {
 	switch runtime.GOOS {
 	case "darwin":
@@ -100,17 +100,17 @@ func runSystem(ctx context.Context, nt Notification) error {
 		return exec.CommandContext(ctx, "osascript", "-e", script).Run()
 	case "linux":
 		if _, err := exec.LookPath("notify-send"); err != nil {
-			slog.Info("通知降级为日志（无 notify-send）", "module", "notify", "title", nt.Title, "body", nt.Body)
+			slog.Info("notification downgraded to log (missing notify-send)", "module", "notify", "title", nt.Title, "body", nt.Body)
 			return nil
 		}
 		return exec.CommandContext(ctx, "notify-send", nt.Title, nt.Body).Run()
 	default:
-		slog.Info("通知降级为日志（平台无 system 通道）", "module", "notify", "title", nt.Title, "body", nt.Body)
+		slog.Info("notification downgraded to log (no system channel on platform)", "module", "notify", "title", nt.Title, "body", nt.Body)
 		return nil
 	}
 }
 
-// appleScriptString 把任意文本包装为 AppleScript 字符串字面量。
+// appleScriptString wraps arbitrary text into an AppleScript string literal.
 func appleScriptString(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `"`, `\"`)

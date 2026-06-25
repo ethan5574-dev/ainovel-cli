@@ -30,7 +30,7 @@ func renderHelpText(width int) string {
 	hintStyle := lipgloss.NewStyle().Foreground(colorDim)
 
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("命令帮助"))
+	b.WriteString(titleStyle.Render("Command Help"))
 	b.WriteString("\n\n")
 
 	for i, spec := range commandSpecs() {
@@ -49,14 +49,14 @@ func renderHelpText(width int) string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(titleStyle.Render("快捷键"))
+	b.WriteString(titleStyle.Render("Shortcuts"))
 	b.WriteString("\n\n")
 	for _, line := range []string{
-		"输入 / 搜索命令",
-		"↑↓ 选择命令候选",
-		"Tab/Enter 接受补全",
-		"Esc 关闭当前命令面板",
-		"Ctrl+R 切换选中复制模式（关闭鼠标上报后可拖拽选中复制，再按一次恢复）",
+		"Type / to search commands",
+		"↑↓ to select a command candidate",
+		"Tab/Enter to accept completion",
+		"Esc to close the current command panel",
+		"Ctrl+R toggles selection-copy mode (with mouse reporting off you can drag to select and copy; press again to restore)",
 	} {
 		b.WriteString(hintStyle.Render(line))
 		b.WriteString("\n")
@@ -82,8 +82,8 @@ func renderHelpModal(width, height int, state *helpState) string {
 	modal := renderPaddedModalFrame(
 		boxW,
 		boxH,
-		"命令帮助",
-		"  ↑↓ 滚动 · Esc 关闭",
+		"Command Help",
+		"  ↑↓ scroll · Esc close",
 		strings.Split(state.viewport.View(), "\n"),
 	)
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)

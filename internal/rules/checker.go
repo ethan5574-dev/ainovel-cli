@@ -6,17 +6,17 @@ import (
 	"unicode/utf8"
 )
 
-// Check 对章节正文按结构化规则进行机械检查，返回违规事实列表。
+// Check performs a mechanical check on the chapter text based on structured rules, returning a list of violations.
 //
-// 设计契约：
-//   - 仅返事实，不下指令（铁律一）
-//   - 不阻断任何调用方流程
-//   - severity 按规则类型固定映射（参见 types.go 注释表）
+// Design Contract:
+//   - Only return facts, do not issue commands (Iron Rule #1)
+//   - Do not block any caller flow
+//   - severity maps fixedly by rule type (see the comment table in types.go)
 //
-// 参数：
-//   - text：章节正文（终稿或草稿都可）
-//   - wordCount：章节字数（rune 计数）。<0 时由 checker 自行计算，避免调用方重复 O(n) 扫描。
-//   - s：合并后的结构化规则；IsEmpty 时直接返回 nil。
+// Parameters:
+//   - text: chapter text (can be final draft or draft)
+//   - wordCount: chapter word count (rune count). If < 0, computed by checker itself to avoid repetitive O(n) scans by the caller.
+//   - s: merged structured rules; returns nil immediately if IsEmpty.
 func Check(text string, wordCount int, s Structured) []Violation {
 	if s.IsEmpty() {
 		return nil
@@ -33,8 +33,8 @@ func Check(text string, wordCount int, s Structured) []Violation {
 	return violations
 }
 
-// forbidden_chars：出现 ≥1 次即 error。
-// 同一条规则只产生一条 violation，actual 是出现次数。
+// forbidden_chars: error if appears >= 1 time.
+// A single rule produces only one violation, and actual is the occurrence count.
 func appendForbiddenChars(vs []Violation, text string, list []string) []Violation {
 	for _, ch := range list {
 		if ch == "" {
@@ -54,7 +54,7 @@ func appendForbiddenChars(vs []Violation, text string, list []string) []Violatio
 	return vs
 }
 
-// forbidden_phrases：出现 ≥1 次即 error；行为与 forbidden_chars 一致，仅 rule 名区分。
+// forbidden_phrases: error if appears >= 1 time; behavior is identical to forbidden_chars, only differentiated by rule name.
 func appendForbiddenPhrases(vs []Violation, text string, list []string) []Violation {
 	for _, ph := range list {
 		if ph == "" {
@@ -74,8 +74,8 @@ func appendForbiddenPhrases(vs []Violation, text string, list []string) []Violat
 	return vs
 }
 
-// fatigue_words：本章出现次数超过阈值才违规，warning 级。
-// 不跨章累计——跨章问题后续交诊断。
+// fatigue_words: violation occurs only when occurrences in this chapter exceed the threshold, warning level.
+// No cross-chapter accumulation - cross-chapter issues are delegated to diagnostics later.
 func appendFatigueWords(vs []Violation, text string, m map[string]int) []Violation {
 	for word, limit := range m {
 		if word == "" || limit <= 0 {
@@ -96,9 +96,9 @@ func appendFatigueWords(vs []Violation, text string, m map[string]int) []Violati
 	return vs
 }
 
-// chapter_words：字数偏差。
-// 偏差 < 20%：warning；偏差 ≥ 20%：error。
-// 偏差公式：低于 min 用 (min-actual)/min；高于 max 用 (actual-max)/max。
+// chapter_words: word count deviation.
+// deviation < 20%: warning; deviation >= 20%: error.
+// Deviation formula: below min uses (min-actual)/min; above max uses (actual-max)/max.
 func appendChapterWords(vs []Violation, wordCount int, rng *WordRange) []Violation {
 	if rng == nil {
 		return vs
@@ -116,7 +116,7 @@ func appendChapterWords(vs []Violation, wordCount int, rng *WordRange) []Violati
 		}
 		deviation = float64(wordCount-rng.Max) / float64(rng.Max)
 	default:
-		return vs // 在范围内
+		return vs // within range
 	}
 
 	severity := SeverityWarning

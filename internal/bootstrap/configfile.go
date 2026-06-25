@@ -12,7 +12,7 @@ import (
 
 const configDirName = ".ainovel"
 
-// DefaultConfigPath 返回全局配置文件路径 ~/.ainovel/config.json。
+// DefaultConfigPath returns the global config path ~/.ainovel/config.json.
 func DefaultConfigPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -21,8 +21,8 @@ func DefaultConfigPath() string {
 	return filepath.Join(home, configDirName, "config.json")
 }
 
-// DefaultConfigDir 返回 ~/.ainovel 目录路径；取不到家目录时返回空字符串。
-// 仅用于读/写不强制存在的文件（如模型缓存），不会自动创建目录。
+// DefaultConfigDir returns the ~/.ainovel directory path; it returns an empty string if the home directory cannot be found.
+// It is only used for reading/writing files that do not require the directory to exist.
 func DefaultConfigDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -31,7 +31,7 @@ func DefaultConfigDir() string {
 	return filepath.Join(home, configDirName)
 }
 
-// configDir 返回 ~/.ainovel 目录路径，不存在时创建。
+// configDir returns the ~/.ainovel directory path, creating it if needed.
 func configDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -44,43 +44,42 @@ func configDir() (string, error) {
 	return dir, nil
 }
 
-// projectConfigPath 返回项目级配置文件的相对路径 ./.ainovel/config.json。
-// 项目级 dotdir 镜像全局 ~/.ainovel/，复用同一个 configDirName；相对 cwd 解析。
+// projectConfigPath returns the project-level config path ./.ainovel/config.json.
+// The project dotdir mirrors the global ~/.ainovel/ directory and is resolved relative to cwd.
 func projectConfigPath() string {
 	return filepath.Join(configDirName, "config.json")
 }
 
-// LoadConfig 按优先级加载并合并配置：
-//  1. ~/.ainovel/config.json（全局）
-//  2. ./.ainovel/config.json（项目级覆盖）
-//  3. flagPath 指定的路径（最高优先级）
+// LoadConfig loads and merges config in priority order:
+//  1. ~/.ainovel/config.json (global)
+//  2. ./.ainovel/config.json (project override)
+//  3. the path passed via flagPath (highest priority)
 func LoadConfig(flagPath string) (Config, error) {
 	var cfg Config
 
-	// 1. 全局配置。它是最低优先级基底，坏文件降级为告警而非阻断——可被项目级
-	//    / --config 覆盖；硬失败会把"坏全局 + 有效 --config"的用户挡在门外，
-	//    违反 --config"我明确指定这个"的语义。
+	// 1. Global config. It is the lowest-priority base; bad files degrade to warnings rather than blocking,
+	//    because project-level or --config overrides should still win.
 	if p := DefaultConfigPath(); p != "" {
 		global, found, err := loadOptionalJSON(p)
 		switch {
 		case err != nil:
-			slog.Warn("全局配置解析失败，已忽略（可被项目级/--config 覆盖）", "module", "config", "path", p, "err", err)
+			slog.Warn("global config parse failed and was ignored (project/--config overrides may still apply)", "module", "config", "path", p, "err", err)
 		case found:
 			cfg = global
 		}
 	}
 
-	// 2. 项目级覆盖。坏文件 fail loud：用户在当前目录主动放的配置，静默吞掉会让
-	//    "配了不生效"无从排查（issue #37）。
+	// 2. Project-level override. Bad files fail loudly because a user-supplied local config that silently
+	//    disappears is hard to diagnose.
 	project, found, err := loadOptionalJSON(projectConfigPath())
 	if err != nil {
-		return cfg, fmt.Errorf("项目级配置 ./.ainovel/config.json 解析失败（请检查 JSON 语法）: %w", err)
+		return cfg, fmt.Errorf("project config ./.ainovel/config.json parse failed (check JSON syntax): %w", err)
 	}
 	if found {
 		cfg = mergeConfig(cfg, project)
 	}
 
-	// 3. CLI flag 覆盖
+	// 3. CLI flag override
 	if flagPath != "" {
 		override, err := loadJSONFile(flagPath)
 		if err != nil {
@@ -92,10 +91,9 @@ func LoadConfig(flagPath string) (Config, error) {
 	return cfg, nil
 }
 
-// loadOptionalJSON 读取一个可选的配置文件：
-//   - 文件不存在 → (zero, false, nil)，由调用方决定用默认/上层值
-//   - 文件存在但解析失败 → 返回错误（不再静默吞掉——否则用户的配置"配了不生效"
-//     却无从排查，正是 issue #37 的根因）
+// loadOptionalJSON reads an optional config file:
+//   - file missing -> (zero, false, nil), leaving the caller to keep defaults or inherited values
+//   - parse failure -> return an error
 func loadOptionalJSON(path string) (Config, bool, error) {
 	cfg, err := loadJSONFile(path)
 	if err != nil {
@@ -107,14 +105,14 @@ func loadOptionalJSON(path string) (Config, bool, error) {
 	return cfg, true, nil
 }
 
-// LoadConfigFile 读取单个 JSON 配置文件，支持 // 行注释。
-// 不做任何合并，仅返回该文件自身的配置。文件不存在时返回错误。
+// LoadConfigFile reads a single JSON config file with // line comments enabled.
+// It does not merge anything; it returns that file's config only.
 func LoadConfigFile(path string) (Config, error) {
 	return loadJSONFile(path)
 }
 
-// loadJSONFile 读取 JSON 配置文件，支持 // 行注释。
-// 文件不存在时返回错误（由调用方决定是否忽略）。
+// loadJSONFile reads a JSON config file and supports // line comments.
+// It returns an error when the file does not exist.
 func loadJSONFile(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -128,7 +126,7 @@ func loadJSONFile(path string) (Config, error) {
 	return cfg, nil
 }
 
-// mergeConfig 将 overlay 合并到 base 上。非零值字段覆盖，map 按 key 合并。
+// mergeConfig merges overlay into base. Non-zero fields override and maps merge by key.
 func mergeConfig(base, overlay Config) Config {
 	if overlay.Provider != "" {
 		base.Provider = overlay.Provider
@@ -143,7 +141,7 @@ func mergeConfig(base, overlay Config) Config {
 		base.ContextWindow = overlay.ContextWindow
 	}
 
-	// Providers: overlay 的 key 覆盖 base 同名 key
+	// Providers: overlay keys override matching base keys
 	if len(overlay.Providers) > 0 {
 		if base.Providers == nil {
 			base.Providers = make(map[string]ProviderConfig)
@@ -172,7 +170,7 @@ func mergeConfig(base, overlay Config) Config {
 		}
 	}
 
-	// Roles: overlay 的 key 覆盖 base 同名 key
+	// Roles: overlay keys override matching base keys
 	if len(overlay.Roles) > 0 {
 		if base.Roles == nil {
 			base.Roles = make(map[string]RoleConfig)
@@ -192,7 +190,7 @@ func mergeConfig(base, overlay Config) Config {
 		}
 	}
 
-	// Budget / Notify：整块覆盖（项目级预算/告警是独立政策声明，不与全局逐字段拼接）
+	// Budget / Notify: replace the whole block
 	if overlay.Budget != (BudgetConfig{}) {
 		base.Budget = overlay.Budget
 	}
@@ -214,7 +212,7 @@ func cloneMap(m map[string]any) map[string]any {
 	return c
 }
 
-// stripJSONComments 去除 JSON 中的 // 行注释，跟踪引号状态避免误删字符串内容。
+// stripJSONComments removes // line comments from JSON while tracking string state.
 func stripJSONComments(data []byte) []byte {
 	out := make([]byte, 0, len(data))
 	inString := false
@@ -239,16 +237,16 @@ func stripJSONComments(data []byte) []byte {
 			continue
 		}
 
-		// 不在字符串内
+		// Not inside a string
 		if b == '"' {
 			inString = true
 			out = append(out, b)
 			continue
 		}
 
-		// 检测 // 注释
+		// Detect // comments
 		if b == '/' && i+1 < len(data) && data[i+1] == '/' {
-			// 跳到行尾
+			// Skip to end of line
 			for i < len(data) && data[i] != '\n' {
 				i++
 			}
@@ -264,9 +262,9 @@ func stripJSONComments(data []byte) []byte {
 	return out
 }
 
-// WriteStartupError 把启动期致命错误追加写入 ~/.ainovel/last-error.log，并返回
-// 该文件路径（best-effort，失败时返回空字符串）。双击启动时控制台窗口会随进程
-// 退出立即关闭、错误一闪而过，落盘是这类用户事后追溯的唯一途径。
+// WriteStartupError appends a startup-time fatal error to ~/.ainovel/last-error.log and returns
+// that path (best-effort; returns an empty string on failure). When the app is double-clicked,
+// the console window closes immediately, so writing to disk is the only way to trace the error later.
 func WriteStartupError(msg string) string {
 	dir := DefaultConfigDir()
 	if dir == "" {
@@ -287,7 +285,7 @@ func WriteStartupError(msg string) string {
 	return path
 }
 
-// SaveConfig 将配置写入指定路径（JSON 格式，缩进美化）。
+// SaveConfig writes the config to the given path as pretty-printed JSON.
 func SaveConfig(path string, cfg Config) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err

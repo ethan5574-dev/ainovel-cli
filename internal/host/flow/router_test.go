@@ -8,7 +8,7 @@ import (
 	storepkg "github.com/voocel/ainovel-cli/internal/store"
 )
 
-// helper：构造一个处于 Writing 阶段、分层模式的 Progress。
+// helper: constructs a Progress in PhaseWriting and layered mode.
 func writingProgress(completed []int, flow domain.FlowState) *domain.Progress {
 	return &domain.Progress{
 		Phase:             domain.PhaseWriting,
@@ -47,8 +47,8 @@ func TestRoute_PendingRewritesFirst(t *testing.T) {
 	if got == nil || got.Agent != "writer" {
 		t.Fatalf("expected writer for rewrites, got %+v", got)
 	}
-	if got.Task != "重写第 3 章" {
-		t.Errorf("expected '重写第 3 章', got %q", got.Task)
+	if got.Task != "Rewrite chapter 3" {
+		t.Errorf("expected 'Rewrite chapter 3', got %q", got.Task)
 	}
 	if got.Chapter != 3 {
 		t.Errorf("expected Chapter=3, got %d", got.Chapter)
@@ -59,7 +59,7 @@ func TestRoute_PendingPolishingVerb(t *testing.T) {
 	p := writingProgress([]int{1}, domain.FlowPolishing)
 	p.PendingRewrites = []int{2}
 	got := Route(State{Progress: p})
-	if got == nil || got.Task != "打磨第 2 章" {
+	if got == nil || got.Task != "Polish chapter 2" {
 		t.Fatalf("expected polish verb, got %+v", got)
 	}
 }
@@ -93,7 +93,7 @@ func TestRoute_ArcEndNeedsReview(t *testing.T) {
 	if got == nil || got.Agent != "editor" {
 		t.Fatalf("expected editor for arc review, got %+v", got)
 	}
-	if got.Reason != "弧末评审未完成" {
+	if got.Reason != "Arc review is not complete" {
 		t.Errorf("reason mismatch: %q", got.Reason)
 	}
 }
@@ -111,7 +111,7 @@ func TestRoute_ArcEndHasReviewNeedsSummary(t *testing.T) {
 		HasArcReview: true,
 	}
 	got := Route(s)
-	if got == nil || got.Agent != "editor" || got.Reason != "弧摘要未完成" {
+	if got == nil || got.Agent != "editor" || got.Reason != "Arc summary is not complete" {
 		t.Fatalf("expected arc summary editor call, got %+v", got)
 	}
 }
@@ -131,7 +131,7 @@ func TestRoute_VolumeEndNeedsVolumeSummary(t *testing.T) {
 		HasArcSummary: true,
 	}
 	got := Route(s)
-	if got == nil || got.Reason != "卷摘要未完成" {
+	if got == nil || got.Reason != "Volume summary is not complete" {
 		t.Fatalf("expected volume summary request, got %+v", got)
 	}
 }
@@ -156,7 +156,7 @@ func TestRoute_NeedsArcExpansion(t *testing.T) {
 	if got == nil || got.Agent != "architect_long" {
 		t.Fatalf("expected architect_long for expansion, got %+v", got)
 	}
-	if got.Reason != "下一弧骨架待展开" {
+	if got.Reason != "The next arc skeleton still needs expansion" {
 		t.Errorf("reason mismatch: %q", got.Reason)
 	}
 }
@@ -178,7 +178,7 @@ func TestRoute_NeedsNewVolume(t *testing.T) {
 		HasVolumeSummary: true,
 	}
 	got := Route(s)
-	if got == nil || got.Agent != "architect_long" || got.Reason != "卷末需决定追加新卷或结束全书" {
+	if got == nil || got.Agent != "architect_long" || got.Reason != "At the volume boundary we need to decide whether to append a new volume or finish the book" {
 		t.Fatalf("expected append_volume/complete_book dispatch, got %+v", got)
 	}
 }
@@ -190,8 +190,8 @@ func TestRoute_NormalContinue(t *testing.T) {
 	if got == nil || got.Agent != "writer" {
 		t.Fatalf("expected writer for next chapter, got %+v", got)
 	}
-	if got.Task != "写第 4 章" {
-		t.Errorf("expected '写第 4 章', got %q", got.Task)
+	if got.Task != "Write chapter 4" {
+		t.Errorf("expected 'Write chapter 4', got %q", got.Task)
 	}
 	if got.Chapter != 4 {
 		t.Errorf("expected Chapter=4, got %d", got.Chapter)
@@ -199,7 +199,7 @@ func TestRoute_NormalContinue(t *testing.T) {
 }
 
 func TestRoute_ArcEndNonLayeredSkipsBoundary(t *testing.T) {
-	// 非 Layered 模式即使 ArcBoundary 非 nil 也不走弧末分支
+	// Non-layered mode skips boundary check even if ArcBoundary is non-nil
 	p := &domain.Progress{
 		Phase:             domain.PhaseWriting,
 		Flow:              domain.FlowWriting,
@@ -219,8 +219,8 @@ func TestRoute_ArcEndNonLayeredSkipsBoundary(t *testing.T) {
 }
 
 func TestFormatMessage(t *testing.T) {
-	msg := FormatMessage(&Instruction{Agent: "writer", Task: "写第 5 章", Reason: "续写"})
-	for _, want := range []string{"[Host 下达指令]", "writer", "写第 5 章", "续写", "不要先调 novel_context"} {
+	msg := FormatMessage(&Instruction{Agent: "writer", Task: "Write chapter 5", Reason: "Continue writing"})
+	for _, want := range []string{"[Host directive]", "writer", "Write chapter 5", "Continue writing", "do not call novel_context first"} {
 		if !contains(msg, want) {
 			t.Errorf("message missing %q: %s", want, msg)
 		}
@@ -237,40 +237,40 @@ func contains(s, sub string) bool {
 }
 
 func TestDispatcher_TrackRepeat(t *testing.T) {
-	// 不需要真实 coordinator / store；trackRepeat 只读自己的缓存。
+	// No real coordinator / store needed; trackRepeat only reads its own cache.
 	d := &Dispatcher{}
-	inst := &Instruction{Agent: "writer", Task: "写第 5 章", Reason: "续写"}
+	inst := &Instruction{Agent: "writer", Task: "Write chapter 5", Reason: "Continue writing"}
 	if got := d.trackRepeat(inst); got != 1 {
-		t.Fatalf("首次下达应计 1，got %d", got)
+		t.Fatalf("First issue should count as 1, got %d", got)
 	}
 	if got := d.trackRepeat(inst); got != 2 {
-		t.Fatalf("同 Agent+Task 重复下达应计 2，got %d", got)
+		t.Fatalf("Duplicate issue of same Agent+Task should count as 2, got %d", got)
 	}
-	// Reason 不同、Agent+Task 相同时视为同一指令继续累计
-	sameTaskDiffReason := &Instruction{Agent: "writer", Task: "写第 5 章", Reason: "弧末后继续"}
+	// Different Reason but same Agent+Task should be treated as same instruction and continue accumulating
+	sameTaskDiffReason := &Instruction{Agent: "writer", Task: "Write chapter 5", Reason: "Continue after arc end"}
 	if got := d.trackRepeat(sameTaskDiffReason); got != 3 {
-		t.Fatalf("仅 Reason 不同应视为重复累计到 3，got %d", got)
+		t.Fatalf("Only difference in Reason should be treated as duplicate accumulating to 3, got %d", got)
 	}
-	other := &Instruction{Agent: "writer", Task: "写第 6 章", Reason: "续写"}
+	other := &Instruction{Agent: "writer", Task: "Write chapter 6", Reason: "Continue writing"}
 	if got := d.trackRepeat(other); got != 1 {
-		t.Fatalf("Task 变更后应重置为 1，got %d", got)
+		t.Fatalf("Should reset to 1 after Task changes, got %d", got)
 	}
 	d.ResetRepeat()
 	if got := d.trackRepeat(other); got != 1 {
-		t.Fatalf("ResetRepeat 后首次应计 1，got %d", got)
+		t.Fatalf("Should count as 1 first time after ResetRepeat, got %d", got)
 	}
 }
 
 func TestFormatDispatchMessage_RepeatNotice(t *testing.T) {
-	inst := &Instruction{Agent: "writer", Task: "写第 5 章", Reason: "续写"}
+	inst := &Instruction{Agent: "writer", Task: "Write chapter 5", Reason: "Continue writing"}
 	first := formatDispatchMessage(inst, 1)
 	if first != FormatMessage(inst) {
-		t.Fatalf("首次下达不应附加重复注记: %s", first)
+		t.Fatalf("First issue should not append duplicate note: %s", first)
 	}
 	third := formatDispatchMessage(inst, 3)
-	for _, want := range []string{"第 3 次下达", "路由事实未变化", "novel_context", "改派"} {
+	for _, want := range []string{"issued 3 times", "facts have not changed", "novel_context", "reassign"} {
 		if !contains(third, want) {
-			t.Errorf("重复注记缺少 %q: %s", want, third)
+			t.Errorf("Duplicate note missing %q: %s", want, third)
 		}
 	}
 }
@@ -282,20 +282,20 @@ func TestDispatcher_OnRepeatFiresOnceAtThreshold(t *testing.T) {
 		fired = append(fired, fmt.Sprintf("%s|%s|%d", agent, task, n))
 	})
 
-	inst := &Instruction{Agent: "writer", Task: "写第 5 章"}
+	inst := &Instruction{Agent: "writer", Task: "Write chapter 5"}
 	for range 6 {
-		d.trackRepeat(inst) // n=1..6：只在 n==3 时回调一次
+		d.trackRepeat(inst) // n=1..6: only callback once at n==3
 	}
-	if len(fired) != 1 || fired[0] != fmt.Sprintf("writer|写第 5 章|%d", repeatNotifyAt) {
-		t.Fatalf("应恰好在第 %d 次触发一次，got %v", repeatNotifyAt, fired)
+	if len(fired) != 1 || fired[0] != fmt.Sprintf("writer|Write chapter 5|%d", repeatNotifyAt) {
+		t.Fatalf("Should fire exactly once at the %d time, got %v", repeatNotifyAt, fired)
 	}
 
-	// 键变更后重新武装：换任务再连续 3 次 → 再触发一次
-	other := &Instruction{Agent: "writer", Task: "写第 6 章"}
+	// Re-arm after key changes: switch task and run 3 times -> fire once more
+	other := &Instruction{Agent: "writer", Task: "Write chapter 6"}
 	for range 3 {
 		d.trackRepeat(other)
 	}
 	if len(fired) != 2 {
-		t.Fatalf("键变更后应重新武装，got %v", fired)
+		t.Fatalf("Should re-arm after key changes, got %v", fired)
 	}
 }

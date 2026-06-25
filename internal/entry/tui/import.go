@@ -15,10 +15,10 @@ import (
 	"github.com/voocel/ainovel-cli/internal/host/imp"
 )
 
-// importState 是 /import 命令运行期间的模态状态。
+// importState is the modal state during the execution of the /import command.
 //
-// 模态在导入开始时创建，跟随事件流推进；完成或出错后保留在屏上等用户 Esc 关闭。
-// Esc 在运行中触发取消（ctx.Cancel），交由 runner 在下一事件点收尾。
+// The modal is created when import starts, and advances with the event stream; it remains on screen after completion or error until the user presses Esc to close.
+// Esc triggers cancellation (ctx.Cancel) during execution, which runner handles at the next event point.
 type importState struct {
 	reqID      int
 	source     string
@@ -86,24 +86,24 @@ func (s *importState) refresh(contentW int) {
 	stageStyle := lipgloss.NewStyle().Foreground(colorAccent2)
 
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("导入外部小说"))
+	b.WriteString(titleStyle.Render("Import External Novel"))
 	b.WriteString("\n\n")
-	b.WriteString(dimStyle.Render("源文件 "))
+	b.WriteString(dimStyle.Render("Source file "))
 	b.WriteString(s.source)
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("开始 "))
+	b.WriteString(dimStyle.Render("Started "))
 	b.WriteString(formatReportTime(s.startedAt))
 	if !s.finishedAt.IsZero() {
-		b.WriteString(dimStyle.Render("  完成 "))
+		b.WriteString(dimStyle.Render("  Completed "))
 		b.WriteString(formatReportTime(s.finishedAt))
 	}
 	b.WriteString("\n\n")
 
-	// 当前阶段行
-	b.WriteString(mutedStyle.Render("阶段 "))
+	// Current stage line
+	b.WriteString(mutedStyle.Render("Stage "))
 	b.WriteString(stageStyle.Render(string(s.stage)))
 	if s.total > 0 {
-		b.WriteString(mutedStyle.Render("  进度 "))
+		b.WriteString(mutedStyle.Render("  Progress "))
 		if s.current > 0 {
 			b.WriteString(fmt.Sprintf("%d/%d", s.current, s.total))
 		} else {
@@ -112,10 +112,10 @@ func (s *importState) refresh(contentW int) {
 	}
 	b.WriteString("\n\n")
 
-	// 历史日志
-	b.WriteString(titleStyle.Render("流程日志"))
+	// Process logs
+	b.WriteString(titleStyle.Render("Process Log"))
 	b.WriteString(" ")
-	b.WriteString(dimStyle.Render(fmt.Sprintf("(%d 条)", len(s.history))))
+	b.WriteString(dimStyle.Render(fmt.Sprintf("(%d entries)", len(s.history))))
 	b.WriteString("\n")
 	for _, ln := range s.history {
 		b.WriteString("\n")
@@ -133,19 +133,19 @@ func (s *importState) refresh(contentW int) {
 		}
 	}
 
-	// 收尾提示
+	// Completion hint
 	b.WriteString("\n\n")
 	switch {
 	case !s.done:
-		b.WriteString(dimStyle.Render("Esc 取消导入"))
+		b.WriteString(dimStyle.Render("Esc Cancel Import"))
 	case s.err != nil:
-		b.WriteString(errStyle.Render("导入失败"))
+		b.WriteString(errStyle.Render("Import Failed"))
 		b.WriteString("\n")
-		b.WriteString(dimStyle.Render("Esc 关闭面板"))
+		b.WriteString(dimStyle.Render("Esc Close Panel"))
 	default:
-		b.WriteString(okStyle.Render("导入完成，正在自动接力续写"))
+		b.WriteString(okStyle.Render("Import completed, automatically resuming writing"))
 		b.WriteString("\n")
-		b.WriteString(dimStyle.Render("Esc 关闭面板查看进度"))
+		b.WriteString(dimStyle.Render("Esc Close Panel to View Progress"))
 	}
 
 	s.viewport.SetContent(b.String())
@@ -168,8 +168,8 @@ func renderImportModal(width, height int, s *importState) string {
 		s.viewport.Height = boxH - 4
 	}
 
-	hint := "  ↑↓ 滚动 · Esc 取消/关闭"
-	modal := renderPaddedModalFrame(boxW, boxH, "外部小说导入", hint,
+	hint := "  ↑↓ Scroll · Esc Cancel/Close"
+	modal := renderPaddedModalFrame(boxW, boxH, "Import External Novel", hint,
 		strings.Split(s.viewport.View(), "\n"))
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
 }
@@ -198,15 +198,15 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// importEventMsg 单次 imp.Event 投递。
+// importEventMsg represents a single imp.Event delivery.
 type importEventMsg struct {
 	reqID int
 	ev    imp.Event
-	ch    <-chan imp.Event // 同一通道继续监听下一条
+	ch    <-chan imp.Event // Continue listening on the same channel for the next event
 }
 
-// startImport 启动一次外部小说导入：解析参数 → 创建 modal state → 监听事件流。
-// width/height 用于初始化 viewport；cancel 函数挂在 state 上供 Esc 取消。
+// startImport starts an external novel import: parses arguments → creates modal state → listens to event stream.
+// width/height are used to initialize the viewport; cancel function is attached to state for Esc cancellation.
 func startImport(rt *host.Host, reqID int, args []string, width, height int) (*importState, tea.Cmd, error) {
 	opts, err := parseImportArgs(args)
 	if err != nil {
@@ -232,26 +232,26 @@ func listenImportEvent(reqID int, ch <-chan imp.Event) tea.Cmd {
 	}
 }
 
-// parseImportArgs 解析 `/import <path> [from=N]` 形式参数。
+// parseImportArgs parses `/import <path> [from=N]` formatted parameters.
 func parseImportArgs(args []string) (imp.Options, error) {
 	if len(args) == 0 {
-		return imp.Options{}, fmt.Errorf("用法：/import <文件路径> [from=N]")
+		return imp.Options{}, fmt.Errorf("Usage: /import <filepath> [from=N]")
 	}
 	opts := imp.Options{SourcePath: args[0]}
 	for _, a := range args[1:] {
 		k, v, ok := strings.Cut(a, "=")
 		if !ok {
-			return imp.Options{}, fmt.Errorf("参数应为 key=value：%q", a)
+			return imp.Options{}, fmt.Errorf("parameter must be key=value: %q", a)
 		}
 		switch strings.ToLower(k) {
 		case "from":
 			n, err := strconv.Atoi(v)
 			if err != nil || n < 0 {
-				return imp.Options{}, fmt.Errorf("from 需为非负整数：%q", v)
+				return imp.Options{}, fmt.Errorf("from must be a non-negative integer: %q", v)
 			}
 			opts.ResumeFrom = n
 		default:
-			return imp.Options{}, fmt.Errorf("未知参数 %q（支持：from）", k)
+			return imp.Options{}, fmt.Errorf("unknown parameter %q (supported: from)", k)
 		}
 	}
 	return opts, nil

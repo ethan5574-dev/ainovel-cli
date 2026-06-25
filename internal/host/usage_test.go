@@ -7,9 +7,9 @@ import (
 	"github.com/voocel/ainovel-cli/internal/models"
 )
 
-// makeUsageMsg 构造一条 OnMessage 回调能接受的消息（带 Usage）。
-// Role 必须显式置成 assistant：UsageTracker.Record 现在按角色筛，
-// 只有 assistant 消息才会被累计（其它角色天然不带 usage）。
+// makeUsageMsg constructs an assistant message with Usage.
+// Role must be explicitly set to assistant: UsageTracker.Record now filters by role,
+// and only assistant messages are accumulated (other roles naturally do not carry usage).
 func makeUsageMsg(input, cacheRead, cacheWrite, output int) agentcore.AgentMessage {
 	return agentcore.Message{
 		Role: agentcore.RoleAssistant,
@@ -19,8 +19,8 @@ func makeUsageMsg(input, cacheRead, cacheWrite, output int) agentcore.AgentMessa
 	}
 }
 
-// Test_pushSample_RingBuffer 验证滑动窗的轮转语义：
-// 前 N 次直接 append；之后按 sampleIdx 覆盖最旧条目。recentSums 始终反映"最近 N 次"。
+// Test_pushSample_RingBuffer verifies the rotation semantics of the sliding window:
+// Appends directly for the first N times; overrides the oldest item by sampleIdx afterwards. recentSums always reflects the "recent N times".
 func Test_pushSample_RingBuffer(t *testing.T) {
 	var tot agentTotals
 
@@ -48,10 +48,10 @@ func Test_pushSample_RingBuffer(t *testing.T) {
 	}
 }
 
-// Test_UsageTracker_RecordAccumulates 验证 Record 多 role 累计正确，
-// 整体合并 = 所有 role 之和；per-role 各自独立。
+// Test_UsageTracker_RecordAccumulates verifies that Record accumulates multiple roles correctly,
+// overall merged = sum of all roles; per-role are independent.
 func Test_UsageTracker_RecordAccumulates(t *testing.T) {
-	tk := NewUsageTracker(nil, nil) // modelSet=nil → 走 provider Cost 兜底，不影响累计逻辑
+	tk := NewUsageTracker(nil, nil) // modelSet=nil -> falls back to provider Cost, does not affect accumulation logic
 
 	tk.Record("writer", makeUsageMsg(1000, 800, 0, 200))
 	tk.Record("writer", makeUsageMsg(1500, 1200, 100, 300))
@@ -69,7 +69,7 @@ func Test_UsageTracker_RecordAccumulates(t *testing.T) {
 	if len(per) != 2 {
 		t.Fatalf("per-agent len=%d want 2", len(per))
 	}
-	// PerAgent 按 CacheRead 降序：writer (2000) 应排在 editor (0) 前
+	// PerAgent sorted descending by CacheRead: writer (2000) should be before editor (0)
 	if per[0].Role != "writer" || per[1].Role != "editor" {
 		t.Fatalf("per-agent order = %s,%s want writer,editor", per[0].Role, per[1].Role)
 	}
@@ -78,8 +78,8 @@ func Test_UsageTracker_RecordAccumulates(t *testing.T) {
 	}
 }
 
-// Test_UsageTracker_ArchitectAliasNormalized 验证 architect_short/mid/long
-// 都归一到同一个 "architect" key（避免被 /model 切换的子角色拆成多行）。
+// Test_UsageTracker_ArchitectAliasNormalized verifies that architect_short/mid/long
+// are all normalized to the same "architect" key (preventing the sub-roles switched via /model from being split into multiple rows).
 func Test_UsageTracker_ArchitectAliasNormalized(t *testing.T) {
 	tk := NewUsageTracker(nil, nil)
 	tk.Record("architect_short", makeUsageMsg(100, 50, 0, 20))
@@ -167,16 +167,16 @@ func Test_UsageTracker_ProviderOnlyDoesNotInventModelKey(t *testing.T) {
 	}
 }
 
-// Test_UsageTracker_RecentWindowReflectsLatest 验证滑动窗反映"最近 N 次"，
-// 不被早期低命中拖累 — 这正是 P1 要解决的"前期拖累 vs 稳态低命中"问题。
+// Test_UsageTracker_RecentWindowReflectsLatest verifies that the sliding window reflects "recent N times",
+// without being dragged down by early low hits—which is exactly the "early drag vs steady-state low hit rate" issue solved by P1.
 func Test_UsageTracker_RecentWindowReflectsLatest(t *testing.T) {
 	tk := NewUsageTracker(nil, nil)
 
-	// 前 5 次极低命中（首章场景）
+	// First 5 times with extremely low hit rate (first chapter scenario)
 	for i := 0; i < 5; i++ {
 		tk.Record("writer", makeUsageMsg(1000, 0, 0, 200))
 	}
-	// 后 8 次（>5）高命中（稳态场景）
+	// Next 8 times (>5) with high hit rate (steady-state scenario)
 	for i := 0; i < 8; i++ {
 		tk.Record("writer", makeUsageMsg(1000, 900, 0, 200))
 	}
@@ -187,13 +187,13 @@ func Test_UsageTracker_RecentWindowReflectsLatest(t *testing.T) {
 	}
 	w := per[0]
 
-	// 累计：13 次中 8 次有命中 → 7200/13000 ≈ 55.4%
+	// Cumulative: 8 hits out of 13 -> 7200/13000 ≈ 55.4%
 	cumulativeRate := float64(w.CacheRead) / float64(w.Input) * 100
 	if cumulativeRate < 50 || cumulativeRate > 60 {
 		t.Errorf("cumulative hit rate = %.1f%%, want ~55%%", cumulativeRate)
 	}
 
-	// 滑动窗：最近 10 次中 8 次高命中 + 2 次零命中 → 7200/10000 = 72%
+	// Sliding window: 8 hits out of the recent 10 times + 2 zero hits -> 7200/10000 = 72%
 	if w.RecentSamples != recentSampleCap {
 		t.Errorf("recent samples = %d, want %d (window full)", w.RecentSamples, recentSampleCap)
 	}
@@ -201,15 +201,15 @@ func Test_UsageTracker_RecentWindowReflectsLatest(t *testing.T) {
 	if recentRate < 70 || recentRate > 75 {
 		t.Errorf("recent hit rate = %.1f%%, want ~72%% (proves window dropped early misses)", recentRate)
 	}
-	// 关键：近 N 次明显高于累计，证明早期 0 已被丢出窗
+	// Key: The recent N times is significantly higher than cumulative, proving the early 0s have been discarded
 	if recentRate <= cumulativeRate {
 		t.Errorf("recent (%.1f%%) must exceed cumulative (%.1f%%) once window slides past early misses",
 			recentRate, cumulativeRate)
 	}
 }
 
-// Test_computeSaved 验证 saved 算法：CacheRead × (Input价 - CacheRead价)；
-// 价差 ≤ 0 或 InputCost ≤ 0 时返回 0（CacheWrite 溢价不抵扣）。
+// Test_computeSaved verifies the saved algorithm: CacheRead × (InputPrice - CacheReadPrice);
+// returns 0 when price difference <= 0 or InputCost <= 0 (CacheWrite premium is not deducted).
 func Test_computeSaved(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -218,27 +218,27 @@ func Test_computeSaved(t *testing.T) {
 		want  float64
 	}{
 		{
-			name:  "anthropic 5m 命中节省 90%",
+			name:  "anthropic 5m hit saving 90%",
 			usage: agentcore.Usage{Input: 100_000, CacheRead: 80_000},
 			entry: models.ModelEntry{InputCostPer1M: 3.0, CacheReadCostPer1M: 0.3},
 			want:  80_000 * (3.0 - 0.3) / 1_000_000, // 0.216
 		},
 		{
-			name:  "无命中 saved=0",
+			name:  "no hit saved=0",
 			usage: agentcore.Usage{Input: 100_000, CacheRead: 0},
 			entry: models.ModelEntry{InputCostPer1M: 3.0, CacheReadCostPer1M: 0.3},
 			want:  0,
 		},
 		{
-			name:  "模型未标价 saved=0",
+			name:  "model not priced saved=0",
 			usage: agentcore.Usage{Input: 100_000, CacheRead: 50_000},
 			entry: models.ModelEntry{InputCostPer1M: 0, CacheReadCostPer1M: 0},
 			want:  0,
 		},
 		{
-			name:  "异常价差 saved=0",
+			name:  "abnormal price diff saved=0",
 			usage: agentcore.Usage{Input: 100_000, CacheRead: 50_000},
-			entry: models.ModelEntry{InputCostPer1M: 1.0, CacheReadCostPer1M: 2.0}, // 缓存反而更贵
+			entry: models.ModelEntry{InputCostPer1M: 1.0, CacheReadCostPer1M: 2.0}, // cache is actually more expensive
 			want:  0,
 		},
 	}
@@ -252,18 +252,18 @@ func Test_computeSaved(t *testing.T) {
 	}
 }
 
-// Test_UsageTracker_CacheCapableSticky 验证 CacheCapable 一旦置 true 就不回退。
-// 历史上跑过支持 cache 的模型 → 累计命中数据有效；中途切到不支持的模型不应让标记回退。
+// Test_UsageTracker_CacheCapableSticky verifies that CacheCapable never resets to false once set to true.
+// Run models supporting cache in history -> accumulated hit data is valid; switching to a non-supporting model in between should not reset the flag.
 //
-// 通过构造 perAgent 直接赋值模拟（resolveCost 路径需要 ModelSet+Registry，集成层已覆盖）。
+// Simulated by directly assigning values to perAgent (the resolveCost path requires ModelSet+Registry, which is covered in the integration layer).
 func Test_UsageTracker_CacheCapableSticky(t *testing.T) {
 	tk := NewUsageTracker(nil, nil)
 
-	// 模拟"曾经跑过支持 cache 的模型 + 命中过"
+	// Simulate "once ran a model supporting cache + got hit"
 	tk.perAgent["writer"] = &agentTotals{
 		Input: 1000, CacheRead: 500, Output: 200, CacheCapable: true,
 	}
-	// 后续追加一次"不支持 cache 的模型调用"
+	// Followed by a "call to a model not supporting cache"
 	tk.Record("writer", makeUsageMsg(500, 0, 0, 100))
 
 	per := tk.PerAgent()
@@ -279,10 +279,10 @@ func Test_UsageTracker_CacheCapableSticky(t *testing.T) {
 	}
 }
 
-// Test_UsageTracker_PerAgentSkipsZero 验证未消费 token 的 role 不出现在 PerAgent 中。
+// Test_UsageTracker_PerAgentSkipsZero verifies that roles with zero consumed tokens do not appear in PerAgent.
 func Test_UsageTracker_PerAgentSkipsZero(t *testing.T) {
 	tk := NewUsageTracker(nil, nil)
-	// 构造一个 role 但不消费 token（极端情况）
+	// Construct a role but consume zero tokens (extreme case)
 	tk.perAgent["ghost"] = &agentTotals{}
 	tk.Record("writer", makeUsageMsg(100, 50, 0, 20))
 
@@ -292,13 +292,11 @@ func Test_UsageTracker_PerAgentSkipsZero(t *testing.T) {
 	}
 }
 
-// Test_UsageTracker_MissingAssistantUsageCounted 验证 missingAssistantUsage
-// 计数的判定边界：
-//   - 累加路径只看 Usage != nil（不绑死 Role）
-//   - 诊断路径要求 Role=Assistant 且 Content 非空 — 这才像"一次真 LLM 响应却
-//     没拿到 usage"，对应上游 streaming 没发 OpenAI include_usage 那条 final
-//     chunk 的典型表现。其它情形（user/tool 消息、空 content 的 assistant）
-//     都不算 missing。
+// Test_UsageTracker_MissingAssistantUsageCounted verifies the decision boundaries of the missingAssistantUsage counter:
+//   - Accumulation path only checks Usage != nil (not bound to Role)
+//   - Diagnostic path requires Role=Assistant and non-empty Content — this looks like "a real LLM response but missing usage",
+//     which typically happens when the upstream streaming fails to send the final include_usage chunk.
+//     Other situations (user/tool messages, assistant messages with empty content) are not counted as missing.
 func Test_UsageTracker_MissingAssistantUsageCounted(t *testing.T) {
 	tk := NewUsageTracker(nil, nil)
 
@@ -309,15 +307,15 @@ func Test_UsageTracker_MissingAssistantUsageCounted(t *testing.T) {
 		}
 	}
 
-	// assistant + 有 Content + nil Usage → 看起来是真响应但缺 usage，计入诊断
+	// assistant + Content + nil Usage -> looks like a real response but missing usage, counted as missing
 	tk.Record("writer", withContent("hi"))
 	tk.Record("writer", withContent("again"))
-	// assistant 但 Content 为空 → 异常恢复路径或占位消息，不算 missing
+	// assistant but empty Content -> error recovery path or placeholder message, not counted as missing
 	tk.Record("writer", agentcore.Message{Role: agentcore.RoleAssistant})
-	// user/tool 消息天然不携带 usage，无论 Content 是否为空都不算 missing
+	// user/tool messages naturally do not carry usage, not counted as missing regardless of Content
 	tk.Record("writer", agentcore.Message{Role: agentcore.RoleUser, Content: []agentcore.ContentBlock{agentcore.TextBlock("u")}})
 	tk.Record("writer", agentcore.Message{Role: agentcore.RoleTool, Content: []agentcore.ContentBlock{agentcore.TextBlock("t")}})
-	// 正常带 usage → 走累加路径，不计入诊断
+	// normal usage -> goes to accumulation path, not counted as missing
 	tk.Record("writer", makeUsageMsg(100, 50, 0, 20))
 
 	if got := tk.MissingAssistantUsage(); got != 2 {
@@ -325,44 +323,43 @@ func Test_UsageTracker_MissingAssistantUsageCounted(t *testing.T) {
 	}
 	_, in, _, _, _ := tk.Totals()
 	if in != 100 {
-		t.Errorf("正常路径累计被破坏，input=%d want 100", in)
+		t.Errorf("Normal path accumulation broken, input=%d want 100", in)
 	}
 }
 
-// Test_UsageTracker_CacheCapableFromFacts 验证 CacheCapable 在注册表查不到该模型时
-// 仍能根据"事实"标记为 true：自建 / 国内代理后端的模型经常不在 BerriAI/litellm
-// 的 pricing 索引里，resolveCost 返回 capable=false；但只要 backend 真的返回了
-// CacheRead 或 CacheWrite > 0，就证明该模型客观支持 prompt cache，per-role 行
-// 不该显示"未启用"。
+// Test_UsageTracker_CacheCapableFromFacts verifies that CacheCapable is still marked as true based on "facts" even when the model cannot be found in the registry:
+// Models from self-built or domestic proxy backends are often not in BerriAI/litellm's pricing index, so resolveCost returns capable=false;
+// however, as long as the backend actually returns CacheRead or CacheWrite > 0, it proves that the model objectively supports prompt cache,
+// and the per-role line should not show "not enabled".
 func Test_UsageTracker_CacheCapableFromFacts(t *testing.T) {
-	tk := NewUsageTracker(nil, nil) // modelSet=nil → resolveCost 永远 capable=false
+	tk := NewUsageTracker(nil, nil) // modelSet=nil -> resolveCost is always capable=false
 
-	// 一次有 CacheWrite（模拟首次写入 cache，注册表没标 capable，但事实证明支持）
+	// One call with CacheWrite (simulates first write to cache, registry doesn't flag capable but facts prove it supports)
 	tk.Record("writer", makeUsageMsg(1000, 0, 200, 100))
 	per := tk.PerAgent()
 	if len(per) != 1 || !per[0].CacheCapable {
-		t.Fatalf("CacheWrite > 0 应立即标记 CacheCapable=true，got %+v", per)
+		t.Fatalf("CacheWrite > 0 should immediately mark CacheCapable=true, got %+v", per)
 	}
 	if !tk.OverallCacheCapable() {
-		t.Errorf("overall CacheCapable 也应同步置 true")
+		t.Errorf("overall CacheCapable should also be updated to true")
 	}
 
-	// 反向：完全无 cache 活动的 role，CacheCapable 必须保持 false
+	// Reverse: role with absolutely no cache activity must keep CacheCapable as false
 	tk.Record("editor", makeUsageMsg(500, 0, 0, 100))
 	per = tk.PerAgent()
 	for _, a := range per {
 		if a.Role == "editor" && a.CacheCapable {
-			t.Errorf("editor 全程无 CacheRead/Write，CacheCapable 不应被错误标记为 true")
+			t.Errorf("editor has no CacheRead/Write throughout, CacheCapable should not be incorrectly marked as true")
 		}
 	}
 }
 
-// Test_UsageTracker_AccumulatesAnyRoleWithUsage 验证累加路径解耦于 Role：
-// 即使将来某个 adapter 把 usage 装配到非 assistant 角色的 message 上，
-// 仍能正确累计。守住"装配规则与累加规则解耦"的契约。
+// Test_UsageTracker_AccumulatesAnyRoleWithUsage verifies that the accumulation path is decoupled from Role:
+// Even if an adapter in the future attaches usage to a message of a non-assistant role,
+// it should still accumulate correctly. Safeguards the contract of "decoupling assembly rules and accumulation rules".
 func Test_UsageTracker_AccumulatesAnyRoleWithUsage(t *testing.T) {
 	tk := NewUsageTracker(nil, nil)
-	// 构造一条理论上不太常见的、带 Usage 的非 assistant 消息
+	// Construct a hypothetically uncommon non-assistant message with Usage
 	hypothetical := agentcore.Message{
 		Role:  agentcore.RoleSystem,
 		Usage: &agentcore.Usage{Input: 200, Output: 50, CacheRead: 100},
@@ -371,15 +368,15 @@ func Test_UsageTracker_AccumulatesAnyRoleWithUsage(t *testing.T) {
 
 	_, in, out, cr, _ := tk.Totals()
 	if in != 200 || out != 50 || cr != 100 {
-		t.Errorf("未按 Usage 字段累加，got (in=%d out=%d cr=%d) want (200 50 100)", in, out, cr)
+		t.Errorf("not accumulated by Usage field, got (in=%d out=%d cr=%d) want (200 50 100)", in, out, cr)
 	}
 	if tk.MissingAssistantUsage() != 0 {
-		t.Errorf("有 Usage 不应计入 missing")
+		t.Errorf("having Usage should not be counted as missing")
 	}
 }
 
-// Test_UsageTracker_OnCostCallback 验证预算哨兵的接线点：每次记账后
-// 锁外回调携带最新累计成本（含 provider 自报 cost 路径）。
+// Test_UsageTracker_OnCostCallback verifies the connection point of the budget sentinel:
+// Callback outside the lock carrying the latest accumulated cost after each billing (including provider self-reported cost path).
 func Test_UsageTracker_OnCostCallback(t *testing.T) {
 	tk := NewUsageTracker(nil, nil)
 	var got []float64
@@ -399,13 +396,13 @@ func Test_UsageTracker_OnCostCallback(t *testing.T) {
 	}
 }
 
-// Test_UsageTracker_OnMissingUsageOnce 验证盲区回调只在首次触发。
+// Test_UsageTracker_OnMissingUsageOnce verifies that the blind spot callback triggers only once.
 func Test_UsageTracker_OnMissingUsageOnce(t *testing.T) {
 	tk := NewUsageTracker(nil, nil)
 	fired := 0
 	tk.SetOnMissingUsage(func() { fired++ })
 
-	noUsage := agentcore.Message{Role: agentcore.RoleAssistant, Content: []agentcore.ContentBlock{agentcore.TextBlock("正文")}}
+	noUsage := agentcore.Message{Role: agentcore.RoleAssistant, Content: []agentcore.ContentBlock{agentcore.TextBlock("text")}}
 	tk.Record("writer", noUsage)
 	tk.Record("writer", noUsage)
 	tk.Record("editor", noUsage)

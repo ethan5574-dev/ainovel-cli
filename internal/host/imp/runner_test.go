@@ -16,7 +16,7 @@ import (
 	"github.com/voocel/ainovel-cli/internal/tools"
 )
 
-// scriptedLLM 按调用顺序返回不同响应：第一次 foundation envelope，之后每次 analyzer envelope。
+// scriptedLLM returns different responses in sequence: first foundation envelope, then analyzer envelope for subsequent calls.
 type scriptedLLM struct {
 	responses []string
 	calls     atomic.Int32
@@ -92,8 +92,8 @@ func TestRunner_FullImport(t *testing.T) {
 	if len(prog.CompletedChapters) != 2 {
 		t.Errorf("completed chapters: %v", prog.CompletedChapters)
 	}
-	// 回归：导入不得把书自动判完结（否则"继续创作"撞上已完结的书无法续写），
-	// 且必须是分层模式（续写靠 append_volume/expand_arc，非分层无路可扩）。
+	// Regression: importing must NOT auto-complete the book (otherwise continuing writing on a completed book is blocked),
+	// and it must be in layered mode (continuation relies on append_volume/expand_arc, non-layered has no path to expand).
 	if prog.Phase == domain.PhaseComplete {
 		t.Errorf("import must NOT auto-complete the book, phase=%q", prog.Phase)
 	}
@@ -122,7 +122,7 @@ func TestRunner_SkipsAlreadyCompletedChapters(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 第一次导入：3 次 LLM 调用 (foundation + 2 chapters)
+	// First import: 3 LLM calls (foundation + 2 chapters)
 	llm := &scriptedLLM{responses: []string{
 		validEnvelope,
 		validAnalyzerEnvelope,
@@ -144,8 +144,8 @@ func TestRunner_SkipsAlreadyCompletedChapters(t *testing.T) {
 		t.Fatalf("first import: want 3 calls, got %d", llm.calls.Load())
 	}
 
-	// 第二次导入相同文件：foundation 已存在 → 0 次 LLM；章节已完成 → 0 次 LLM
-	llm2 := &scriptedLLM{responses: []string{}} // 任何 LLM 调用都会失败
+	// Second import of the same file: foundation exists -> 0 LLM calls; chapters completed -> 0 LLM calls
+	llm2 := &scriptedLLM{responses: []string{}} // any LLM call will fail
 	deps.LLM = llm2
 	events2, err := Run(context.Background(), deps, Options{SourcePath: src})
 	if err != nil {
@@ -171,7 +171,7 @@ func TestRunner_ResumeFromSkipsFoundation(t *testing.T) {
 	st := store.NewStore(filepath.Join(dir, "out"))
 	_ = st.Init()
 	_ = st.Progress.Init("resume-test", 0)
-	// 预置 foundation
+	// pre-populate foundation
 	fr, _ := parseFoundationOutput(validEnvelope, 2)
 	if err := PersistFoundation(context.Background(), st, "short", fr); err != nil {
 		t.Fatal(err)

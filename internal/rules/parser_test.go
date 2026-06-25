@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// readFixture 读取 testdata 下的 fixture 文件；找不到则 t.Fatal。
+// readFixture reads fixture files under testdata; calls t.Fatal if not found.
 func readFixture(t *testing.T, name string) []byte {
 	t.Helper()
 	path := filepath.Join("testdata", name)
@@ -33,15 +33,15 @@ func TestParse_Basic(t *testing.T) {
 	if !reflect.DeepEqual(p.Structured.ForbiddenChars, wantChars) {
 		t.Errorf("forbidden_chars=%v, want %v", p.Structured.ForbiddenChars, wantChars)
 	}
-	wantPhrases := []string{"不是……而是", "核心动机"}
+	wantPhrases := []string{"not...but", "core motivation"}
 	if !reflect.DeepEqual(p.Structured.ForbiddenPhrases, wantPhrases) {
 		t.Errorf("forbidden_phrases=%v, want %v", p.Structured.ForbiddenPhrases, wantPhrases)
 	}
-	wantFatigue := map[string]int{"不禁": 1, "竟然": 1, "仿佛": 2}
+	wantFatigue := map[string]int{"suddenly": 1, "unexpectedly": 1, "seemingly": 2}
 	if !reflect.DeepEqual(p.Structured.FatigueWords, wantFatigue) {
 		t.Errorf("fatigue_words=%v, want %v", p.Structured.FatigueWords, wantFatigue)
 	}
-	if !strings.Contains(p.Preference, "# 风格") {
+	if !strings.Contains(p.Preference, "# Style") {
 		t.Errorf("preference missing markdown body, got %q", p.Preference)
 	}
 	if len(p.Conflicts) != 0 {
@@ -53,11 +53,11 @@ func TestParse_InvalidFrontMatter(t *testing.T) {
 	data := readFixture(t, "invalid-frontmatter.rules.md")
 	p := Parse("testdata/invalid-frontmatter.rules.md", SourceProject, data)
 
-	// 容错：结构化字段全空，但正文仍作为偏好
+	// Fault tolerance: structured fields are empty, but the body is still used as preference
 	if !p.Structured.IsEmpty() {
 		t.Errorf("structured should be empty on parse_error, got %+v", p.Structured)
 	}
-	if !strings.Contains(p.Preference, "正文应当仍作为偏好注入") {
+	if !strings.Contains(p.Preference, "Although front matter parsing failed, the body should still be injected as preference.") {
 		t.Errorf("preference should still be parsed despite front matter failure; got %q", p.Preference)
 	}
 	if len(p.Conflicts) == 0 {
@@ -79,14 +79,14 @@ func TestParse_UnknownFields(t *testing.T) {
 	data := readFixture(t, "unknown-fields.rules.md")
 	p := Parse("testdata/unknown-fields.rules.md", SourceProject, data)
 
-	// 已知字段应正常加载
+	// Known fields should be loaded normally
 	if p.Structured.Genre != "xianxia" {
 		t.Errorf("genre=%q, want xianxia", p.Structured.Genre)
 	}
 	if p.Structured.ChapterWords == nil || p.Structured.ChapterWords.Min != 2000 {
 		t.Errorf("chapter_words=%+v, want {2000,4000}", p.Structured.ChapterWords)
 	}
-	// 未知字段进 conflicts
+	// Unknown fields should go into conflicts
 	unknowns := map[string]bool{}
 	for _, c := range p.Conflicts {
 		if c.Kind == ConflictUnknownField {
@@ -102,34 +102,34 @@ func TestParse_TypeErrors(t *testing.T) {
 	data := readFixture(t, "type-errors.rules.md")
 	p := Parse("testdata/type-errors.rules.md", SourceProject, data)
 
-	// 严格策略（Debug-First）：所有字段写错类型都丢弃字段并写 conflicts，不"帮用户猜"。
+	// Strict policy (Debug-First): all fields with incorrect types discard the field and write to conflicts, no "guessing for the user".
 
-	// genre: 42 是 int，严格判定为 type_error → 丢弃
+	// genre: 42 is an int, strictly judged as type_error -> discarded
 	if p.Structured.Genre != "" {
 		t.Errorf("genre should be discarded on type error (int instead of string), got %q", p.Structured.Genre)
 	}
 
-	// chapter_words: "not-a-range" → invalid_value
+	// chapter_words: "not-a-range" -> invalid_value
 	if p.Structured.ChapterWords != nil {
 		t.Errorf("chapter_words should be nil on invalid_value, got %+v", p.Structured.ChapterWords)
 	}
 
-	// forbidden_chars: "should-be-list" → type_error（顶层）
+	// forbidden_chars: "should-be-list" -> type_error (top-level)
 	if len(p.Structured.ForbiddenChars) != 0 {
 		t.Errorf("forbidden_chars should be empty on type_error, got %v", p.Structured.ForbiddenChars)
 	}
 
-	// forbidden_phrases: [1, 2] → 每个元素都是 int，严格判定 → 全部丢弃 → 空 list
+	// forbidden_phrases: [1, 2] -> each element is an int, strictly judged -> all discarded -> empty list
 	if len(p.Structured.ForbiddenPhrases) != 0 {
 		t.Errorf("forbidden_phrases should be empty on element type errors, got %v", p.Structured.ForbiddenPhrases)
 	}
 
-	// fatigue_words: true → 既非 map 也非 list → type_error 整体丢弃
+	// fatigue_words: true -> neither map nor list -> type_error whole discard
 	if len(p.Structured.FatigueWords) != 0 {
 		t.Errorf("fatigue_words should be empty on type_error, got %+v", p.Structured.FatigueWords)
 	}
 
-	// 所有错误字段都应进 conflicts
+	// All error fields should go into conflicts
 	fields := map[string]bool{}
 	for _, c := range p.Conflicts {
 		fields[c.Field] = true
@@ -140,7 +140,7 @@ func TestParse_TypeErrors(t *testing.T) {
 			t.Errorf("expected conflict for %s, got fields=%v conflicts=%+v", f, fields, p.Conflicts)
 		}
 	}
-	// forbidden_phrases 的元素级冲突，字段名是 forbidden_phrases[0]/[1]
+	// Element-level conflicts for forbidden_phrases, field names are forbidden_phrases[0]/[1]
 	hasPhrasesElement := false
 	for _, c := range p.Conflicts {
 		if strings.HasPrefix(c.Field, "forbidden_phrases") {
@@ -151,42 +151,42 @@ func TestParse_TypeErrors(t *testing.T) {
 		t.Errorf("expected per-element conflict on forbidden_phrases, got %+v", p.Conflicts)
 	}
 
-	// 正文仍应注入
-	if !strings.Contains(p.Preference, "类型错误") {
+	// Body should still be injected
+	if !strings.Contains(p.Preference, "Type Errors") {
 		t.Errorf("preference should be parsed despite type errors; got %q", p.Preference)
 	}
 }
 
-// TestParse_FatigueWordsPartialInvalid 验证：fatigue_words map 中部分 key 阈值非法时，
-// 每个非法 key 都写 conflict，合法 key 正常保留。
+// TestParse_FatigueWordsPartialInvalid verifies: when some key thresholds in fatigue_words map are invalid,
+// each invalid key writes a conflict, while valid keys are preserved normally.
 func TestParse_FatigueWordsPartialInvalid(t *testing.T) {
 	content := []byte("---\nfatigue_words:\n" +
-		"  正常: 2\n" +
-		"  零阈值: 0\n" +
-		"  负阈值: -1\n" +
-		"  非整数: \"abc\"\n" +
+		"  normal: 2\n" +
+		"  zero_threshold: 0\n" +
+		"  negative_threshold: -1\n" +
+		"  non_int: \"abc\"\n" +
 		"---\n")
 	p := Parse("inline", SourceProject, content)
 
-	if v, ok := p.Structured.FatigueWords["正常"]; !ok || v != 2 {
+	if v, ok := p.Structured.FatigueWords["normal"]; !ok || v != 2 {
 		t.Errorf("legitimate key should be kept, got %v", p.Structured.FatigueWords)
 	}
-	if _, ok := p.Structured.FatigueWords["零阈值"]; ok {
+	if _, ok := p.Structured.FatigueWords["zero_threshold"]; ok {
 		t.Errorf("zero threshold should be dropped")
 	}
-	if _, ok := p.Structured.FatigueWords["负阈值"]; ok {
+	if _, ok := p.Structured.FatigueWords["negative_threshold"]; ok {
 		t.Errorf("negative threshold should be dropped")
 	}
-	if _, ok := p.Structured.FatigueWords["非整数"]; ok {
+	if _, ok := p.Structured.FatigueWords["non_int"]; ok {
 		t.Errorf("non-int threshold should be dropped")
 	}
 
-	// 每个非法 key 都应有独立 conflict
+	// each invalid key should have a separate conflict
 	keys := map[string]bool{}
 	for _, c := range p.Conflicts {
 		keys[c.Field] = true
 	}
-	for _, key := range []string{"fatigue_words.零阈值", "fatigue_words.负阈值", "fatigue_words.非整数"} {
+	for _, key := range []string{"fatigue_words.zero_threshold", "fatigue_words.negative_threshold", "fatigue_words.non_int"} {
 		if !keys[key] {
 			t.Errorf("expected conflict on %s, got fields=%v", key, keys)
 		}
@@ -210,7 +210,7 @@ func TestParse_FatigueAsList(t *testing.T) {
 	data := readFixture(t, "fatigue-as-list.rules.md")
 	p := Parse("testdata/fatigue-as-list.rules.md", SourceProject, data)
 
-	want := map[string]int{"不禁": 1, "竟然": 1, "仿佛": 1}
+	want := map[string]int{"suddenly": 1, "unexpectedly": 1, "seemingly": 1}
 	if !reflect.DeepEqual(p.Structured.FatigueWords, want) {
 		t.Errorf("fatigue_words=%v, want %v", p.Structured.FatigueWords, want)
 	}
@@ -226,7 +226,7 @@ func TestParse_NoFrontMatter(t *testing.T) {
 	if !p.Structured.IsEmpty() {
 		t.Errorf("no front matter, structured should be empty, got %+v", p.Structured)
 	}
-	if !strings.Contains(p.Preference, "仅有正文") {
+	if !strings.Contains(p.Preference, "Body Only") {
 		t.Errorf("preference should contain body, got %q", p.Preference)
 	}
 	if len(p.Conflicts) != 0 {
@@ -234,7 +234,7 @@ func TestParse_NoFrontMatter(t *testing.T) {
 	}
 }
 
-// TestParse_ChapterWordsObjectForm 验证 chapter_words 兼容 map 形式 {min, max}（除字符串外）。
+// TestParse_ChapterWordsObjectForm verifies chapter_words is compatible with map form {min, max} (except strings).
 func TestParse_ChapterWordsObjectForm(t *testing.T) {
 	content := []byte("---\nchapter_words:\n  min: 2500\n  max: 5500\n---\n")
 	p := Parse("inline", SourceProject, content)
@@ -246,8 +246,8 @@ func TestParse_ChapterWordsObjectForm(t *testing.T) {
 	}
 }
 
-// TestParse_ChapterWordsSingleValue 验证单值写法（裸数字 / 字符串）展开为 ±20% 区间。
-// 防回归 issue #41：用户凭直觉写单值，过去被静默丢弃、回落内置默认。
+// TestParse_ChapterWordsSingleValue verifies single value notation (bare number / string) expands to a ±20% interval.
+// Anti-regression issue #41: user writes a single value by intuition, which in the past was silently discarded and fell back to built-in default.
 func TestParse_ChapterWordsSingleValue(t *testing.T) {
 	cases := []struct {
 		name             string
@@ -270,7 +270,7 @@ func TestParse_ChapterWordsSingleValue(t *testing.T) {
 	}
 }
 
-// TestParse_ChapterWordsInvalidRange 确认 min>max 被视为非法值。
+// TestParse_ChapterWordsInvalidRange confirms min>max is treated as an invalid value.
 func TestParse_ChapterWordsInvalidRange(t *testing.T) {
 	content := []byte("---\nchapter_words: 6000-3000\n---\n")
 	p := Parse("inline", SourceProject, content)
@@ -288,9 +288,9 @@ func TestParse_ChapterWordsInvalidRange(t *testing.T) {
 	}
 }
 
-// TestParse_FrontMatterUnclosed 确认起始 --- 没闭合时整篇当正文处理。
+// TestParse_FrontMatterUnclosed confirms that when the starting --- is not closed, the entire document is treated as body.
 func TestParse_FrontMatterUnclosed(t *testing.T) {
-	content := []byte("---\ngenre: xianxia\n# 没有闭合的 --- \n\n# 偏好\n\n- 内容\n")
+	content := []byte("---\ngenre: xianxia\n# unclosed --- \n\n# preference\n\n- content\n")
 	p := Parse("inline", SourceProject, content)
 	if !p.Structured.IsEmpty() {
 		t.Errorf("unclosed front matter, structured should be empty, got %+v", p.Structured)

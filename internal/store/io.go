@@ -8,8 +8,8 @@ import (
 	"sync"
 )
 
-// IO 封装文件系统读写操作，提供加锁和原子写入。
-// 每个子存储持有独立的 IO 实例，拥有各自的 sync.RWMutex。
+// IO wraps filesystem read and write operations, providing locking and atomic writing.
+// Each sub-store holds an independent IO instance with its own sync.RWMutex.
 type IO struct {
 	dir string
 	mu  sync.RWMutex
@@ -143,7 +143,7 @@ func (io *IO) WithWriteLock(fn func() error) error {
 	return fn()
 }
 
-// EnsureDirs 创建指定的子目录。
+// EnsureDirs creates the specified subdirectories.
 func (io *IO) EnsureDirs(dirs []string) error {
 	for _, d := range dirs {
 		if err := os.MkdirAll(filepath.Join(io.dir, d), 0o755); err != nil {

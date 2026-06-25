@@ -9,26 +9,26 @@ import (
 	"github.com/voocel/ainovel-cli/internal/utils"
 )
 
-// 默认章节标题正则。覆盖常见中文（第N章/回/话/卷/节/幕、卷N、序章/楔子/尾声/番外/外传 等）
-// 与英文（Chapter N、Prologue、Epilogue）标题，兼容 Markdown 标题前缀（# / ##）、
-// 起点系 txt 的「正文 第N章」前缀、以及【】〖〗包裹的标题。
+// Default chapter title regex. Covers common Chinese (Chapter/Episode/Section N, Volume N, Prologue, Epilogue, etc.)
+// and English (Chapter N, Prologue, Epilogue) titles, compatible with Markdown header prefixes (# / ##),
+// Qidian-style txt "Main Chapter N" prefixes, and titles wrapped in brackets like 【】〖〗.
 //
-// 命名分组：副标题组优先于关键词组（提取时按 priority 顺序回退）：
-//   - cn    编号章节副标题（第X章/回/话/卷/节/幕 之后的文字）
-//   - vol   独立卷副标题（卷X 之后的文字）
-//   - sp    特殊单元副标题（序章/楔子/尾声/番外 之后的文字）
-//   - en    英文章节副标题（Chapter X / Prologue / Epilogue 之后的文字）
-//   - spkw  特殊单元关键词本身（无副标题时作标题，如「楔子」「番外」）
-//   - enkw  英文特殊单元关键词本身（无副标题时作标题，如「Prologue」）
+// Named groups: subtitle groups take priority over keyword groups (retrieved with priority-based fallback):
+//   - cn    numbered chapter subtitle (text after 第X章/回/话/卷/节/幕)
+//   - vol   independent volume subtitle (text after 卷X)
+//   - sp    special section subtitle (text after Prologue/Epilogue/etc. in Chinese)
+//   - en    English chapter subtitle (text after Chapter X / Prologue / Epilogue)
+//   - spkw  special section keyword itself (used as title when no subtitle is present, e.g. "楔子", "番外")
+//   - enkw  English special section keyword itself (used as title when no subtitle is present, e.g. "Prologue")
 
-// ws 是字符类内容：ASCII 空白 + 全角空格。Go RE2 的 \s 只含 ASCII 空白，
-// 而中文排版的标题分隔常用 U+3000（「第一章　风起」）。
+// ws represents white spaces: ASCII whitespaces + full-width spaces. Go RE2's \s only includes ASCII whitespaces,
+// whereas Chinese typesetting often uses U+3000 ("第一章　风起") to separate title parts.
 const ws = `\s\x{3000}`
 
-// cnNum 是章节编号可用的数字字符：阿拉伯 / 全角 / 中文小写 / 中文大写繁体（壹贰叁…萬）。
+// cnNum represents digit characters allowed for chapter numbering: Arabic / full-width / simplified Chinese / traditional Chinese (壹贰叁...萬).
 const cnNum = `零〇○Ｏ０一二三四五六七八九十百千万两壹贰貳叁參肆伍陆陸柒捌玖拾佰仟萬兩\d`
 
-// sub 是副标题捕获：取到行尾，但不吞掉右包裹符（】〗），留给结尾的可选闭括号。
+// sub matches subtitle capture: matches up to the end of the line, but does not consume the right bracket (】〗) to leave it for optional closing brackets.
 const sub = `[^】〗\n]*`
 
 var defaultChapterRegex = regexp.MustCompile(
@@ -47,7 +47,7 @@ var defaultChapterRegex = regexp.MustCompile(
 		`)[` + ws + `]*[】〗]?[` + ws + `]*$`,
 )
 
-// SplitFile 把单个文本文件切分成章节列表。
+// SplitFile splits a single text file into a list of chapters.
 func SplitFile(path string) ([]Chapter, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -60,7 +60,7 @@ func SplitFile(path string) ([]Chapter, error) {
 	return splitText(text, defaultChapterRegex), nil
 }
 
-// splitText 是纯函数版切分，便于单测。
+// splitText is the pure function version of SplitFile, making it easy to unit test.
 func splitText(text string, pattern *regexp.Regexp) []Chapter {
 	lines := strings.Split(text, "\n")
 	type marker struct {
@@ -94,7 +94,7 @@ func splitText(text string, pattern *regexp.Regexp) []Chapter {
 	return chapters
 }
 
-// extractTitle 从匹配行提取章节标题；优先取命名捕获，否则回退章节号占位。
+// extractTitle extracts chapter title from the matched line; prioritizes named captures, falls back to chapter number placeholder.
 func extractTitle(line string, pattern *regexp.Regexp, loc []int, fallbackNum int) string {
 	subnames := pattern.SubexpNames()
 	priority := []string{"cn", "vol", "sp", "en", "spkw", "enkw"}
@@ -110,7 +110,7 @@ func extractTitle(line string, pattern *regexp.Regexp, loc []int, fallbackNum in
 			return t
 		}
 	}
-	// 兜底：取第一个非空捕获组（防御性，默认正则的命名组已覆盖各分支）
+	// Fallback: take the first non-empty capture group (defensive; default regex named groups cover all branches).
 	for i := 1; i < len(subnames); i++ {
 		if loc[2*i] < 0 {
 			continue
@@ -119,10 +119,10 @@ func extractTitle(line string, pattern *regexp.Regexp, loc []int, fallbackNum in
 			return t
 		}
 	}
-	return fmt.Sprintf("第%d章", fallbackNum)
+	return fmt.Sprintf("Chapter %d", fallbackNum)
 }
 
-// stripTrailingNoise 剥离常见的尾部噪声（Project Gutenberg 等 license trailer）。
+// stripTrailingNoise strips common trailing noise (e.g. Project Gutenberg license trailer).
 var trailerRe = regexp.MustCompile(`(?im)^\s*Project Gutenberg(?:\(TM\)|™)?[\s\S]*$`)
 
 func stripTrailingNoise(content string) string {

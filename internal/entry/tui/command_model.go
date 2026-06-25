@@ -24,24 +24,23 @@ type modelRoleOption struct {
 }
 
 var modelRoleOptions = []modelRoleOption{
-	{Key: "default", Label: "默认"},
+	{Key: "default", Label: "Default"},
 	{Key: "coordinator", Label: "Coordinator"},
 	{Key: "architect", Label: "Architect"},
 	{Key: "writer", Label: "Writer"},
 	{Key: "editor", Label: "Editor"},
 }
 
-// thinkingOptions 是 /model 面板可选的思考强度档位。Key 为 agentcore 档位值。
-// 空 = 继承（不发 thinking，沿用模型/provider 默认）；off = 显式关闭思考（对默认
-// 就思考的模型如 GLM-5.x/deepseek-reasoner 才有意义，支持的 provider 会下发 disabled）。
+// thinkingOptions are the thinking-strength levels available in the /model panel. Key is the agentcore level.
+// Empty = inherit (do not send thinking, keep the model/provider default); off = explicitly disable thinking.
 var thinkingOptions = []struct{ Key, Label string }{
-	{"", "默认(继承)"},
-	{"off", "关闭"},
-	{"minimal", "最小"},
-	{"low", "低"},
-	{"medium", "中"},
-	{"high", "高"},
-	{"xhigh", "极高"},
+	{"", "Default (inherit)"},
+	{"off", "Off"},
+	{"minimal", "Minimal"},
+	{"low", "Low"},
+	{"medium", "Medium"},
+	{"high", "High"},
+	{"xhigh", "Very High"},
 }
 
 func thinkingIndexOf(level string) int {
@@ -51,7 +50,7 @@ func thinkingIndexOf(level string) int {
 			return i
 		}
 	}
-	return 0 // 未知值 → 继承
+	return 0 // Unknown values fall back to inherit
 }
 
 type modelSwitchState struct {
@@ -70,7 +69,7 @@ func newModelSwitchState(rt *host.Host, roleHint string) *modelSwitchState {
 		providers: rt.ConfiguredProviders(),
 	}
 	if len(state.providers) == 0 {
-		state.message = "当前没有可用 provider"
+		state.message = "No providers are available"
 	}
 
 	roleHint = normalizeRoleKey(roleHint)
@@ -194,15 +193,15 @@ func (s *modelSwitchState) syncModels(rt *host.Host, preferred string) {
 
 func (s *modelSwitchState) apply(rt *host.Host) error {
 	if len(s.providers) == 0 {
-		return fmt.Errorf("当前没有可用 provider")
+		return fmt.Errorf("no providers are available")
 	}
 	if len(s.models) == 0 {
-		return fmt.Errorf("provider %q 没有已配置模型", s.provider())
+		return fmt.Errorf("provider %q has no configured models", s.provider())
 	}
 	if err := rt.SwitchModel(s.role(), s.provider(), s.model()); err != nil {
 		return err
 	}
-	// 思考强度与模型正交：仅当较当前值有变化时应用，避免冗余持久化/事件。
+	// Thinking strength is orthogonal to the model: only apply it when it changes to avoid redundant persistence/events.
 	if want := s.thinkingKey(); want != strings.ToLower(strings.TrimSpace(rt.CurrentThinking(s.role()))) {
 		if err := rt.SetRoleThinking(s.role(), want); err != nil {
 			return err
@@ -253,16 +252,16 @@ func renderModelSwitchBar(width int, state *modelSwitchState) string {
 	title := lipgloss.NewStyle().
 		Foreground(colorMuted).
 		Bold(true).
-		Render("/model 切换模型")
+		Render("/model switch model")
 
-	row1 := renderModelField("角色", state.roleLabel(), state.focus == modelFocusRole)
+	row1 := renderModelField("Role", state.roleLabel(), state.focus == modelFocusRole)
 	row2 := renderModelField("Provider", state.provider(), state.focus == modelFocusProvider)
-	row3 := renderModelField("模型", state.model(), state.focus == modelFocusModel)
-	row4 := renderModelField("思考", state.thinkingLabel(), state.focus == modelFocusThinking)
+	row3 := renderModelField("Model", state.model(), state.focus == modelFocusModel)
+	row4 := renderModelField("Thinking", state.thinkingLabel(), state.focus == modelFocusThinking)
 	hint := lipgloss.NewStyle().
 		Foreground(colorDim).
 		Italic(true).
-		Render("Tab 切字段   ←→ 切选项   Enter 应用   Esc 取消")
+		Render("Tab switches fields   ←→ changes options   Enter applies   Esc cancels")
 	lines := []string{
 		row1,
 		row2,
@@ -313,7 +312,7 @@ func renderModelSwitchBar(width int, state *modelSwitchState) string {
 
 func renderModelField(label, value string, focused bool) string {
 	if strings.TrimSpace(value) == "" {
-		value = "未设置"
+		value = "Not set"
 	}
 	labelText := lipgloss.NewStyle().
 		Foreground(colorMuted).

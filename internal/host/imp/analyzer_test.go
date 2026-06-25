@@ -106,7 +106,7 @@ func TestPersistChapter_FullPipeline(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 准备 foundation：先用 ReverseFoundation+PersistFoundation 模拟 Phase 2 已完成
+	// Prepare foundation: first use ReverseFoundation+PersistFoundation to simulate that Phase 2 is completed
 	fr := mustParse(t, validEnvelope, 2)
 	if err := PersistFoundation(context.Background(), st, domain.PlanningTierShort, fr); err != nil {
 		t.Fatal(err)
@@ -137,7 +137,7 @@ func TestPersistChapter_FullPipeline(t *testing.T) {
 		t.Errorf("foreshadow not persisted: %+v", hooks)
 	}
 
-	// 二次提交同一章应是幂等（commit_chapter.IsChapterCompleted 短路）
+	// Submitting the same chapter a second time should be idempotent (short-circuited by commit_chapter.IsChapterCompleted)
 	if err := PersistChapter(context.Background(), st, commitTool, 1, "初遇", body, a); err != nil {
 		t.Errorf("re-import should be idempotent, got: %v", err)
 	}

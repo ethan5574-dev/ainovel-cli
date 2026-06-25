@@ -12,7 +12,7 @@ import (
 	"github.com/voocel/ainovel-cli/internal/store"
 )
 
-// newTestStore 构造一个 t.TempDir() 之上的最小 store，已写入 1..n 章终稿与 progress。
+// newTestStore constructs a minimal store on top of t.TempDir(), with completed chapters 1..n and progress written.
 func newTestStore(t *testing.T, novelName string, completed []int) (*store.Store, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -65,18 +65,18 @@ func TestRun_HappyPath_DefaultsToNovelDir(t *testing.T) {
 		t.Fatalf("read output: %v", err)
 	}
 	text := string(data)
-	for _, want := range []string{"《光斑》", "第 1 章  雨夜归人", "第 3 章  余烬"} {
+	for _, want := range []string{"《光斑》", "Chapter 1  雨夜归人", "Chapter 3  余烬"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("output missing %q\nfull:\n%s", want, text)
 		}
 	}
-	// premise 不进导出（创作蓝图，非读者内容）
+	// premise is not exported (creation blueprint, not for reader)
 	if strings.Contains(text, "光与影的故事。") {
 		t.Errorf("premise must not appear in export:\n%s", text)
 	}
 }
 
-// TestRun_PremiseNotExported 端到端钉死：premise.md 存在也不进导出，书名保留（issue #27）。
+// TestRun_PremiseNotExported end-to-end lock: premise.md exists but is not exported, book title is kept (issue #27).
 func TestRun_PremiseNotExported(t *testing.T) {
 	s, _ := newTestStore(t, "光斑", []int{1})
 	if err := s.Outline.SavePremise("# 光斑\n## 目标读者\n不该出现的创作蓝图。"); err != nil {
@@ -117,11 +117,11 @@ func TestRun_ExistingFile_NoOverwrite(t *testing.T) {
 	if err == nil {
 		t.Fatal("expect error when target exists and !Overwrite")
 	}
-	if !strings.Contains(err.Error(), "已存在") {
+	if !strings.Contains(err.Error(), "already exists") {
 		t.Errorf("unexpected error: %v", err)
 	}
 
-	// 加 Overwrite 应成功
+	// Overwrite should succeed
 	res, err := Run(context.Background(), Deps{Store: s}, Options{OutPath: target, Overwrite: true})
 	if err != nil {
 		t.Fatalf("Overwrite Run: %v", err)
@@ -256,7 +256,7 @@ func TestRun_UnknownExtension(t *testing.T) {
 	if err == nil {
 		t.Fatal("expect error for unknown extension")
 	}
-	if !strings.Contains(err.Error(), "扩展名") {
+	if !strings.Contains(err.Error(), "extension") {
 		t.Errorf("error should mention extension: %v", err)
 	}
 }

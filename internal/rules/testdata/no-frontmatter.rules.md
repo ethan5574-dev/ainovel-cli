@@ -1,6 +1,6 @@
-# 仅有正文
+# Body Only
 
-文件没有 front matter，整篇都是偏好。
+The file has no front matter, the entire document is preference.
 
-- 避免破折号。
-- 章末钩子多样化。
+- Avoid dashes.
+- Diversify end-of-chapter hooks.

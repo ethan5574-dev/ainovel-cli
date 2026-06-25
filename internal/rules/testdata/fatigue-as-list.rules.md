@@ -1,8 +1,8 @@
 ---
 fatigue_words:
-  - 不禁
-  - 竟然
-  - 仿佛
+  - suddenly
+  - unexpectedly
+  - seemingly
 ---
 
-list 形式的 fatigue_words 应默认每词阈值 1。
+List format of fatigue_words should default to threshold 1 for each word.

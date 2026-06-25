@@ -15,7 +15,7 @@ func TestReadChapterFinal(t *testing.T) {
 	if err := store.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := store.Drafts.SaveFinalChapter(1, "第一章的终稿正文。"); err != nil {
+	if err := store.Drafts.SaveFinalChapter(1, "Final draft text of Chapter 1."); err != nil {
 		t.Fatalf("SaveFinalChapter: %v", err)
 	}
 
@@ -48,7 +48,7 @@ func TestReadChapterDraft(t *testing.T) {
 	if err := store.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := store.Drafts.SaveDraft(3, "第三章的草稿内容。"); err != nil {
+	if err := store.Drafts.SaveDraft(3, "Draft content of Chapter 3."); err != nil {
 		t.Fatalf("SaveDraft: %v", err)
 	}
 
@@ -77,16 +77,16 @@ func TestReadChapterDialogue(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 	if err := store.Characters.Save([]domain.Character{
-		{Name: "张三", Aliases: []string{"老张"}},
+		{Name: "Zhang San", Aliases: []string{"Lao Zhang"}},
 	}); err != nil {
 		t.Fatalf("SaveCharacters: %v", err)
 	}
-	if err := store.Drafts.SaveFinalChapter(1, "张三站起身来。\u201c我不同意这个方案，\u201d张三冷冷地说。"); err != nil {
+	if err := store.Drafts.SaveFinalChapter(1, "Zhang San stood up. \"I do not agree with this proposal,\" Zhang San said coldly."); err != nil {
 		t.Fatalf("SaveFinalChapter: %v", err)
 	}
 
 	tool := NewReadChapterTool(store)
-	args, _ := json.Marshal(map[string]any{"source": "final", "character": "张三"})
+	args, _ := json.Marshal(map[string]any{"source": "final", "character": "Zhang San"})
 	result, err := tool.Execute(context.Background(), args)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -99,8 +99,8 @@ func TestReadChapterDialogue(t *testing.T) {
 	if err := json.Unmarshal(result, &payload); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
-	if payload.Character != "张三" {
-		t.Fatalf("expected character 张三, got %s", payload.Character)
+	if payload.Character != "Zhang San" {
+		t.Fatalf("expected character Zhang San, got %s", payload.Character)
 	}
 }
 
@@ -111,7 +111,7 @@ func TestReadChapterRange(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 	for i := 1; i <= 3; i++ {
-		if err := store.Drafts.SaveFinalChapter(i, "这是一段正文内容。"); err != nil {
+		if err := store.Drafts.SaveFinalChapter(i, "This is some body content."); err != nil {
 			t.Fatalf("SaveFinalChapter(%d): %v", i, err)
 		}
 	}
@@ -147,7 +147,7 @@ func TestDraftChapterWrite(t *testing.T) {
 	tool := NewDraftChapterTool(store)
 	args, _ := json.Marshal(map[string]any{
 		"chapter": 1,
-		"content": "这是整章的正文内容，一次写完。",
+		"content": "This is the body content of the whole chapter, written all at once.",
 		"mode":    "write",
 	})
 	result, err := tool.Execute(context.Background(), args)
@@ -169,7 +169,7 @@ func TestDraftChapterWrite(t *testing.T) {
 		t.Fatal("expected non-zero word count")
 	}
 
-	// 验证能读回来
+	// Verify we can read it back
 	content, err := store.Drafts.LoadDraft(1)
 	if err != nil {
 		t.Fatalf("LoadDraft: %v", err)
@@ -198,14 +198,14 @@ func TestDraftChapterAppend(t *testing.T) {
 	if err := store.Progress.Init("test", 10); err != nil {
 		t.Fatalf("InitProgress: %v", err)
 	}
-	if err := store.Drafts.SaveDraft(2, "前半部分。"); err != nil {
+	if err := store.Drafts.SaveDraft(2, "First half."); err != nil {
 		t.Fatalf("SaveDraft: %v", err)
 	}
 
 	tool := NewDraftChapterTool(store)
 	args, _ := json.Marshal(map[string]any{
 		"chapter": 2,
-		"content": "后半部分。",
+		"content": "Second half.",
 		"mode":    "append",
 	})
 	result, err := tool.Execute(context.Background(), args)
@@ -225,7 +225,7 @@ func TestDraftChapterAppend(t *testing.T) {
 	}
 
 	content, _ := store.Drafts.LoadDraft(2)
-	if content == "" || content == "前半部分。" {
+	if content == "" || content == "First half." {
 		t.Fatal("expected appended content")
 	}
 }
@@ -265,10 +265,10 @@ func TestPlanChapterMarksInProgress(t *testing.T) {
 	tool := NewPlanChapterTool(store)
 	args, _ := json.Marshal(map[string]any{
 		"chapter":  1,
-		"title":    "起头",
-		"goal":     "建立处境",
-		"conflict": "债务逼近",
-		"hook":     "发现线索",
+		"title":    "Beginning",
+		"goal":     "establish situation",
+		"conflict": "approaching debt",
+		"hook":     "find clues",
 	})
 	if _, err := tool.Execute(context.Background(), args); err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -295,14 +295,14 @@ func TestDraftChapterRejectsCompleted(t *testing.T) {
 	if err := s.Progress.Init("test", 10); err != nil {
 		t.Fatalf("InitProgress: %v", err)
 	}
-	_ = s.Drafts.SaveDraft(1, "第一章正文")
+	_ = s.Drafts.SaveDraft(1, "Chapter 1 body")
 	_ = s.Progress.StartChapter(1)
 	_ = s.Progress.MarkChapterComplete(1, 3000, "", "")
 
 	tool := NewDraftChapterTool(s)
 	args, _ := json.Marshal(map[string]any{
 		"chapter": 1,
-		"content": "试图覆盖已提交的章节",
+		"content": "Attempting to overwrite a committed chapter",
 	})
 	result, err := tool.Execute(context.Background(), args)
 	if err != nil {

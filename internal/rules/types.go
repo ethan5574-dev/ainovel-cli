@@ -1,33 +1,33 @@
-// Package rules 实现用户偏好的持久化输入层（Policy）。
+// Package rules implements the persistent input layer for user preferences (Policy).
 //
-// Rule 是第四类事实，跟 Progress / Checkpoint / Artifact 并列，但性质相反：
-// 前三类是系统输出，Rule 是用户意图的持久化输入。
+// Rule is the fourth category of facts, alongside Progress / Checkpoint / Artifact, but with opposite characteristics:
+// the first three are system outputs, whereas Rule is the persistent input of user intent.
 //
-// 设计约束（不可妥协）：
-//   - 工具只返事实，不返指令（Violation 是事实，由 editor 决定是否触发重写）
-//   - 不引入新的 verdict 路径（复用 PendingRewrites）
-//   - 不引入严格度字段（severity 由规则类型固定映射，editor 自主语义裁定）
-//   - 不静默吞冲突（所有异常进 Bundle.Conflicts，让 LLM 与 /diag 可见）
-//   - 不动 Flow Router（rule 不参与路由）
+// Design Constraints (non-negotiable):
+//   - Tools only return facts, not commands (Violation is a fact, editor determines whether to trigger rewrite)
+//   - Do not introduce new verdict paths (reuse PendingRewrites)
+//   - Do not introduce strictness fields (severity is fixedly mapped by rule type, editor decides semantically)
+//   - Do not silently swallow conflicts (all exceptions go to Bundle.Conflicts, visible to LLM and /diag)
+//   - Do not touch Flow Router (rules do not participate in routing)
 package rules
 
-// SourceKind 标记规则来源，用于合并时的就近优先排序。
-// 值越大越就近：Project > Global > Default。
+// SourceKind marks the rule source, used for sorting by nearest priority during merging.
+// Sourced in proximity order (larger is closer): Project > Global > Default.
 //
-// Phase 1.1 起只支持三层。Genre / Learned 层在实际题材库 / save_rule 落地前不开洞——
-// 真要扩展时再加常量并补 loader 即可，不留空架子。
+// Only three layers are supported starting from Phase 1.1. Genre / Learned layers are not opened before actual genre libraries / save_rule are implemented—
+// simply add constants and implement in loader when needed, avoiding empty placeholders.
 type SourceKind int
 
 const (
-	// SourceDefault — 项目内置默认规则（assets/rules/default.md），优先级最低。
+	// SourceDefault — Project built-in default rules (assets/rules/default.md), lowest priority.
 	SourceDefault SourceKind = iota
-	// SourceGlobal — 用户全局偏好（~/.ainovel/rules/ 目录下所有 .md，按文件名字典序合并），跨书复用。
+	// SourceGlobal — User global preferences (all .md under ~/.ainovel/rules/, merged in lexicographical order), reused across books.
 	SourceGlobal
-	// SourceProject — 本书规则（./.ainovel/rules/ 目录下所有 .md，按文件名字典序合并），优先级最高。
+	// SourceProject — This book's rules (all .md under ./.ainovel/rules/, merged in lexicographical order), highest priority.
 	SourceProject
 )
 
-// String 返回来源的可读名称，用于 markdown 拼接时的来源标题与 conflicts.detail。
+// String returns the human-readable name of the source, used for headers in markdown concatenation and conflicts.detail.
 func (k SourceKind) String() string {
 	switch k {
 	case SourceDefault:
@@ -41,16 +41,16 @@ func (k SourceKind) String() string {
 	}
 }
 
-// WordRange 表示章节字数的允许范围；nil 表示未声明。
+// WordRange indicates the allowed range for chapter word counts; nil means undeclared.
 type WordRange struct {
 	Min int `json:"min"`
 	Max int `json:"max"`
 }
 
-// Structured 装载 front matter 的结构化字段。
+// Structured holds the structured fields of front matter.
 //
-// 单文件解析时，Parsed.Structured 只填该文件声明的字段，其余保持零值。
-// 合并后 Bundle.Structured 是各来源就近优先后的整体结果。
+// In single file parsing, Parsed.Structured only fills fields declared in that file, keeping others as zero value.
+// After merging, Bundle.Structured is the aggregated result after nearest priority sorting.
 type Structured struct {
 	Genre            string         `json:"genre,omitempty"`
 	ChapterWords     *WordRange     `json:"chapter_words,omitempty"`
@@ -59,7 +59,7 @@ type Structured struct {
 	FatigueWords     map[string]int `json:"fatigue_words,omitempty"`
 }
 
-// IsEmpty 用于判定是否完全没有结构化规则；checker 可据此跳过。
+// IsEmpty is used to determine if there are no structured rules at all; checker can skip based on this.
 func (s Structured) IsEmpty() bool {
 	return s.Genre == "" &&
 		s.ChapterWords == nil &&
@@ -68,48 +68,48 @@ func (s Structured) IsEmpty() bool {
 		len(s.FatigueWords) == 0
 }
 
-// ConflictKind 标记冲突或异常类型，便于 LLM 与诊断面板分类处理。
+// ConflictKind marks the type of conflict or exception, facilitating classification by LLM and diagnostics panel.
 type ConflictKind string
 
 const (
-	// ConflictParseError — front matter 整体解析失败；正文仍作为偏好注入。
+	// ConflictParseError — front matter parsing failed as a whole; body is still injected as preferences.
 	ConflictParseError ConflictKind = "parse_error"
-	// ConflictUnknownField — 用户写了 Phase 1 未支持的字段（forward-compatible）。
+	// ConflictUnknownField — User wrote fields not supported in Phase 1 (forward-compatible).
 	ConflictUnknownField ConflictKind = "unknown_field"
-	// ConflictTypeError — 字段类型错误（如 forbidden_chars 写成字符串）；该字段丢弃。
+	// ConflictTypeError — Field type error (e.g. forbidden_chars written as string); the field is discarded.
 	ConflictTypeError ConflictKind = "type_error"
-	// ConflictFieldConflict — 多来源同一结构化字段值不一致；就近优先生效。
+	// ConflictFieldConflict — Values of the same structured field mismatch across multiple sources; nearest priority applies.
 	ConflictFieldConflict ConflictKind = "field_conflict"
-	// ConflictInvalidValue — 字段值格式非法（如 chapter_words: "abc"）；该字段丢弃。
+	// ConflictInvalidValue — Field value format is invalid (e.g. chapter_words: "abc"); the field is discarded.
 	ConflictInvalidValue ConflictKind = "invalid_value"
 )
 
-// Conflict 一条冲突或异常记录。
+// Conflict represents a conflict or exception record.
 //
-// 永远不会阻断加载——所有异常都在这里暴露给 LLM 与 /diag，不静默处理。
+// Never blocks loading — all exceptions are exposed to LLM and /diag here, no silent handling.
 type Conflict struct {
-	Source string       `json:"source"`          // 文件路径（绝对或相对，按来源记录）
-	Kind   ConflictKind `json:"kind"`            // 冲突类型
-	Field  string       `json:"field,omitempty"` // 受影响字段名（如 forbidden_chars）；parse_error 时为空
-	Detail string       `json:"detail"`          // 人类可读的详情（含来源列表 / 错误信息）
+	Source string       `json:"source"`          // File path (absolute or relative, recorded by source)
+	Kind   ConflictKind `json:"kind"`            // Conflict type
+	Field  string       `json:"field,omitempty"` // Affected field name (e.g. forbidden_chars); empty for parse_error
+	Detail string       `json:"detail"`          // Human-readable details (including source list / error message)
 }
 
-// Parsed 是单份 rules.md 解析后的结果。
+// Parsed is the parsed result of a single rules.md file.
 type Parsed struct {
-	Source     string     // 文件路径
-	Kind       SourceKind // 来源类型，用于合并优先级
-	Structured Structured // 该文件声明的 front matter 字段
-	Preference string     // 该文件的 Markdown 正文（front matter 之外的部分）
-	Conflicts  []Conflict // 该文件解析期间产生的 conflicts（未知字段 / 类型错误）
+	Source     string     // File path
+	Kind       SourceKind // Source type, used for merge priority
+	Structured Structured // Front matter fields declared in this file
+	Preference string     // Markdown body of this file (excluding front matter)
+	Conflicts  []Conflict // Conflicts generated during parsing of this file (unknown fields / type errors)
 }
 
-// Bundle 是合并后注入 working_memory.user_rules 的最终形态。
+// Bundle is the final format injected into working_memory.user_rules after merging.
 //
-// 字段映射到 JSON 输出：
+// Fields mapped to JSON output:
 //
 //	{
 //	  "structured": {...},
-//	  "preferences": "...合并 markdown...",
+//	  "preferences": "...merged markdown...",
 //	  "sources": ["..."],
 //	  "conflicts": [...]
 //	}
@@ -120,20 +120,20 @@ type Bundle struct {
 	Conflicts   []Conflict `json:"conflicts"`
 }
 
-// IsEmpty 表示 Bundle 完全无内容（结构化字段为空 + 偏好正文为空）。
-// 注入 user_rules 时仍应保留空 Bundle，避免 LLM 处理 nil。
+// IsEmpty indicates that the Bundle is completely empty (both structured fields and preference body are empty).
+// An empty Bundle should still be kept when injecting into user_rules to prevent the LLM from handling nil.
 func (b Bundle) IsEmpty() bool {
 	return b.Structured.IsEmpty() && b.Preferences == ""
 }
 
-// Severity 标记 Violation 的严重等级。
-// 固定映射（用户不可配置）：
+// Severity marks the severity level of a Violation.
+// Fixed mapping (not user-configurable):
 //
-//	forbidden_chars 出现             -> Error
-//	forbidden_phrases 出现           -> Error
-//	fatigue_words 超阈值             -> Warning
-//	chapter_words 偏差 < 20%         -> Warning
-//	chapter_words 偏差 >= 20%        -> Error
+//	forbidden_chars appears            -> Error
+//	forbidden_phrases appears          -> Error
+//	fatigue_words exceeds threshold    -> Warning
+//	chapter_words deviation < 20%      -> Warning
+//	chapter_words deviation >= 20%     -> Error
 type Severity string
 
 const (
@@ -141,19 +141,19 @@ const (
 	SeverityError   Severity = "error"
 )
 
-// ChapterWordsDeviationThreshold 定义 chapter_words 偏差升级为 error 的临界值（20%）。
+// ChapterWordsDeviationThreshold defines the threshold for chapter_words deviation to be upgraded to an error (20%).
 const ChapterWordsDeviationThreshold = 0.20
 
-// Violation 是 checker 的输出：本章违反了某条机械规则的事实陈述。
+// Violation is the output of the checker: a factual statement that this chapter violated a mechanical rule.
 //
-// 注意：commit_chapter 把 violations 透传到返回 JSON，不阻断 commit；
-// editor 在审阅时把这些事实映射到现有七维（aesthetic/pacing/character/consistency），
-// 由 LLM 自主决定是否升级 verdict 触发 polish/rewrite。
+// Note: commit_chapter passes violations through to the returned JSON, without blocking commit;
+// during review, the editor maps these facts to the existing seven dimensions (aesthetic/pacing/character/consistency),
+// allowing the LLM to decide whether to upgrade the verdict to trigger polish/rewrite.
 type Violation struct {
 	Rule      string   `json:"rule"`                // forbidden_chars / forbidden_phrases / fatigue_words / chapter_words
-	Target    string   `json:"target,omitempty"`    // 具体违规对象（哪个词/字符）；chapter_words 留空
-	Limit     any      `json:"limit,omitempty"`     // 阈值；fatigue_words=int / chapter_words="3000-6000" / forbidden_*=空
-	Actual    any      `json:"actual"`              // 实际值；fatigue_words/forbidden_*=出现次数 / chapter_words=本章字数
-	Deviation float64  `json:"deviation,omitempty"` // chapter_words 偏差率（0~1），其他规则留空
+	Target    string   `json:"target,omitempty"`    // Specific violation target (which word/character); empty for chapter_words
+	Limit     any      `json:"limit,omitempty"`     // Threshold; fatigue_words=int / chapter_words="3000-6000" / forbidden_*=empty
+	Actual    any      `json:"actual"`              // Actual value; occurrence count for fatigue_words/forbidden_*, word count of this chapter for chapter_words
+	Deviation float64  `json:"deviation,omitempty"` // chapter_words deviation rate (0~1), empty for other rules
 	Severity  Severity `json:"severity"`            // error / warning
 }

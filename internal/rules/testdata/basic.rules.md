@@ -5,19 +5,19 @@ forbidden_chars:
   - "——"
   - "（"
 forbidden_phrases:
-  - "不是……而是"
-  - "核心动机"
+  - "not...but"
+  - "core motivation"
 fatigue_words:
-  不禁: 1
-  竟然: 1
-  仿佛: 2
+  suddenly: 1
+  unexpectedly: 1
+  seemingly: 2
 ---
 
-# 风格
+# Style
 
-- 严禁破折号代替逗号。
-- 避免分析报告式表达。
+- Dash instead of comma is strictly forbidden.
+- Avoid analytical report-style expressions.
 
-# 角色
+# Characters
 
-- 主角必须冷静克制。
+- The protagonist must be calm and restrained.

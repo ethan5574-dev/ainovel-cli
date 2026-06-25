@@ -8,7 +8,7 @@ forbidden_phrases:
 fatigue_words: true
 ---
 
-# 类型错误
+# Type Errors
 
-每个字段都用错类型；checker 应跳过这些字段并写 conflicts。
-正文仍应作为偏好注入。
+Each field uses the wrong type; checker should skip these fields and write conflicts.
+Body should still be injected as preference.

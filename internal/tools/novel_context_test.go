@@ -116,7 +116,7 @@ func TestContextToolReportsWarningsForCorruptedState(t *testing.T) {
 	if !containsWarning(payload.Warnings, "progress") {
 		t.Fatalf("expected progress warning, got %v", payload.Warnings)
 	}
-	if !strings.Contains(payload.Summary, "告警:") {
+	if !strings.Contains(payload.Summary, "warnings:") {
 		t.Fatalf("expected loading summary to contain warning count, got %q", payload.Summary)
 	}
 }
@@ -136,54 +136,54 @@ func TestContextToolChapterModeIncludesWorkingAndReferenceFields(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Outline.SavePremise(`## 题材和基调
-少年成长，偏紧张压迫。
+	if err := s.Outline.SavePremise(`## Theme and Tone
+A youth's growth, with a tense and oppressive atmosphere.
 
-## 题材定位
-少年升级流
+## Genre Position
+Youth progression fantasy
 
-## 核心冲突
-主角必须在宗门竞争中活下来。
+## Core Conflict
+The protagonist must survive the sect competition.
 
-## 主角目标
-进入内门。
+## Protagonist Goal
+Enter the inner sect.
 
-## 终局方向
-成为真正的执棋者。
+## Ending Direction
+Become the true chessmaster.
 
-## 写作禁区
-不提前揭露师尊真相。
+## Writing Boundaries
+Do not reveal the truth about the master prematurely.
 
-## 差异化卖点
-弱者逆袭。
+## Differentiation Selling Points
+Underdog counterattack.
 
-## 差异化钩子
-每阶段都要用更高代价换成长。
+## Differentiation Hooks
+Each stage requires a higher cost in exchange for growth.
 
-## 核心兑现承诺
-持续兑现危机与突破。
+## Core Promised Payoffs
+Continuously deliver crisis and breakthrough.
 
-## 故事引擎
-试炼、资源争夺与身份升级共同推进。
+## Story Engine
+Trial, resource competition, and status upgrades drive the story together.
 
-## 中段转折
-主角被迫转向另一条修行路线。
+## Midpoint Twist
+The protagonist is forced to pivot to another cultivation path.
 `); err != nil {
 		t.Fatalf("SavePremise: %v", err)
 	}
 	if err := s.Outline.SaveOutline([]domain.OutlineEntry{
-		{Chapter: 1, Title: "入门", CoreEvent: "主角进入宗门", Scenes: []string{"拜师", "立誓"}},
-		{Chapter: 2, Title: "试炼", CoreEvent: "参加外门试炼", Scenes: []string{"集合", "出发"}},
+		{Chapter: 1, Title: "Entry", CoreEvent: "Protagonist enters the sect", Scenes: []string{"Apprenticeship", "Oath"}},
+		{Chapter: 2, Title: "Trial", CoreEvent: "Participate in outer sect trial", Scenes: []string{"Assembly", "Departure"}},
 	}); err != nil {
 		t.Fatalf("SaveOutline: %v", err)
 	}
 	if err := s.Characters.Save([]domain.Character{
-		{Name: "林砚", Role: "主角", Description: "少年修士", Arc: "成长", Traits: []string{"冷静"}},
+		{Name: "Lin Yan", Role: "Protagonist", Description: "Young cultivator", Arc: "Growth", Traits: []string{"Calm"}},
 	}); err != nil {
 		t.Fatalf("SaveCharacters: %v", err)
 	}
 	if err := s.World.SaveWorldRules([]domain.WorldRule{
-		{Category: "magic", Rule: "灵气可以炼化", Boundary: "凡人不可直接驾驭"},
+		{Category: "magic", Rule: "Spiritual energy can be refined", Boundary: "Mortals cannot directly control it"},
 	}); err != nil {
 		t.Fatalf("SaveWorldRules: %v", err)
 	}
@@ -192,24 +192,24 @@ func TestContextToolChapterModeIncludesWorkingAndReferenceFields(t *testing.T) {
 	}
 	if err := s.Summaries.SaveSummary(domain.ChapterSummary{
 		Chapter:    1,
-		Summary:    "主角拜入宗门，确立目标。",
-		Characters: []string{"林砚"},
-		KeyEvents:  []string{"拜师"},
+		Summary:    "Protagonist joins the sect, establishes goal.",
+		Characters: []string{"Lin Yan"},
+		KeyEvents:  []string{"Apprenticeship"},
 	}); err != nil {
 		t.Fatalf("SaveSummary: %v", err)
 	}
-	if err := s.Drafts.SaveFinalChapter(1, "第一章正文结尾，留下试炼悬念。"); err != nil {
+	if err := s.Drafts.SaveFinalChapter(1, "Ending of chapter 1, leaving trial suspense."); err != nil {
 		t.Fatalf("SaveFinalChapter: %v", err)
 	}
 	if err := s.Drafts.SaveChapterPlan(domain.ChapterPlan{
 		Chapter: 2,
-		Title:   "试炼",
-		Goal:    "通过第一关",
+		Title:   "Trial",
+		Goal:    "Pass the first stage",
 		Contract: domain.ChapterContract{
-			RequiredBeats:    []string{"必须让主角通过第一关", "必须埋下内门试炼邀请"},
-			ForbiddenMoves:   []string{"不能提前揭露师尊真实身份"},
-			ContinuityChecks: []string{"主角左臂旧伤仍未痊愈"},
-			EvaluationFocus:  []string{"重点检查试炼节奏是否拖沓"},
+			RequiredBeats:    []string{"Must let the protagonist pass the first stage", "Must plant inner sect trial invitation"},
+			ForbiddenMoves:   []string{"Cannot prematurely reveal the master's true identity"},
+			ContinuityChecks: []string{"Protagonist's left arm old injury has not healed"},
+			EvaluationFocus:  []string{"Focus on checking if trial pacing is dragging"},
 		},
 	}); err != nil {
 		t.Fatalf("SaveChapterPlan: %v", err)
@@ -217,7 +217,7 @@ func TestContextToolChapterModeIncludesWorkingAndReferenceFields(t *testing.T) {
 	if err := s.World.SaveStyleRules(domain.WritingStyleRules{
 		Volume: 1,
 		Arc:    1,
-		Prose:  []string{"叙述保持克制"},
+		Prose:  []string{"Narrative remains restrained"},
 	}); err != nil {
 		t.Fatalf("SaveStyleRules: %v", err)
 	}
@@ -226,9 +226,9 @@ func TestContextToolChapterModeIncludesWorkingAndReferenceFields(t *testing.T) {
 	}
 
 	tool := NewContextTool(s, References{
-		Consistency:      "一致性检查",
-		HookTechniques:   "钩子技巧",
-		QualityChecklist: "质量清单",
+		Consistency:      "Consistency checks",
+		HookTechniques:   "Hook techniques",
+		QualityChecklist: "Quality checklist",
 	}, "default", rules.LoadOptions{})
 	args, err := json.Marshal(map[string]any{"chapter": 2})
 	if err != nil {
@@ -276,86 +276,86 @@ func TestContextToolArchitectModeIncludesPlanningAndFoundation(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Outline.SavePremise(`## 题材和基调
-群像冒险，偏冷峻史诗。
+	if err := s.Outline.SavePremise(`## Theme and Tone
+Ensemble adventure, with a cold epic tone.
 
-## 题材定位
-群像长篇冒险
+## Genre Position
+Ensemble long-form adventure
 
-## 核心冲突
-众人必须在不断失控的旧秩序中寻找新秩序。
+## Core Conflict
+Everyone must find a new order in an increasingly out-of-control old order.
 
-## 主角目标
-抵达真相核心。
+## Protagonist Goal
+Reach the core of the truth.
 
-## 终局方向
-揭开古老真相并重建秩序。
+## Ending Direction
+Unveil ancient truths and rebuild order.
 
-## 写作禁区
-不靠天降设定收尾。
+## Writing Boundaries
+Do not end with deus ex machina setups.
 
-## 差异化卖点
-群像关系推进。
+## Differentiation Selling Points
+Ensemble relationship progression.
 
-## 差异化钩子
-每卷都改变队伍关系结构。
+## Differentiation Hooks
+Every volume changes the team relationship structure.
 
-## 核心兑现承诺
-持续提供发现、牺牲与选择。
+## Core Promised Payoffs
+Continuously provide discovery, sacrifice, and choice.
 
-## 故事引擎
-旅途推进、真相调查与队伍关系共同驱动。
+## Story Engine
+Journey progression, truth investigation, and team relationships drive the story together.
 
-## 关系/成长主线
-队伍从互不信任走向分裂再重组。
+## Relationship/Growth Arc
+The team goes from mutual distrust to division and then reorganization.
 
-## 升级路径
-从地方事件走向世界级危机。
+## Progression Path
+From local events to world-class crises.
 
-## 中期转向
-真相并非敌人，而是秩序本身有问题。
+## Midpoint Turn
+The truth is not the enemy, but there is a problem with the order itself.
 
-## 终局命题
-秩序应由谁定义。
+## Final Proposition
+Who should define the order.
 `); err != nil {
 		t.Fatalf("SavePremise: %v", err)
 	}
 	if err := s.Outline.SaveOutline([]domain.OutlineEntry{
-		{Chapter: 1, Title: "起点", CoreEvent: "旅途开始"},
+		{Chapter: 1, Title: "Starting Point", CoreEvent: "Journey begins"},
 	}); err != nil {
 		t.Fatalf("SaveOutline: %v", err)
 	}
 	if err := s.Characters.Save([]domain.Character{
-		{Name: "沈曜", Role: "主角", Description: "流浪剑客", Arc: "寻找真相", Traits: []string{"敏锐"}},
+		{Name: "Shen Yao", Role: "Protagonist", Description: "Wandering swordsman", Arc: "Seeking truth", Traits: []string{"Sharp"}},
 	}); err != nil {
 		t.Fatalf("SaveCharacters: %v", err)
 	}
 	if err := s.World.SaveWorldRules([]domain.WorldRule{
-		{Category: "society", Rule: "城邦林立", Boundary: "皇权不可直辖边地"},
+		{Category: "society", Rule: "Numerous city-states", Boundary: "Imperial power cannot directly govern border lands"},
 	}); err != nil {
 		t.Fatalf("SaveWorldRules: %v", err)
 	}
 	if err := s.Outline.SaveLayeredOutline([]domain.VolumeOutline{
 		{
-			Index: 1, Title: "第一卷", Theme: "踏上旅途",
+			Index: 1, Title: "Volume 1", Theme: "Embarking on journey",
 			Arcs: []domain.ArcOutline{
-				{Index: 1, Title: "启程", Goal: "建立队伍", Chapters: []domain.OutlineEntry{{Chapter: 1, Title: "起点"}}},
-				{Index: 2, Title: "迷雾", Goal: "逼近秘密", EstimatedChapters: 5},
+				{Index: 1, Title: "Departure", Goal: "Establish team", Chapters: []domain.OutlineEntry{{Chapter: 1, Title: "Starting Point"}}},
+				{Index: 2, Title: "Fog", Goal: "Approach secret", EstimatedChapters: 5},
 			},
 		},
 	}); err != nil {
 		t.Fatalf("SaveLayeredOutline: %v", err)
 	}
 	if err := s.Outline.SaveCompass(domain.StoryCompass{
-		EndingDirection: "揭开古老真相",
-		EstimatedScale:  "预计 3 卷",
+		EndingDirection: "Unveil ancient truth",
+		EstimatedScale:  "Expected 3 volumes",
 	}); err != nil {
 		t.Fatalf("SaveCompass: %v", err)
 	}
 	if err := s.World.SaveStyleRules(domain.WritingStyleRules{
 		Volume: 1,
 		Arc:    1,
-		Prose:  []string{"保持冷峻节制"},
+		Prose:  []string{"Keep cold and restrained"},
 	}); err != nil {
 		t.Fatalf("SaveStyleRules: %v", err)
 	}
@@ -364,9 +364,9 @@ func TestContextToolArchitectModeIncludesPlanningAndFoundation(t *testing.T) {
 	}
 
 	tool := NewContextTool(s, References{
-		OutlineTemplate:   "大纲模板",
-		CharacterTemplate: "角色模板",
-		LongformPlanning:  "长篇规划",
+		OutlineTemplate:   "Outline Template",
+		CharacterTemplate: "Character Template",
+		LongformPlanning:  "Long-form Planning",
 	}, "default", rules.LoadOptions{})
 	args, err := json.Marshal(map[string]any{})
 	if err != nil {
@@ -416,7 +416,7 @@ func TestTrimByBudgetRemovesMirroredMemoryKeys(t *testing.T) {
 				"a": strings.Repeat("x", 200),
 				"b": strings.Repeat("y", 200),
 			},
-			"style_rules": []string{"克制"},
+			"style_rules": []string{"restraint"},
 		},
 	}
 
@@ -441,8 +441,8 @@ func TestContextToolSelectedMemoryRecallsStoryThreadsAndReviewLessons(t *testing
 		t.Fatalf("Init: %v", err)
 	}
 	if err := s.Outline.SaveOutline([]domain.OutlineEntry{
-		{Chapter: 1, Title: "邀约", CoreEvent: "长老暗中给出内门试炼邀请", Scenes: []string{"密谈", "留下试炼令"}},
-		{Chapter: 2, Title: "试炼前夜", CoreEvent: "林砚准备回应内门试炼邀请", Hook: "谁在背后推动这场试炼", Scenes: []string{"整理线索", "决定赴约"}},
+		{Chapter: 1, Title: "Invitation", CoreEvent: "Elder secretly gives inner sect trial invitation", Scenes: []string{"Secret talk", "Leave trial token"}},
+		{Chapter: 2, Title: "Eve of Trial", CoreEvent: "Lin Yan prepares to respond to inner sect trial invitation", Hook: "Who is behind promoting this trial", Scenes: []string{"Gather clues", "Decide to attend"}},
 	}); err != nil {
 		t.Fatalf("SaveOutline: %v", err)
 	}
@@ -450,23 +450,23 @@ func TestContextToolSelectedMemoryRecallsStoryThreadsAndReviewLessons(t *testing
 		t.Fatalf("InitProgress: %v", err)
 	}
 	if err := s.World.SaveForeshadowLedger([]domain.ForeshadowEntry{
-		{ID: "trial_invite", Description: "内门试炼邀请的真实目的", PlantedAt: 1, Status: "planted"},
-		{ID: "trial_mastermind", Description: "谁在背后推动这场试炼", PlantedAt: 1, Status: "planted"},
-		{ID: "trial_rules", Description: "试炼规则碑文残卷", PlantedAt: 1, Status: "planted"},
-		{ID: "outer_disciple", Description: "外门弟子的旧债纠纷", PlantedAt: 1, Status: "planted"},
-		{ID: "elder_token", Description: "长老手中令牌的来历", PlantedAt: 1, Status: "planted"},
-		{ID: "hidden_gate", Description: "山门背后的隐藏通道", PlantedAt: 1, Status: "planted"},
-		{ID: "trial_bet", Description: "试炼盘口的幕后操盘人", PlantedAt: 1, Status: "planted"},
+		{ID: "trial_invite", Description: "Inner trial invite purpose", PlantedAt: 1, Status: "planted"},
+		{ID: "trial_mastermind", Description: "Trial mastermind behind it", PlantedAt: 1, Status: "planted"},
+		{ID: "trial_rules", Description: "Trial rules tablet fragments", PlantedAt: 1, Status: "planted"},
+		{ID: "outer_disciple", Description: "Outer disciple debt dispute", PlantedAt: 1, Status: "planted"},
+		{ID: "elder_token", Description: "Origin of elder's token", PlantedAt: 1, Status: "planted"},
+		{ID: "hidden_gate", Description: "Gate hidden passage", PlantedAt: 1, Status: "planted"},
+		{ID: "trial_bet", Description: "Trial betting pool mastermind", PlantedAt: 1, Status: "planted"},
 	}); err != nil {
 		t.Fatalf("SaveForeshadowLedger: %v", err)
 	}
 	if err := s.Drafts.SaveChapterPlan(domain.ChapterPlan{
 		Chapter: 2,
-		Title:   "试炼前夜",
-		Goal:    "决定是否回应邀请",
+		Title:   "Eve of Trial",
+		Goal:    "Decide whether to respond to the invitation",
 		Contract: domain.ChapterContract{
-			PayoffPoints: []string{"回应内门试炼邀请"},
-			HookGoal:     "抛出谁在背后推动试炼",
+			PayoffPoints: []string{"Respond to inner sect trial invitation"},
+			HookGoal:     "Raise who is behind promoting the trial",
 		},
 	}); err != nil {
 		t.Fatalf("SaveChapterPlan: %v", err)
@@ -475,11 +475,11 @@ func TestContextToolSelectedMemoryRecallsStoryThreadsAndReviewLessons(t *testing
 		Chapter:        1,
 		Scope:          "chapter",
 		Verdict:        "polish",
-		Summary:        "主线启动完成，但伏笔不够明确。",
+		Summary:        "Main arc started successfully, but foreshadowing is not clear enough.",
 		ContractStatus: "partial",
-		ContractMisses: []string{"未明确埋下内门试炼邀请"},
+		ContractMisses: []string{"Failed to clearly plant inner sect trial invitation"},
 		Issues: []domain.ConsistencyIssue{
-			{Type: "hook", Severity: "warning", Description: "章末钩子不够具体"},
+			{Type: "hook", Severity: "warning", Description: "Hook at chapter end is not concrete enough"},
 		},
 	}); err != nil {
 		t.Fatalf("SaveReview: %v", err)
@@ -512,52 +512,52 @@ func TestContextToolSelectedMemoryRecallsStoryThreadsAndReviewLessons(t *testing
 	if len(payload.Selected.ReviewLessons) == 0 {
 		t.Fatal("expected review lesson recall items")
 	}
-	if !containsRecallSummary(payload.Selected.StoryThreads, "内门试炼邀请") {
+	if !containsRecallSummary(payload.Selected.StoryThreads, "Inner trial invite") {
 		t.Fatalf("expected story thread recall to mention invite, got %+v", payload.Selected.StoryThreads)
 	}
-	if !containsRecallSummary(payload.Selected.StoryThreads, "推动这场试炼") {
+	if !containsRecallSummary(payload.Selected.StoryThreads, "mastermind") {
 		t.Fatalf("expected story thread recall to mention trial mastermind, got %+v", payload.Selected.StoryThreads)
 	}
-	if containsRecallSummary(payload.Selected.StoryThreads, "试炼规则碑文残卷") {
+	if containsRecallSummary(payload.Selected.StoryThreads, "Trial rules tablet") {
 		t.Fatalf("expected weak-overlap foreshadow to stay out, got %+v", payload.Selected.StoryThreads)
 	}
-	if containsRecallSummary(payload.Selected.StoryThreads, "建议回看第") {
+	if containsRecallSummary(payload.Selected.StoryThreads, "plant chapter") {
 		t.Fatalf("expected related_chapters not to be duplicated into story_threads, got %+v", payload.Selected.StoryThreads)
 	}
-	if !containsRecallSummary(payload.Selected.ReviewLessons, "contract 漏项") {
+	if !containsRecallSummary(payload.Selected.ReviewLessons, "contract omission") {
 		t.Fatalf("expected review lesson recall to mention contract miss, got %+v", payload.Selected.ReviewLessons)
 	}
-	if !strings.Contains(payload.Summary, "线索召回:") || !strings.Contains(payload.Summary, "评审召回:") {
+	if !strings.Contains(payload.Summary, "clues_recall:") || !strings.Contains(payload.Summary, "review_lessons:") {
 		t.Fatalf("expected loading summary to report selected memory, got %q", payload.Summary)
 	}
 }
 
-// 久挂未回收的伏笔即使与当前章关键词无关，也应被账龄回填进 story_threads——
-// 这正是相关性召回的盲区（独自悬挂太久、却没在本章撞上关键词的那根线）。
-// 近期埋下的伏笔（账龄 < 阈值）不应被误标为"未回收"。
+// Long-pending unresolved foreshadows, even if unrelated to the current chapter's keywords, should be backfilled into story_threads based on age.
+// This is exactly the blind spot of relevance recall (a thread suspended for too long without hitting any keywords in the current chapter).
+// Recently planted foreshadows (age < threshold) should not be mistakenly marked as "unresolved".
 func TestContextToolSelectedMemorySurfacesAgingForeshadow(t *testing.T) {
 	dir := t.TempDir()
 	s := store.NewStore(dir)
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	// 当前章主题与所有伏笔都不沾边，确保相关性召回为空，只剩账龄回填生效。
+	// The current chapter's theme has nothing to do with any foreshadowing, ensuring relevance recall is empty so that only age-based backfill takes effect.
 	if err := s.Outline.SaveOutline([]domain.OutlineEntry{
-		{Chapter: 50, Title: "瘟疫", CoreEvent: "林砚在城南医馆救治瘟疫病患", Scenes: []string{"熬药", "封锁街巷"}},
+		{Chapter: 50, Title: "Plague", CoreEvent: "Lin Yan cures plague patients in city south medical hall", Scenes: []string{"Brew medicine", "Block streets"}},
 	}); err != nil {
 		t.Fatalf("SaveOutline: %v", err)
 	}
 	if err := s.Progress.Init("test", 60); err != nil {
 		t.Fatalf("InitProgress: %v", err)
 	}
-	// 6 条满足召回阈值；前两条账龄 ≥30（久挂），后四条账龄 <30（近期）。
+	// 6 entries meet recall threshold; first two have age >= 30 (long standing), last four have age < 30 (recent).
 	if err := s.World.SaveForeshadowLedger([]domain.ForeshadowEntry{
-		{ID: "ancient_seal", Description: "上古封印的裂隙", PlantedAt: 3, Status: "planted"},
-		{ID: "lost_bloodline", Description: "主角失落的血脉来历", PlantedAt: 5, Status: "advanced"},
-		{ID: "market_feud", Description: "昨夜集市的口角", PlantedAt: 47, Status: "planted"},
-		{ID: "rumor_a", Description: "近日传闻甲", PlantedAt: 48, Status: "planted"},
-		{ID: "rumor_b", Description: "近日传闻乙", PlantedAt: 48, Status: "planted"},
-		{ID: "rumor_c", Description: "近日传闻丙", PlantedAt: 49, Status: "planted"},
+		{ID: "ancient_seal", Description: "Rift in the ancient seal", PlantedAt: 3, Status: "planted"},
+		{ID: "lost_bloodline", Description: "Origin of lost bloodline", PlantedAt: 5, Status: "advanced"},
+		{ID: "market_feud", Description: "Dispute at last night's market", PlantedAt: 47, Status: "planted"},
+		{ID: "rumor_a", Description: "Recent rumor A", PlantedAt: 48, Status: "planted"},
+		{ID: "rumor_b", Description: "Recent rumor B", PlantedAt: 48, Status: "planted"},
+		{ID: "rumor_c", Description: "Recent rumor C", PlantedAt: 49, Status: "planted"},
 	}); err != nil {
 		t.Fatalf("SaveForeshadowLedger: %v", err)
 	}
@@ -581,18 +581,18 @@ func TestContextToolSelectedMemorySurfacesAgingForeshadow(t *testing.T) {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 
-	// 两条久挂伏笔应被回填，且带"未回收"账龄标注。
-	if !containsRecallSummary(payload.Selected.StoryThreads, "上古封印的裂隙") {
+	// Two long-standing foreshadowing entries should be backfilled with "open for" aging annotation.
+	if !containsRecallSummary(payload.Selected.StoryThreads, "Rift in the ancient seal") {
 		t.Fatalf("expected aging foreshadow to surface despite no relevance, got %+v", payload.Selected.StoryThreads)
 	}
-	if !containsRecallSummary(payload.Selected.StoryThreads, "失落的血脉") {
+	if !containsRecallSummary(payload.Selected.StoryThreads, "lost bloodline") {
 		t.Fatalf("expected second aging foreshadow to surface, got %+v", payload.Selected.StoryThreads)
 	}
-	if !containsRecallSummary(payload.Selected.StoryThreads, "未回收") {
+	if !containsRecallSummary(payload.Selected.StoryThreads, "open for") {
 		t.Fatalf("expected aging item to carry overdue annotation, got %+v", payload.Selected.StoryThreads)
 	}
-	// 近期伏笔（账龄 <30 且不相关）不应被回填。
-	if containsRecallSummary(payload.Selected.StoryThreads, "昨夜集市的口角") {
+	// Recent foreshadowing (age < 30 and unrelated) should not be backfilled.
+	if containsRecallSummary(payload.Selected.StoryThreads, "Dispute at last night's market") {
 		t.Fatalf("recent foreshadow must not be labeled overdue, got %+v", payload.Selected.StoryThreads)
 	}
 }
@@ -604,8 +604,8 @@ func TestContextToolSelectedMemoryIncludesGlobalReviewLessons(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 	if err := s.Outline.SaveOutline([]domain.OutlineEntry{
-		{Chapter: 1, Title: "开端", CoreEvent: "故事开始"},
-		{Chapter: 2, Title: "推进", CoreEvent: "主线继续推进"},
+		{Chapter: 1, Title: "Beginning", CoreEvent: "Story starts"},
+		{Chapter: 2, Title: "Progression", CoreEvent: "Main arc continues to progress"},
 	}); err != nil {
 		t.Fatalf("SaveOutline: %v", err)
 	}
@@ -616,9 +616,9 @@ func TestContextToolSelectedMemoryIncludesGlobalReviewLessons(t *testing.T) {
 		Chapter: 1,
 		Scope:   "global",
 		Verdict: "polish",
-		Summary: "全局推进合格，但角色目标表达还不够稳定。",
+		Summary: "Global progression is acceptable, but expression of character goals is not stable enough.",
 		Issues: []domain.ConsistencyIssue{
-			{Type: "character", Severity: "warning", Description: "主角目标表达不够稳定"},
+			{Type: "character", Severity: "warning", Description: "Protagonist goal expression not stable enough"},
 		},
 	}); err != nil {
 		t.Fatalf("SaveReview(global): %v", err)
@@ -642,7 +642,7 @@ func TestContextToolSelectedMemoryIncludesGlobalReviewLessons(t *testing.T) {
 	if err := json.Unmarshal(result, &payload); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
-	if !containsRecallSummary(payload.Selected.ReviewLessons, "主角目标表达不够稳定") {
+	if !containsRecallSummary(payload.Selected.ReviewLessons, "Protagonist goal expression") {
 		t.Fatalf("expected global review lesson to be recalled, got %+v", payload.Selected.ReviewLessons)
 	}
 }
@@ -654,8 +654,8 @@ func TestContextToolKeepsFullForeshadowWhenRecallNotTriggered(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 	if err := s.Outline.SaveOutline([]domain.OutlineEntry{
-		{Chapter: 1, Title: "起势", CoreEvent: "故事起势"},
-		{Chapter: 2, Title: "推进", CoreEvent: "继续推进"},
+		{Chapter: 1, Title: "Opening", CoreEvent: "Story starts"},
+		{Chapter: 2, Title: "Progression", CoreEvent: "Continue progression"},
 	}); err != nil {
 		t.Fatalf("SaveOutline: %v", err)
 	}
@@ -663,8 +663,8 @@ func TestContextToolKeepsFullForeshadowWhenRecallNotTriggered(t *testing.T) {
 		t.Fatalf("InitProgress: %v", err)
 	}
 	if err := s.World.SaveForeshadowLedger([]domain.ForeshadowEntry{
-		{ID: "small_1", Description: "第一条小伏笔", PlantedAt: 1, Status: "planted"},
-		{ID: "small_2", Description: "第二条小伏笔", PlantedAt: 1, Status: "planted"},
+		{ID: "small_1", Description: "First small foreshadowing", PlantedAt: 1, Status: "planted"},
+		{ID: "small_2", Description: "Second small foreshadowing", PlantedAt: 1, Status: "planted"},
 	}); err != nil {
 		t.Fatalf("SaveForeshadowLedger: %v", err)
 	}
@@ -698,8 +698,8 @@ func TestContextToolFallsBackToFullForeshadowWhenSelectionIsTooSparse(t *testing
 		t.Fatalf("Init: %v", err)
 	}
 	if err := s.Outline.SaveOutline([]domain.OutlineEntry{
-		{Chapter: 1, Title: "邀约", CoreEvent: "长老暗中给出内门试炼邀请"},
-		{Chapter: 2, Title: "试炼前夜", CoreEvent: "林砚准备回应内门试炼邀请", Scenes: []string{"整理线索", "决定赴约"}},
+		{Chapter: 1, Title: "Summons", CoreEvent: "Elder secretly gives summons"},
+		{Chapter: 2, Title: "Preparation Night", CoreEvent: "Lin Yan prepares to respond to the call", Scenes: []string{"Gather clues", "Decide to go"}},
 	}); err != nil {
 		t.Fatalf("SaveOutline: %v", err)
 	}
@@ -707,12 +707,12 @@ func TestContextToolFallsBackToFullForeshadowWhenSelectionIsTooSparse(t *testing
 		t.Fatalf("InitProgress: %v", err)
 	}
 	if err := s.World.SaveForeshadowLedger([]domain.ForeshadowEntry{
-		{ID: "trial_invite", Description: "内门试炼邀请的真实目的", PlantedAt: 1, Status: "planted"},
-		{ID: "trial_rules", Description: "试炼规则碑文残卷", PlantedAt: 1, Status: "planted"},
-		{ID: "outer_disciple", Description: "外门弟子的旧债纠纷", PlantedAt: 1, Status: "planted"},
-		{ID: "elder_token", Description: "长老手中令牌的来历", PlantedAt: 1, Status: "planted"},
-		{ID: "hidden_gate", Description: "山门背后的隐藏通道", PlantedAt: 1, Status: "planted"},
-		{ID: "trial_bet", Description: "试炼盘口的幕后操盘人", PlantedAt: 1, Status: "planted"},
+		{ID: "trial_invite", Description: "Real purpose of the secret invitation", PlantedAt: 1, Status: "planted"},
+		{ID: "trial_rules", Description: "Fragments of the ancient tablet", PlantedAt: 1, Status: "planted"},
+		{ID: "outer_disciple", Description: "Outer member's old debt dispute", PlantedAt: 1, Status: "planted"},
+		{ID: "elder_token", Description: "Origin of token in elder's hand", PlantedAt: 1, Status: "planted"},
+		{ID: "hidden_gate", Description: "Secret path behind the gate", PlantedAt: 1, Status: "planted"},
+		{ID: "trial_bet", Description: "Mastermind of the underground bet", PlantedAt: 1, Status: "planted"},
 	}); err != nil {
 		t.Fatalf("SaveForeshadowLedger: %v", err)
 	}
@@ -762,18 +762,18 @@ func TestContextToolInjectsRewriteBriefForPendingRewriteChapter(t *testing.T) {
 	if err := s.Progress.MarkChapterComplete(2, 3000, "", ""); err != nil {
 		t.Fatalf("MarkChapterComplete: %v", err)
 	}
-	if err := s.Progress.SetPendingRewrites([]int{2}, "节奏拖沓，需要压缩前半段"); err != nil {
+	if err := s.Progress.SetPendingRewrites([]int{2}, "Dragging pacing, need to compress the first half"); err != nil {
 		t.Fatalf("SetPendingRewrites: %v", err)
 	}
 	if err := s.World.SaveReview(domain.ReviewEntry{
 		Chapter: 2,
 		Scope:   "chapter",
 		Verdict: "rewrite",
-		Summary: "前半段铺垫过长，冲突迟迟不出现。",
+		Summary: "Pacing is too long in the first half, conflict does not appear for a long time.",
 		Issues: []domain.ConsistencyIssue{
-			{Type: "pacing", Severity: "error", Description: "前 2000 字无推进"},
+			{Type: "pacing", Severity: "error", Description: "First 2000 words have no progression"},
 		},
-		ContractMisses: []string{"未兑现试炼开场"},
+		ContractMisses: []string{"Failed to deliver trial start"},
 	}); err != nil {
 		t.Fatalf("SaveReview: %v", err)
 	}
@@ -796,10 +796,10 @@ func TestContextToolInjectsRewriteBriefForPendingRewriteChapter(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected rewrite_brief in chapter context, got %T", payload["rewrite_brief"])
 	}
-	if got := brief["reason"]; got != "节奏拖沓，需要压缩前半段" {
+	if got := brief["reason"]; got != "Dragging pacing, need to compress the first half" {
 		t.Fatalf("expected rewrite reason, got %v", got)
 	}
-	if got, _ := brief["review_summary"].(string); !strings.Contains(got, "铺垫过长") {
+	if got, _ := brief["review_summary"].(string); !strings.Contains(got, "Pacing is too long") {
 		t.Fatalf("expected review summary from chapter review, got %v", brief["review_summary"])
 	}
 	if issues, _ := brief["issues"].([]any); len(issues) == 0 {
@@ -848,7 +848,7 @@ func TestContextToolInjectsUserDirectivesOnBothPaths(t *testing.T) {
 	if err := s.Progress.Init("test", 3); err != nil {
 		t.Fatalf("InitProgress: %v", err)
 	}
-	if _, err := s.Directives.Add(domain.UserDirective{Text: "对话占比提高", Chapter: 2, TotalChapters: 3}); err != nil {
+	if _, err := s.Directives.Add(domain.UserDirective{Text: "Increase dialogue ratio", Chapter: 2, TotalChapters: 3}); err != nil {
 		t.Fatalf("AddDirective: %v", err)
 	}
 
@@ -872,11 +872,11 @@ func TestContextToolInjectsUserDirectivesOnBothPaths(t *testing.T) {
 			t.Fatalf("[%s] expected 1 directive, got %v", name, working["user_directives"])
 		}
 		entry, _ := directives[0].(map[string]any)
-		if entry["text"] != "对话占比提高" || entry["at_chapter"] != float64(2) || entry["at_total_chapters"] != float64(3) {
+		if entry["text"] != "Increase dialogue ratio" || entry["at_chapter"] != float64(2) || entry["at_total_chapters"] != float64(3) {
 			t.Errorf("[%s] unexpected directive entry: %v", name, entry)
 		}
 		if _, hasCreatedAt := entry["created_at"]; hasCreatedAt {
-			t.Errorf("[%s] created_at 是审计信息，不应进 LLM", name)
+			t.Errorf("[%s] created_at is audit info, should not go into LLM", name)
 		}
 	}
 }
@@ -905,7 +905,7 @@ func TestContextToolInjectsEmptyUserDirectives(t *testing.T) {
 	if !ok {
 		t.Fatal("missing working_memory")
 	}
-	// 空列表也注入 []（字段稳定，同 user_rules 先例），不能是 null/缺失
+	// Empty lists are also injected as [] (field stability, similar to user_rules precedent) and cannot be null/missing.
 	directives, ok := working["user_directives"].([]any)
 	if !ok {
 		t.Fatalf("expected stable empty array, got %T", working["user_directives"])

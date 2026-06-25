@@ -1,12 +1,12 @@
-# 观测手册
+# Observability Guide
 
-跑长篇小说时，怎么知道各项机制是不是真的在工作？
+When running a long novel, how do we know the mechanisms are actually working?
 
-本文档不是把 diag 规则照抄一遍，而是面向**实际运行**：你跑到第 N 章了，应该打开哪个文件、看哪个字段、判断健康还是异常。
+This document is not a copy of the diag rules. It is written for **real execution**: when you reach chapter N, which file should you open, which field should you inspect, and how do you tell whether things are healthy or not?
 
 ---
 
-## 1. 通用排查流程
+## 1. General Troubleshooting Flow
 
 ```
 1. /diag                       # 自动诊断，看 Findings 区
@@ -14,17 +14,17 @@
 3. cat meta/sessions/coordinator.jsonl | tail  # 看最近几轮 LLM 行为
 ```
 
-`/diag` 覆盖不到的事实（包括本文档列出的"待补诊断"项），需要 step 2-3 手工查。
+Facts that `/diag` does not cover, including the "pending diagnostics" listed in this document, need to be checked manually in steps 2-3.
 
-### 报 issue：脱敏诊断导出
+### Reporting issues: redacted diagnostics export
 
-每次 `/diag` 都会额外写出 `output/{novel}/meta/diag-export.md`——一份**已脱敏**的诊断（小说正文 / prompt / 思考已移除，仅保留行为骨架：工具名、错误串、重复次数、phase/flow、卡住的 step、日志错误分类）。遇到死循环 / 中断类问题，把这个文件贴到 GitHub issue 即可，维护者据此定位，无需用户的 `output/` 数据。
+Each `/diag` run also writes `output/{novel}/meta/diag-export.md` - a **redacted** diagnostic report with the novel text, prompts, and thinking removed, leaving only the behavioral skeleton: tool names, error strings, repeat counts, phase/flow, stuck steps, and log error categories. For dead loops or interruption issues, attach this file to a GitHub issue so maintainers can diagnose it without the user's `output/` data.
 
 ---
 
-## 2. 关键工件速查表
+## 2. Key Artifact Cheat Sheet
 
-按"出问题时最常见排查路径"排序：
+Ordered by the most common troubleshooting path when something goes wrong:
 
 | 工件 | 路径 | 看什么 | 健康 | 不健康 |
 |---|---|---|---|---|
@@ -39,23 +39,23 @@
 
 ---
 
-## 3. 指南针（compass）观测
+## 3. Compass Observability
 
 **修复时间**：2026-05-08（commit `fix: update_compass 工具自动填 last_updated`）
 
-### 看什么
+### What to inspect
 
 ```bash
 cat output/{novel}/meta/compass.json
 ```
 
-字段语义：
+Field semantics:
 - `ending_direction`：终局方向（应该和 `premise.md` "终局方向"段一致）
 - `open_threads`：活跃长线（每卷边界由 architect 增删）
 - `estimated_scale`：预估规模（如"4-6 卷"，每卷边界更新）
 - `last_updated`：**工具自动填**为更新时的最大已完成章号（不再依赖 LLM 自填）
 
-### 健康度判断
+### Health checks
 
 | 信号 | 判断 |
 |---|---|
@@ -64,7 +64,7 @@ cat output/{novel}/meta/compass.json
 | `last_updated == 0` | **本次修复前的脏数据**，下次 update_compass 会自愈 |
 | `ending_direction` 和 premise.md "终局方向"段对不上 | architect 偷偷改了用户意图——记录下来，决定要不要冻结字段（设计议题，见 todo.md） |
 
-### 怎么验证修复有效
+### How to verify the fix
 
 跑长篇前后对比：
 - **修复前**：跑 30+ 章后 `compass.last_updated` 大概率是 `0` 或某个早期章号
@@ -72,11 +72,11 @@ cat output/{novel}/meta/compass.json
 
 ---
 
-## 4. 配角名册（cast_ledger）观测
+## 4. Cast Ledger Observability
 
 **功能落地**：2026-05-08（commit `feat: 新增配角名册自动追踪次要角色`）
 
-### 看什么
+### What to inspect
 
 ```bash
 cat output/{novel}/meta/cast_ledger.json | jq 'length'                     # 条目总数
@@ -85,7 +85,7 @@ cat output/{novel}/meta/cast_ledger.json | jq '[.[] | select(.appearance_count >
 cat output/{novel}/meta/cast_ledger.json | jq 'sort_by(-.appearance_count) | .[:10]'  # 出场最多的 10 个
 ```
 
-### 健康度判断
+### Health checks
 
 | 维度 | 健康 | 异常 | 应对 |
 |---|---|---|---|

@@ -82,7 +82,7 @@ func (s *askUserState) choiceLabel(idx int) string {
 	if idx < len(q.Options) {
 		return q.Options[idx].Label
 	}
-	return "自由输入"
+	return "Custom Input"
 }
 
 func (s *askUserState) choiceDescription(idx int) string {
@@ -90,7 +90,7 @@ func (s *askUserState) choiceDescription(idx int) string {
 	if idx < len(q.Options) {
 		return q.Options[idx].Description
 	}
-	return "以上都不合适，自己补充"
+	return "None of the above, provide custom text"
 }
 
 func (s *askUserState) moveCursor(delta int) {
@@ -142,7 +142,7 @@ func (s *askUserState) finishCurrentAnswer() bool {
 		if len(values) == 0 {
 			return false
 		}
-		s.answers[q.Question] = strings.Join(values, "、")
+		s.answers[q.Question] = strings.Join(values, ", ")
 		return s.advance()
 	}
 
@@ -196,7 +196,7 @@ func renderAskUserModal(width, height int, state *askUserState) string {
 	}
 
 	var b strings.Builder
-	title := fmt.Sprintf("需要补充信息 %d/%d", state.index+1, len(state.request.questions))
+	title := fmt.Sprintf("Additional Info Required %d/%d", state.index+1, len(state.request.questions))
 	b.WriteString(lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Render(title))
 	b.WriteString("\n\n")
 	if q.Header != "" {
@@ -227,11 +227,11 @@ func renderAskUserModal(width, height int, state *askUserState) string {
 
 	if state.typing || (q.MultiSelect && state.selected[len(q.Options)]) {
 		b.WriteString("\n")
-		b.WriteString(panelTitleStyle.Render("补充内容"))
+		b.WriteString(panelTitleStyle.Render("Details"))
 		b.WriteString("\n")
 		content := state.input
 		if content == "" {
-			content = "请输入..."
+			content = "Please type here..."
 		}
 		style := lipgloss.NewStyle().
 			Width(boxW-8).
@@ -242,12 +242,12 @@ func renderAskUserModal(width, height int, state *askUserState) string {
 		b.WriteString("\n")
 	}
 
-	hint := "↑↓ 选择 · Enter 确认 · Esc 关闭"
+	hint := "↑↓ Move · Enter Confirm · Esc Close"
 	if q.MultiSelect {
-		hint = "↑↓ 选择 · Space 勾选 · Enter 提交 · Esc 关闭"
+		hint = "↑↓ Move · Space Toggle · Enter Submit · Esc Close"
 	}
 	if state.typing {
-		hint = "输入补充内容 · Enter 确认 · Esc 返回选项"
+		hint = "Type details · Enter Confirm · Esc Back to options"
 	}
 	b.WriteString("\n")
 	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render(hint))

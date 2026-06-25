@@ -8,7 +8,7 @@ import (
 	"github.com/voocel/ainovel-cli/internal/domain"
 )
 
-// Store 是状态管理的组合根，持有所有子存储。
+// Store is the composition root for state management, holding all sub-stores.
 type Store struct {
 	dir string
 
@@ -28,10 +28,10 @@ type Store struct {
 	Usage       *UsageStore
 	Simulation  *SimulationStore
 
-	crossMu sync.Mutex // 保护跨域原子操作
+	crossMu sync.Mutex // Protects cross-domain atomic operations
 }
 
-// NewStore 创建状态管理器，dir 为小说输出根目录。
+// NewStore creates a state manager, where dir is the output root directory for the novel.
 func NewStore(dir string) *Store {
 	io := newIO(dir)
 	outline := NewOutlineStore(io)
@@ -55,14 +55,14 @@ func NewStore(dir string) *Store {
 	}
 }
 
-// Dir 返回输出根目录。
+// Dir returns the output root directory.
 func (s *Store) Dir() string { return s.dir }
 
-// CheckConsistency 对事实层做一次浅层校验，用于启动/恢复时生成 warning。
-// 纯只读：不修正数据，仅返回可读的问题描述。调用方决定如何展示（log / UI）。
-// 为避免扫全目录带来的 IO 开销，只校验 Progress 的关键点：
-//   - 最后一个完成章节必须在 chapters/ 下存在终稿
-//   - Layered 模式下，当前 Volume/Arc 必须能在 layered_outline 中找到
+// CheckConsistency performs a shallow consistency check on the facts layer, used to generate warnings during startup/recovery.
+// Read-only: does not fix data, only returns readable descriptions of issues. The caller determines how to display them (log / UI).
+// To avoid IO overhead from scanning the entire directory, only key points in Progress are verified:
+//   - The last completed chapter must have a final draft present in chapters/
+//   - In Layered mode, the current Volume/Arc must be found in layered_outline
 func (s *Store) CheckConsistency() []string {
 	var warnings []string
 	progress, err := s.Progress.Load()
@@ -72,7 +72,7 @@ func (s *Store) CheckConsistency() []string {
 	if n := len(progress.CompletedChapters); n > 0 {
 		lastCh := progress.CompletedChapters[n-1]
 		if text, err := s.Drafts.LoadChapterText(lastCh); err == nil && text == "" {
-			warnings = append(warnings, fmt.Sprintf("progress 标记第 %d 章已完成，但 chapters/%02d.md 不存在或为空", lastCh, lastCh))
+			warnings = append(warnings, fmt.Sprintf("progress marks chapter %d as completed, but chapters/%02d.md does not exist or is empty", lastCh, lastCh))
 		}
 	}
 	if progress.Layered && progress.CurrentVolume > 0 && progress.CurrentArc > 0 {
@@ -92,15 +92,15 @@ func (s *Store) CheckConsistency() []string {
 				break
 			}
 			if !found {
-				warnings = append(warnings, fmt.Sprintf("progress 当前 V%d A%d 在分层大纲中找不到对应条目", progress.CurrentVolume, progress.CurrentArc))
+				warnings = append(warnings, fmt.Sprintf("progress current V%d A%d cannot be found in layered_outline", progress.CurrentVolume, progress.CurrentArc))
 			}
 		}
 	}
 	return warnings
 }
 
-// FoundationMissing 返回基础设定中尚缺的项，按用于 Prompt/Reminder 的稳定顺序排列。
-// 长篇模式（已有 layered_outline）额外要求 compass。
+// FoundationMissing returns items still missing from the foundation settings, ordered consistently for Prompt/Reminder.
+// Layered mode (with layered_outline) additionally requires compass.
 func (s *Store) FoundationMissing() []string {
 	var missing []string
 	if p, _ := s.Outline.LoadPremise(); p == "" {
@@ -123,16 +123,16 @@ func (s *Store) FoundationMissing() []string {
 	return missing
 }
 
-// Init 创建所需的子目录结构。
+// Init creates the required subdirectory structure.
 func (s *Store) Init() error {
 	return s.Progress.io.EnsureDirs([]string{
 		"chapters", "summaries", "drafts", "reviews", "meta", "meta/runtime", "meta/runtime/tasks", "meta/sessions", "meta/sessions/agents",
 	})
 }
 
-// ── 跨域协调方法 ──
+// ── Cross-Domain Coordination Methods ──
 
-// ExpandArc 将骨架弧展开为详细章节（Outline + Progress 联动）。
+// ExpandArc expands a skeleton arc into detailed chapters (linking Outline + Progress).
 func (s *Store) ExpandArc(volumeIdx, arcIdx int, chapters []domain.OutlineEntry) error {
 	s.crossMu.Lock()
 	defer s.crossMu.Unlock()
@@ -159,7 +159,7 @@ func (s *Store) ExpandArc(volumeIdx, arcIdx int, chapters []domain.OutlineEntry)
 	return s.Progress.saveUnlocked(p)
 }
 
-// AppendVolume 追加新卷到分层大纲末尾（Outline + Progress 联动）。
+// AppendVolume appends a new volume to the end of the layered outline (linking Outline + Progress).
 func (s *Store) AppendVolume(vol domain.VolumeOutline) error {
 	s.crossMu.Lock()
 	defer s.crossMu.Unlock()
@@ -186,8 +186,8 @@ func (s *Store) AppendVolume(vol domain.VolumeOutline) error {
 	return s.Progress.saveUnlocked(p)
 }
 
-// ClearHandledSteer 原子性清除 PendingSteer 并重置 FlowSteering 状态
-// （RunMeta + Progress 联动）。
+// ClearHandledSteer atomically clears PendingSteer and resets the FlowSteering state
+// (linking RunMeta + Progress).
 func (s *Store) ClearHandledSteer() error {
 	s.crossMu.Lock()
 	defer s.crossMu.Unlock()

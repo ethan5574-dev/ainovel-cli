@@ -2,19 +2,19 @@ package diag
 
 import "testing"
 
-// TestRuntimeFindings_Classify 证明重复签名按形态分类、阈值升降级正确，
-// 且运行时 Finding 全部 AutoNone（观察者纪律：只诊断不产 Action）。
+// TestRuntimeFindings_Classify verifies that repeated signatures are classified correctly,
+// threshold upgrades/downgrades work, and all runtime Findings are AutoNone (observer rule: diagnose only, no action).
 func TestRuntimeFindings_Classify(t *testing.T) {
 	rc := RuntimeCapture{
 		Repeats: []RepeatStat{
-			{Sig: "coordinator · err: InputValidationError", Count: 14}, // 错误循环 critical
-			{Sig: "coordinator · subagent", Count: 45},                  // 正常高频工具 → 不产 Finding
-			{Sig: "writer · save_plan (args invalid)", Count: 4},        // 参数无效 warning
+			{Sig: "coordinator · err: InputValidationError", Count: 14}, // Error loop critical
+			{Sig: "coordinator · subagent", Count: 45},                  // Normal high-frequency tool -> no Finding produced
+			{Sig: "writer · save_plan (args invalid)", Count: 4},        // Invalid arguments warning
 		},
 		StuckStep:  "writing.commit_ch07",
-		StuckCount: 9, // 卡住 critical
+		StuckCount: 9, // Stuck critical
 		LogKinds:   map[string]int{"stream_idle": 4},
-		LogErrors:  270, // 长跑累计，不应单独产 Finding
+		LogErrors:  270, // Long run accumulation, should not produce Finding alone
 	}
 
 	fs := runtimeFindings(&rc)
@@ -22,7 +22,7 @@ func TestRuntimeFindings_Classify(t *testing.T) {
 	for _, f := range fs {
 		sev[f.Rule] = f.Severity
 		if f.AutoLevel != AutoNone {
-			t.Errorf("%s 应为 AutoNone（观察者纪律），got %s", f.Rule, f.AutoLevel)
+			t.Errorf("%s should be AutoNone (observer rule), got %s", f.Rule, f.AutoLevel)
 		}
 	}
 
@@ -37,22 +37,22 @@ func TestRuntimeFindings_Classify(t *testing.T) {
 			t.Errorf("%s: got %q want %q", rule, sev[rule], w)
 		}
 	}
-	// 正常高频工具 / 日志累计 error 不应产 Finding（避免长跑误报）。
+	// Normal high-frequency tool / cumulative log errors should not produce Finding (to avoid false positives in long runs).
 	if _, ok := sev["RepeatedToolCall"]; ok {
-		t.Error("普通工具重复不应产 Finding")
+		t.Error("Normal tool repetition should not produce Finding")
 	}
 	if _, ok := sev["LogErrorBurst"]; ok {
-		t.Error("日志 error 累计不应单独产 Finding")
+		t.Error("Cumulative log errors should not produce Finding alone")
 	}
 }
 
-// TestRuntimeFindings_Quiet 证明无异常信号时不产任何运行时 Finding（零误报）。
+// TestRuntimeFindings_Quiet verifies that no runtime Finding is produced when there are no anomaly signals (zero false positives).
 func TestRuntimeFindings_Quiet(t *testing.T) {
 	rc := RuntimeCapture{
-		LogKinds:  map[string]int{"stream_idle": 1}, // 低于阈值
+		LogKinds:  map[string]int{"stream_idle": 1}, // Below threshold
 		LogErrors: 2,
 	}
 	if fs := runtimeFindings(&rc); len(fs) != 0 {
-		t.Errorf("安静态不应产 Finding，got %d: %+v", len(fs), fs)
+		t.Errorf("Quiet state should not produce Finding, got %d: %+v", len(fs), fs)
 	}
 }

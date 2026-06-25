@@ -1,31 +1,31 @@
 package domain
 
-// CastEntry 是配角名册中一条配角记录。
+// CastEntry is a supporting character record in the cast ledger.
 //
-// 与 Character（characters.json，Architect 维护的核心档案）解耦：
-//   - CastEntry 由 commit_chapter 工具自动累加，记录"出现过的有名字的次要角色"
-//   - Character 由 Architect 显式设计，记录主角和关键配角的人格弧线/特质/tier
+// Decoupled from Character (characters.json, maintained by Architect):
+//   - CastEntry is automatically accumulated by the commit_chapter tool, recording "named minor characters that appeared"
+//   - Character is explicitly designed by the Architect, recording personality arcs/traits/tiers of main and key supporting characters
 //
-// 同名时以 Character 为准（核心角色不进 cast_ledger），避免重复。
+// When names duplicate, Character takes precedence (core characters do not enter the cast_ledger) to avoid duplication.
 type CastEntry struct {
 	Name string `json:"name"`
-	// Aliases 当前没有写入通道；预留给将来的"用户 steer 合并别名"工具
-	// （如把'李掌柜'与'老李'声明为同一人）。MergeAppearances 已支持别名查找。
+	// Aliases is currently not used; reserved for future "user steer merge alias" tool
+	// (e.g. declaring 'Manager Li' and 'Old Li' as the same person). MergeAppearances already supports alias lookup.
 	Aliases          []string `json:"aliases,omitempty"`
-	BriefRole        string   `json:"brief_role,omitempty"` // 一句话定位（首次出场由 Writer 填，可后续补全；不被覆盖）
+	BriefRole        string   `json:"brief_role,omitempty"` // One-line description (initially filled by Writer on first appearance, can be completed later; won't be overwritten)
 	FirstSeenChapter int      `json:"first_seen_chapter"`
 	LastSeenChapter  int      `json:"last_seen_chapter"`
-	// AppearanceCount 派生自 len(AppearanceChapters)，merge 时保持同步。
-	// 保留显式字段方便 UI/JSON 直接读，无需每次重算。
+	// AppearanceCount is derived from len(AppearanceChapters), synchronized during merge.
+	// Keep as an explicit field for easy UI/JSON reading without recalculating every time.
 	AppearanceCount    int   `json:"appearance_count"`
 	AppearanceChapters []int `json:"appearance_chapters"`
-	// Promoted 标记此条目已升格到 characters.json。RecentActive 会跳过这些条目，
-	// 避免与核心档案重复召回。当前升格通道未实现，字段为预留 hook。
+	// Promoted marks that this entry has been promoted to characters.json. RecentActive will skip these entries
+	// to avoid duplicate recall with the core ledger. Currently, the promotion pipeline is not implemented; this field is a reserved hook.
 	Promoted bool `json:"promoted,omitempty"`
 }
 
-// CastIntro 是 Writer 在 commit_chapter 时对新出场角色的简介声明。
-// 仅在该名字首次出现或 ledger 中 BriefRole 仍为空时才被采用。
+// CastIntro is the brief description declared by the Writer when committing a chapter for a newly appearing character.
+// Adopted only when the name appears for the first time or when BriefRole in the ledger is still empty.
 type CastIntro struct {
 	Name      string `json:"name"`
 	BriefRole string `json:"brief_role"`

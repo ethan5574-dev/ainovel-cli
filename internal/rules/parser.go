@@ -9,7 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// 已知 front matter 字段集合，用于识别未知字段并写入 conflicts。
+// Collection of known front matter fields, used to identify unknown fields and write them to conflicts.
 var knownFrontMatterFields = map[string]struct{}{
 	"genre":             {},
 	"chapter_words":     {},
@@ -18,15 +18,15 @@ var knownFrontMatterFields = map[string]struct{}{
 	"fatigue_words":     {},
 }
 
-// Parse 解析单份 rules.md 内容（front matter + Markdown）。
+// Parse parses a single rules.md content (front matter + Markdown).
 //
-// 容错策略：
-//   - front matter 整体解析失败：不阻断，正文仍作为偏好，conflicts 记录 parse_error
-//   - 未知字段：丢弃，conflicts 记录 unknown_field
-//   - 字段类型错误：丢弃该字段，conflicts 记录 type_error
-//   - 字段值非法（如 chapter_words 无法解析为范围）：丢弃，conflicts 记录 invalid_value
+// Tolerance Strategy:
+//   - front matter parsing failure as a whole: does not block, body is still used as preferences, conflicts records parse_error
+//   - unknown fields: discarded, conflicts records unknown_field
+//   - field type error: discards the field, conflicts records type_error
+//   - invalid field value (e.g. chapter_words cannot be parsed as a range): discarded, conflicts records invalid_value
 //
-// source 是文件路径，仅用于 conflicts.source；kind 决定优先级。
+// source is the file path, only used for conflicts.source; kind determines priority.
 func Parse(source string, kind SourceKind, content []byte) Parsed {
 	parsed := Parsed{Source: source, Kind: kind}
 
@@ -37,14 +37,14 @@ func Parse(source string, kind SourceKind, content []byte) Parsed {
 		return parsed
 	}
 
-	// 先 unmarshal 到 map[string]any，再逐字段强类型解析。
-	// 这样能区分"字段不存在"和"字段类型错误"，并能识别未知字段。
+	// Unmarshal to map[string]any first, then parse field-by-field with strong types.
+	// This helps differentiate between "field does not exist" and "field type error", and identify unknown fields.
 	var raw map[string]any
 	if err := yaml.Unmarshal([]byte(fmText), &raw); err != nil {
 		parsed.Conflicts = append(parsed.Conflicts, Conflict{
 			Source: source,
 			Kind:   ConflictParseError,
-			Detail: fmt.Sprintf("front matter YAML 解析失败: %v", err),
+			Detail: fmt.Sprintf("front matter YAML parsing failed: %v", err),
 		})
 		return parsed
 	}
@@ -55,7 +55,7 @@ func Parse(source string, kind SourceKind, content []byte) Parsed {
 				Source: source,
 				Kind:   ConflictUnknownField,
 				Field:  key,
-				Detail: fmt.Sprintf("未知字段 %q，Phase 1 不支持；已忽略", key),
+				Detail: fmt.Sprintf("unknown field %q, not supported in Phase 1; ignored", key),
 			})
 			continue
 		}
@@ -65,18 +65,18 @@ func Parse(source string, kind SourceKind, content []byte) Parsed {
 	return parsed
 }
 
-// splitFrontMatter 切分 `---` 包裹的 front matter 与剩余正文。
+// splitFrontMatter splits front matter wrapped in '---' from the remaining body.
 //
-// 约定：
-//   - 文件以 `---` 起始（允许 BOM / 空行）才认为有 front matter
-//   - 第二个 `---` 之后是正文
-//   - 没有 front matter：全文作为正文
-//   - 只有起始 `---` 没有终止 `---`：视为无 front matter（避免吞掉整篇正文）
+// Convention:
+//   - File must start with '---' (toterates BOM / empty lines) to be considered having front matter
+//   - Text after the second '---' is the body
+//   - No front matter: the entire text is body
+//   - Symmetrical '---' start but no terminating '---': treated as no front matter (prevent swallowing entire body)
 func splitFrontMatter(content []byte) (fm, body string) {
-	text := string(bytes.TrimPrefix(content, []byte{0xEF, 0xBB, 0xBF})) // 去 UTF-8 BOM
+	text := string(bytes.TrimPrefix(content, []byte{0xEF, 0xBB, 0xBF})) // Remove UTF-8 BOM
 	lines := strings.Split(text, "\n")
 
-	// 找第一个非空行；不是 `---` 则全是正文
+	// Find first non-empty line; if it's not '---', then all is body
 	start := -1
 	for i, line := range lines {
 		if strings.TrimSpace(line) == "" {
@@ -91,7 +91,7 @@ func splitFrontMatter(content []byte) (fm, body string) {
 		return "", text
 	}
 
-	// 找第二个 `---`
+	// Find second '---'
 	end := -1
 	for i := start + 1; i < len(lines); i++ {
 		if strings.TrimSpace(lines[i]) == "---" {
@@ -100,7 +100,7 @@ func splitFrontMatter(content []byte) (fm, body string) {
 		}
 	}
 	if end < 0 {
-		// 起始有 `---` 但没闭合：保守视为无 front matter
+		// Starting with '---' but not closed: conservatively treated as no front matter
 		return "", text
 	}
 
@@ -109,7 +109,7 @@ func splitFrontMatter(content []byte) (fm, body string) {
 	return fm, body
 }
 
-// applyField 把单条 raw 字段塞进 Parsed.Structured，类型不匹配时写 conflicts。
+// applyField puts a single raw field into Parsed.Structured, writes to conflicts on type mismatch.
 func applyField(p *Parsed, key string, val any) {
 	switch key {
 	case "genre":
@@ -127,7 +127,7 @@ func applyField(p *Parsed, key string, val any) {
 				Source: p.Source,
 				Kind:   ConflictInvalidValue,
 				Field:  key,
-				Detail: fmt.Sprintf("chapter_words 期望区间 \"min-max\"（如 3000-6000）或单个目标值（如 2500），收到 %v", val),
+				Detail: fmt.Sprintf("chapter_words expects range \"min-max\" (e.g. 3000-6000) or a single target value (e.g. 2500), got %v", val),
 			})
 			return
 		}
@@ -152,23 +152,23 @@ func applyField(p *Parsed, key string, val any) {
 	case "fatigue_words":
 		m, ok := parseFatigueWords(p, val)
 		if !ok {
-			p.Conflicts = append(p.Conflicts, typeErr(p.Source, key, "map[string]int 或 []string", val))
+			p.Conflicts = append(p.Conflicts, typeErr(p.Source, key, "map[string]int or []string", val))
 			return
 		}
 		p.Structured.FatigueWords = m
 	}
 }
 
-// parseChapterWords 解析章节字数范围为 *WordRange，接受三种写法：
-//   - "min-max" 区间字符串（如 "3000-6000"）
-//   - {min, max} 映射
-//   - 单个正整数 N（裸数字 2500 或字符串 "2500"）——按"目标 N 字/章"理解，自动
-//     展开为 N±20% 区间。否则用户凭直觉写单值会被静默丢弃、回落内置默认（issue #41）。
+// parseChapterWords parses the chapter word range as a *WordRange, accepting three formats:
+//   - "min-max" range string (e.g. "3000-6000")
+//   - {min, max} map
+//   - A single positive integer N (naked number 2500 or string "2500") - understood as "target N words/chapter",
+//     automatically expanded into an N±20% range. Otherwise, writing a single value by intuition will be silently discarded and fallback to built-in default (issue #41).
 func parseChapterWords(val any) (*WordRange, bool) {
 	switch v := val.(type) {
 	case string:
 		s := strings.TrimSpace(v)
-		if !strings.Contains(s, "-") { // 单值写法，如 "2500"
+		if !strings.Contains(s, "-") { // Single value format, e.g. "2500"
 			if n, err := strconv.Atoi(s); err == nil && n > 0 {
 				return wordBandAround(n), true
 			}
@@ -191,7 +191,7 @@ func parseChapterWords(val any) (*WordRange, bool) {
 			return nil, false
 		}
 		return &WordRange{Min: minV, Max: maxV}, true
-	default: // 裸数字，YAML 解析为 int / float64
+	default: // Raw number, parsed as int / float64 by YAML
 		if n, ok := asInt(v); ok && n > 0 {
 			return wordBandAround(n), true
 		}
@@ -199,16 +199,16 @@ func parseChapterWords(val any) (*WordRange, bool) {
 	}
 }
 
-// wordBandAround 把"目标 N 字/章"展开为 ±20% 的舒适区间（如 2500 → 2000-3000），
-// 让单值写法等价于一个合理区间，而不是 N-N 的硬墙（紧区间会逼出压缩死循环）。
+// wordBandAround expands "target N words/chapter" into a comfortable ±20% range (e.g. 2500 -> 2000-3000),
+// making the single value format equivalent to a reasonable range instead of an N-N hard wall (tight range forces compression infinite loop).
 func wordBandAround(n int) *WordRange {
 	return &WordRange{Min: n * 4 / 5, Max: n * 6 / 5}
 }
 
-// parseFatigueWords 同时接受 map[string]int（带阈值）与 []string（默认阈值 1）。
+// parseFatigueWords accepts both map[string]int (with threshold) and []string (default threshold 1).
 //
-// 单 key 类型错或阈值非法都会写 conflict 进 p.Conflicts，绝不静默吞。
-// 返回 (map, true) 表示存在合法项；(nil, false) 表示整体类型错或全部项非法。
+// Any key type error or invalid threshold will write a conflict to p.Conflicts, never silently swallowed.
+// Returns (map, true) if any valid items exist; (nil, false) if the overall type is wrong or all items are invalid.
 func parseFatigueWords(p *Parsed, val any) (map[string]int, bool) {
 	switch v := val.(type) {
 	case map[string]any:
@@ -220,7 +220,7 @@ func parseFatigueWords(p *Parsed, val any) (map[string]int, bool) {
 					Source: p.Source,
 					Kind:   ConflictInvalidValue,
 					Field:  "fatigue_words",
-					Detail: "fatigue_words 出现空白 key，已跳过",
+					Detail: "blank key found in fatigue_words, skipped",
 				})
 				continue
 			}
@@ -230,7 +230,7 @@ func parseFatigueWords(p *Parsed, val any) (map[string]int, bool) {
 					Source: p.Source,
 					Kind:   ConflictTypeError,
 					Field:  "fatigue_words." + trimmed,
-					Detail: fmt.Sprintf("fatigue_words[%q] 期望 int 阈值，收到 %T（%v）；已丢弃该 key", trimmed, raw, raw),
+					Detail: fmt.Sprintf("fatigue_words[%q] expects int threshold, got %T (%v); key discarded", trimmed, raw, raw),
 				})
 				continue
 			}
@@ -239,7 +239,7 @@ func parseFatigueWords(p *Parsed, val any) (map[string]int, bool) {
 					Source: p.Source,
 					Kind:   ConflictInvalidValue,
 					Field:  "fatigue_words." + trimmed,
-					Detail: fmt.Sprintf("fatigue_words[%q] 阈值必须 > 0，收到 %d；已丢弃该 key", trimmed, n),
+					Detail: fmt.Sprintf("fatigue_words[%q] threshold must be > 0, got %d; key discarded", trimmed, n),
 				})
 				continue
 			}
@@ -258,7 +258,7 @@ func parseFatigueWords(p *Parsed, val any) (map[string]int, bool) {
 					Source: p.Source,
 					Kind:   ConflictTypeError,
 					Field:  fmt.Sprintf("fatigue_words[%d]", i),
-					Detail: fmt.Sprintf("fatigue_words 列表元素期望 string，收到 %T（%v）；已丢弃该元素", raw, raw),
+					Detail: fmt.Sprintf("fatigue_words list elements expect string, got %T (%v); element discarded", raw, raw),
 				})
 				continue
 			}
@@ -268,7 +268,7 @@ func parseFatigueWords(p *Parsed, val any) (map[string]int, bool) {
 					Source: p.Source,
 					Kind:   ConflictInvalidValue,
 					Field:  fmt.Sprintf("fatigue_words[%d]", i),
-					Detail: "fatigue_words 列表元素为空白；已丢弃",
+					Detail: "fatigue_words list element is blank; discarded",
 				})
 				continue
 			}
@@ -283,14 +283,14 @@ func parseFatigueWords(p *Parsed, val any) (map[string]int, bool) {
 	}
 }
 
-// asString / asInt / asStringList 是 yaml.v3 反序列化后类型归一化的小工具。
+// asString / asInt / asStringList are small utilities for type normalization after yaml.v3 deserialization.
 //
-// 严格策略（Debug-First）：只接受目标类型，不自动转换其他类型。
-// 类型错误由调用方写入 conflicts，不在工具内静默修复。
+// Strict Policy (Debug-First): Only accepts the target type, no auto-conversions of other types.
+// Type errors are written to conflicts by the caller, not silently fixed inside.
 
-// asString 仅接受 string 标量。
-// 注意：YAML 里 `genre: 42`（无引号）会被反序列化成 int，按本函数判定为类型错误。
-// 用户应写 `genre: "42"` 显式声明 string。
+// asString only accepts string scalar.
+// Note: In YAML, 'genre: 42' (without quotes) will be deserialized as int, which is determined as a type error.
+// The user should write 'genre: "42"' to explicitly declare it as string.
 func asString(v any) (string, bool) {
 	if s, ok := v.(string); ok {
 		return s, true
@@ -298,8 +298,8 @@ func asString(v any) (string, bool) {
 	return "", false
 }
 
-// asInt 接受所有整型；float64 仅在恰好是整数时接受（YAML 数字默认解析为 float64）。
-// 字符串数字不再自动转——避免与"字段错放成字符串"的失误混淆。
+// asInt accepts all integer types; float64 is only accepted when it is exactly an integer (YAML numbers default to float64).
+// String numbers are no longer auto-converted - avoiding confusion with mistaken placement of fields as strings.
 func asInt(v any) (int, bool) {
 	switch x := v.(type) {
 	case int:
@@ -307,7 +307,7 @@ func asInt(v any) (int, bool) {
 	case int64:
 		return int(x), true
 	case float64:
-		// 仅当 float 恰好是整数时接受（如 yaml 解析的 `5` → float64(5.0)）
+		// Only accepted when float is exactly an integer (e.g. yaml parsed '5' -> float64(5.0))
 		if x == float64(int(x)) {
 			return int(x), true
 		}
@@ -317,8 +317,8 @@ func asInt(v any) (int, bool) {
 	}
 }
 
-// asStringList 元素必须是 string；其他类型该元素跳过并写入 conflicts。
-// 返回 (list, true) 表示存在合法元素；(nil, false) 表示整体类型错或全部元素非法。
+// Elements in asStringList must be string; other types skip the element and write to conflicts.
+// Returns (list, true) if valid elements exist; (nil, false) if overall type is wrong or all elements are invalid.
 func asStringList(p *Parsed, field string, v any) ([]string, bool) {
 	arr, ok := v.([]any)
 	if !ok {
@@ -332,7 +332,7 @@ func asStringList(p *Parsed, field string, v any) ([]string, bool) {
 				Source: p.Source,
 				Kind:   ConflictTypeError,
 				Field:  fmt.Sprintf("%s[%d]", field, i),
-				Detail: fmt.Sprintf("%s 列表元素期望 string，收到 %T（%v）；已丢弃该元素", field, raw, raw),
+				Detail: fmt.Sprintf("%s list elements expect string, got %T (%v); element discarded", field, raw, raw),
 			})
 			continue
 		}
@@ -351,6 +351,6 @@ func typeErr(source, field, expected string, got any) Conflict {
 		Source: source,
 		Kind:   ConflictTypeError,
 		Field:  field,
-		Detail: fmt.Sprintf("字段 %s 类型错误，期望 %s，收到 %T（%v）；已丢弃", field, expected, got, got),
+		Detail: fmt.Sprintf("field %s type error, expected %s, got %T (%v); discarded", field, expected, got, got),
 	}
 }

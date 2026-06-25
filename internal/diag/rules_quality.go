@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// ChronicLowDimension 检测某评审维度跨多章持续低分。
+// ChronicLowDimension detects if a certain review dimension continues to score low across multiple chapters.
 func ChronicLowDimension(snap *Snapshot) []Finding {
 	if len(snap.Reviews) < 2 {
 		return nil
@@ -39,15 +39,15 @@ func ChronicLowDimension(snap *Snapshot) []Finding {
 			Confidence: ConfMedium,
 			AutoLevel:  AutoNone,
 			Target:     "prompt.writer",
-			Title:      fmt.Sprintf("维度 [%s] 持续低分 (均值 %.0f)", name, avg),
-			Evidence:   fmt.Sprintf("共 %d 次评审，均分 %.1f", count, avg),
-			Suggestion: fmt.Sprintf("检查 Writer prompt 中关于 %s 的指引是否清晰，或 Editor prompt 的 %s 评分标准是否合理。", name, name),
+			Title:      fmt.Sprintf("Dimension [%s] chronic low score (average %.0f)", name, avg),
+			Evidence:   fmt.Sprintf("Total of %d reviews, average %.1f", count, avg),
+			Suggestion: fmt.Sprintf("Check whether guidelines regarding %s in the Writer prompt are clear, or if the %s scoring standard in the Editor prompt is reasonable.", name, name),
 		})
 	}
 	return findings
 }
 
-// ContractMissPattern 检测合同履约率过低。
+// ContractMissPattern detects if the contract compliance rate is too low.
 func ContractMissPattern(snap *Snapshot) []Finding {
 	if len(snap.Reviews) == 0 {
 		return nil
@@ -76,13 +76,13 @@ func ContractMissPattern(snap *Snapshot) []Finding {
 		Confidence: ConfMedium,
 		AutoLevel:  AutoNone,
 		Target:     "prompt.writer",
-		Title:      fmt.Sprintf("合同履约率低 (%.0f%% 未达成)", rate*100),
-		Evidence:   fmt.Sprintf("未达成: [%s]，共 %d/%d", strings.Join(missedChapters, ", "), missed, total),
-		Suggestion: "Writer 可能未读 contract，或 contract required_beats 过于激进。检查 plan_chapter 和 writer.md 的配合。",
+		Title:      fmt.Sprintf("Low contract compliance rate (%.0f%% missed)", rate*100),
+		Evidence:   fmt.Sprintf("Missed: [%s], total %d/%d", strings.Join(missedChapters, ", "), missed, total),
+		Suggestion: "The Writer may have ignored the contract, or contract required_beats is too aggressive. Check the alignment between plan_chapter and writer.md.",
 	}}
 }
 
-// HookWeakChain 检测章节 hook 评分连续偏弱。
+// HookWeakChain detects consecutive weak scores for chapter hooks.
 func HookWeakChain(snap *Snapshot) []Finding {
 	if len(snap.Reviews) < ThresholdHookWeakChain {
 		return nil
@@ -122,13 +122,13 @@ func HookWeakChain(snap *Snapshot) []Finding {
 		Confidence: ConfMedium,
 		AutoLevel:  AutoNone,
 		Target:     "prompt.writer",
-		Title:      fmt.Sprintf("章末钩子连续偏弱（连续 %d 章）", len(weakChain)),
+		Title:      fmt.Sprintf("Weak chapter hooks in a row (consecutive %d chapters)", len(weakChain)),
 		Evidence:   strings.Join(parts, ", "),
-		Suggestion: "检查 writer.md 中 hook_goal 的执行是否清晰，必要时在 plan_chapter 中明确本章追读欲望，并校准 Editor 对 hook 的举证标准。",
+		Suggestion: "Check if the hook_goal execution in writer.md is clear. If necessary, clarify the reading hooks in plan_chapter, and calibrate the Editor's evidence standards for hooks.",
 	}}
 }
 
-// PayoffMissPattern 检测带 payoff_points 的章节长期未兑现。
+// PayoffMissPattern detects when chapters with payoff_points go unfulfilled for a long time.
 func PayoffMissPattern(snap *Snapshot) []Finding {
 	var total, missed int
 	var details []string
@@ -143,7 +143,7 @@ func PayoffMissPattern(snap *Snapshot) []Finding {
 		total++
 		if review.ContractStatus == "partial" || review.ContractStatus == "missed" {
 			missed++
-			details = append(details, fmt.Sprintf("ch%d(%d项 payoff)", ch, len(plan.Contract.PayoffPoints)))
+			details = append(details, fmt.Sprintf("ch%d(%d payoff items)", ch, len(plan.Contract.PayoffPoints)))
 		}
 	}
 	if total < 2 {
@@ -161,13 +161,13 @@ func PayoffMissPattern(snap *Snapshot) []Finding {
 		Confidence: ConfMedium,
 		AutoLevel:  AutoNone,
 		Target:     "prompt.writer",
-		Title:      fmt.Sprintf("爽点/情节点兑现率偏低 (%.0f%% 未达成)", rate*100),
-		Evidence:   fmt.Sprintf("未兑现章节: [%s]，共 %d/%d", strings.Join(details, ", "), missed, total),
-		Suggestion: "检查 plan_chapter 的 payoff_points 是否过多或过空，确保 Writer 在正文里明确兑现，而不是只做铺垫。",
+		Title:      fmt.Sprintf("Low payoff/beat fulfillment rate (%.0f%% missed)", rate*100),
+		Evidence:   fmt.Sprintf("Unfulfilled chapters: [%s], total %d/%d", strings.Join(details, ", "), missed, total),
+		Suggestion: "Check if payoff_points in plan_chapter are too many or too vague, ensuring the Writer explicitly fulfills them in the body text rather than just setting them up.",
 	}}
 }
 
-// ExcessiveRewrites 检测改写率过高。
+// ExcessiveRewrites detects excessive rewrite rates.
 func ExcessiveRewrites(snap *Snapshot) []Finding {
 	if len(snap.Reviews) < 2 {
 		return nil
@@ -194,13 +194,13 @@ func ExcessiveRewrites(snap *Snapshot) []Finding {
 		Confidence: ConfMedium,
 		AutoLevel:  AutoNone,
 		Target:     "prompt.editor",
-		Title:      fmt.Sprintf("改写率过高 (%d/%d = %.0f%%)", rewrites, total, rate*100),
-		Evidence:   fmt.Sprintf("共 %d 次评审，%d 次 rewrite", total, rewrites),
-		Suggestion: "Writer 持续产出低于 Editor 阈值的内容。检查 Writer prompt 的质量标准是否与 Editor 的评审标准对齐。",
+		Title:      fmt.Sprintf("Excessive rewrite rate (%d/%d = %.0f%%)", rewrites, total, rate*100),
+		Evidence:   fmt.Sprintf("Total of %d reviews, %d rewrites", total, rewrites),
+		Suggestion: "The Writer continuously produces content below the Editor's threshold. Check whether the quality standards in the Writer prompt are aligned with the Editor's review standards.",
 	}}
 }
 
-// WordCountAnomaly 检测章节字数异常。
+// WordCountAnomaly detects anomalous chapter word counts.
 func WordCountAnomaly(snap *Snapshot) []Finding {
 	if snap.Progress == nil || len(snap.Progress.ChapterWordCounts) < 3 {
 		return nil
@@ -220,9 +220,9 @@ func WordCountAnomaly(snap *Snapshot) []Finding {
 	for ch, w := range wc {
 		ratio := float64(w) / avg
 		if ratio < ThresholdWordShortRatio {
-			anomalies = append(anomalies, fmt.Sprintf("ch%d(%d字,%.0f%%)", ch, w, ratio*100))
+			anomalies = append(anomalies, fmt.Sprintf("ch%d(%d words,%.0f%%)", ch, w, ratio*100))
 		} else if ratio > ThresholdWordLongRatio {
-			anomalies = append(anomalies, fmt.Sprintf("ch%d(%d字,%.0f%%)", ch, w, ratio*100))
+			anomalies = append(anomalies, fmt.Sprintf("ch%d(%d words,%.0f%%)", ch, w, ratio*100))
 		}
 	}
 	if len(anomalies) == 0 {
@@ -235,9 +235,9 @@ func WordCountAnomaly(snap *Snapshot) []Finding {
 		Confidence: ConfLow,
 		AutoLevel:  AutoNone,
 		Target:     "context.window",
-		Title:      fmt.Sprintf("章节字数异常 (均值 %d 字)", int(math.Round(avg))),
+		Title:      fmt.Sprintf("Anomalous chapter word count (average %d words)", int(math.Round(avg))),
 		Evidence:   strings.Join(anomalies, "; "),
-		Suggestion: "极短章节可能是输出截断（token 限制），极长章节可能消耗过多上下文窗口。检查模型 max_tokens 配置。",
+		Suggestion: "Extremely short chapters may be due to output truncation (token limits), while extremely long chapters may consume too much context window. Check the model's max_tokens configuration.",
 	}}
 }
 

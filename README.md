@@ -1,64 +1,64 @@
 # ainovel-cli
 
-全自动 AI 长篇小说创作引擎。Coordinator 在一次 Prompt 里驱动 Architect / Writer / Editor 三个子代理完成整本书的创作，Host 只做启动、恢复和观察。从一句话需求到完整小说，全程无需人工干预。
+An end-to-end AI engine for writing long-form novels. The Coordinator drives the Architect, Writer, and Editor subagents within a single prompt loop to complete an entire book, while the Host only handles startup, recovery, and observation. From a single-line idea to a finished novel, no manual intervention is required.
 
 <p align="center">
   <img src="scripts/sample.gif" alt="ainovel-cli demo" width="800">
   <img src="scripts/novel.png" alt="ainovel-cli bg" width="800">
 </p>
 
-## 特性
+## Features
 
-- **多智能体协作** — Coordinator 在一次长循环中调度 Architect / Writer / Editor 三个子代理，自主决策创作流程
-- **LLM 驱动长循环** — 一次 Prompt 写完整本书，Host 不介入调度。越简单越稳定，拒绝复杂编排
-- **Step 级断点恢复** — 每个工具执行成功后写入 checkpoint，崩溃后精确到 plan/draft/check/commit 步骤级恢复
-- **卷弧双层滚动规划** — 长篇不再一次性规划全部章节。初始只规划前 2 卷弧骨架 + 第 1 弧详细章节，后续弧/卷在写作推进到时再由 Architect 展开，每次展开都参考前文摘要和角色状态，远期规划不空洞
-- **相关章节智能推荐** — 每章写作时从伏笔、角色出场、状态变化、关系四个维度自动推荐相关历史章节，配合下一章预告，确保 500+ 章长篇的连续性
-- **自适应上下文策略** — 根据总章节数自动切换全量 / 滑窗 / 分层摘要，支持 500+ 章长篇
-- **七维质量评审** — Editor 从设定一致性、角色行为、节奏、叙事连贯、伏笔、钩子、审美品质七个维度评审，审美维度细分描写质感/叙事手法/对话区分度/用词质量/情感打动力五项，每项必须引用原文举证
-- **用户实时干预** — 写作过程中随时在输入框注入修改意见（无需暂停），系统自动评估影响范围并重写受影响章节
-- **统一 TUI 入口** — 交互界面实时观察进度，也支持携带一句需求直接启动
-- **多 LLM 支持** — OpenRouter / Anthropic / Gemini / OpenAI 等等随意切换
+- **Multi-agent collaboration** - The Coordinator orchestrates Architect / Writer / Editor in a long-running loop and makes the creative decisions.
+- **LLM-driven long loop** - One prompt can write an entire book, with the Host staying out of scheduling. Simpler is more stable.
+- **Step-level recovery** - Every successful tool call writes a checkpoint, enabling recovery at the plan / draft / check / commit step level after a crash.
+- **Two-layer rolling planning** - Long novels are not planned all at once. Initially we only plan the skeleton of the first 2 volumes/arcs plus the detailed chapters of the first arc; later arcs and volumes are expanded by the Architect when needed, using prior summaries and character state so the distant plan stays grounded.
+- **Smart related-chapter suggestions** - Each chapter can automatically recommend related historical chapters based on foreshadowing, character appearances, state changes, and relationships, keeping 500+ chapter stories coherent.
+- **Adaptive context strategy** - Automatically switches between full, sliding-window, and layered summaries based on total chapter count.
+- **Seven-dimensional quality review** - The Editor reviews consistency, character behavior, pacing, narrative coherence, foreshadowing, hooks, and aesthetic quality, with the aesthetic dimension split into descriptive quality, narrative technique, dialogue distinction, diction, and emotional impact.
+- **Real-time user intervention** - You can inject edits directly while writing without pausing; the system evaluates scope and rewrites affected chapters automatically.
+- **Unified TUI entry point** - Watch progress live in the interactive UI, or start from a single prompt.
+- **Multi-LLM support** - Switch freely among OpenRouter / Anthropic / Gemini / OpenAI and more.
 
-## 架构
+## Architecture
 
-核心设计：**LLM 驱动，Host 服务**。Coordinator 在一次 Run 中自主决策整本书的创作流程，Host 只做启动、恢复和事件观察。
+Core design: **LLM-driven, Host-served**. The Coordinator independently decides the creative flow for the whole book within a single run; the Host only handles startup, recovery, and event observation.
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                Host（薄外壳）                     │
-│           启动 / 恢复 / 观察 / 干预注入            │
+│                  Host (thin shell)                │
+│             Startup / recovery / observe / inject │
 └──────────────────────┬──────────────────────────┘
-                       │ 一次 Prompt
+                       │ One prompt
 ┌──────────────────────▼──────────────────────────┐
-│              Coordinator（LLM 长循环）            │
-│    读 novel_context → 调子代理 → 读结果 → 继续     │
+│            Coordinator (LLM long loop)             │
+│    Read novel_context → call subagent → continue  │
 └────┬──────────┬──────────┬──────────────────────┘
      │          │          │
  ┌───▼────┐ ┌───▼───┐ ┌────▼────┐
  │Architect│ │Writer │ │ Editor  │
  └───┬────┘ └───┬───┘ └────┬────┘
      └──────────┼──────────┘
-                │ 工具调用（IO + checkpoint）
+                │ Tool calls (IO + checkpoint)
 ┌───────────────▼─────────────────────────────────┐
 │                   Store                         │
 │  Progress / Checkpoint / Outline / Drafts / ... │
 └─────────────────────────────────────────────────┘
 ```
 
-- **Host** — 启动 Coordinator、崩溃恢复、事件投影给 TUI。不做任何调度决策
-- **Coordinator** — 唯一的决策者，在一次 Run 里驱动规划→写作→评审→总结的完整流程
-- **SubAgents** — Architect / Writer / Editor 各自独立 context，通过 Store 中的工件协作
-- **Tools** — 原子 IO + checkpoint 写入，只返事实 JSON，不夹带指令
+- **Host** - Starts the Coordinator, handles crash recovery, and projects events into the TUI. It makes no scheduling decisions.
+- **Coordinator** - The sole decision-maker, driving the full planning → writing → review → summary flow in one run.
+- **SubAgents** - Architect / Writer / Editor each have isolated context and collaborate through artifacts in the Store.
+- **Tools** - Atomic IO plus checkpoint writes; they return facts in JSON and never carry instructions.
 
-### 智能体职责
+### Agent Roles
 
-| 智能体 | 职责 | 工具 |
+| Agent | Responsibility | Tools |
 |--------|------|------|
-| **Coordinator** | 调度全局，处理评审裁定和用户干预 | `subagent` `novel_context` |
-| **Architect** | 生成前提、大纲、角色档案、世界规则 | `novel_context` `save_foundation` |
-| **Writer** | 自主完成一章的构思、写作、自审和提交 | `novel_context` `read_chapter` `plan_chapter` `draft_chapter` `check_consistency` `commit_chapter` |
-| **Editor** | 阅读原文，从结构和审美两个层面审阅 | `novel_context` `read_chapter` `save_review` `save_arc_summary` `save_volume_summary` |
+| **Coordinator** | Orchestrates the whole system and handles review decisions and user intervention | `subagent` `novel_context` |
+| **Architect** | Creates the premise, outline, character sheets, and world rules | `novel_context` `save_foundation` |
+| **Writer** | Independently plans, writes, self-checks, and submits a chapter | `novel_context` `read_chapter` `plan_chapter` `draft_chapter` `check_consistency` `commit_chapter` |
+| **Editor** | Reads the source text and reviews both structure and style | `novel_context` `read_chapter` `save_review` `save_arc_summary` `save_volume_summary` |
 
 ### 写作流程
 

@@ -4,6 +4,6 @@ forbidden_chars: [unclosed
 fatigue_words: {oops
 ---
 
-# 偏好
+# Preference
 
-虽然 front matter 解析失败，正文应当仍作为偏好注入。
+Although front matter parsing failed, the body should still be injected as preference.

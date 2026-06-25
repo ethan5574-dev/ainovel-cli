@@ -1,17 +1,17 @@
-# ainovel-cli 运行时架构
+# ainovel-cli Runtime Architecture
 
-> 让 LLM 在一次 Run 里把一本小说写完，Host 只做启动 / 恢复 / 路由 / 观察，决策权尽量留给模型。
+> Let the LLM finish a novel in a single run. The Host only handles startup, recovery, routing, and observation, keeping decision-making as much as possible with the model.
 
 ---
 
-## 1. 目标（按优先级）
+## 1. Goals (in priority order)
 
-1. **稳定性**：一句话输入，稳定写完整本小说（200~500 章）。中间不因架构问题自行中断。
-2. **质量可迭代**：prompt / 参考资料 / 评审维度 / 上下文策略可独立调整，不牵连架构。
-3. **可恢复**：崩溃、断网、暂停后能从最近 checkpoint 继续。
-4. **可观测**：每章每 step 的进度、产物、用时可查。
+1. **Stability**: one-line input should reliably produce a full novel (200-500 chapters) without the architecture interrupting itself.
+2. **Iteratable quality**: prompts, reference materials, review dimensions, and context strategy can all be adjusted independently without dragging the architecture along.
+3. **Recoverability**: after a crash, disconnect, or pause, the run can continue from the latest checkpoint.
+4. **Observability**: chapter-level progress, artifacts, and timing should be inspectable.
 
-"稳定"是前提，"质量"是上层。每个架构决策优先服务稳定性。
+"Stability" is the prerequisite and "quality" is the layer above it. Every architectural decision should first serve stability.
 
 ---
 

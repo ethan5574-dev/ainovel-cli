@@ -53,16 +53,16 @@ func (h *terminalAskUser) askOne(ctx context.Context, q tools.Question) (string,
 	for i, opt := range q.Options {
 		fmt.Fprintf(h.out, "  %d. %s - %s\n", i+1, opt.Label, opt.Description)
 	}
-	fmt.Fprintln(h.out, "  0. 自定义输入")
+	fmt.Fprintln(h.out, "  0. Custom input")
 
 	for {
 		if err := ctx.Err(); err != nil {
 			return "", "", err
 		}
 		if q.MultiSelect {
-			fmt.Fprint(h.out, "请输入编号，多个用逗号分隔: ")
+			fmt.Fprint(h.out, "Enter number(s), separated by commas: ")
 		} else {
-			fmt.Fprint(h.out, "请输入编号: ")
+			fmt.Fprint(h.out, "Enter a number: ")
 		}
 
 		line, err := h.readLine()
@@ -71,26 +71,26 @@ func (h *terminalAskUser) askOne(ctx context.Context, q tools.Question) (string,
 		}
 		line = utils.CleanInputLine(line)
 		if line == "" {
-			fmt.Fprintln(h.out, "输入不能为空，请重试。")
+			fmt.Fprintln(h.out, "Input cannot be empty, please try again.")
 			continue
 		}
 		if line == "0" {
-			fmt.Fprint(h.out, "请输入自定义内容: ")
+			fmt.Fprint(h.out, "Enter custom content: ")
 			note, err := h.readLine()
 			if err != nil {
 				return "", "", err
 			}
 			note = utils.CleanInputLine(note)
 			if note == "" {
-				fmt.Fprintln(h.out, "自定义内容不能为空，请重试。")
+				fmt.Fprintln(h.out, "Custom content cannot be empty, please try again.")
 				continue
 			}
-			return "自定义", note, nil
+			return "Custom", note, nil
 		}
 
 		labels, err := parseSelections(line, q.Options, q.MultiSelect)
 		if err != nil {
-			fmt.Fprintf(h.out, "%v，请重试。\n", err)
+			fmt.Fprintf(h.out, "%v, please try again.\n", err)
 			continue
 		}
 		return strings.Join(labels, "、"), "", nil
@@ -108,7 +108,7 @@ func (h *terminalAskUser) readLine() (string, error) {
 func parseSelections(line string, options []tools.Option, multi bool) ([]string, error) {
 	parts := strings.Split(line, ",")
 	if !multi && len(parts) > 1 {
-		return nil, fmt.Errorf("当前问题只允许单选")
+		return nil, fmt.Errorf("this question only allows a single choice")
 	}
 
 	seen := make(map[int]bool, len(parts))
@@ -116,15 +116,15 @@ func parseSelections(line string, options []tools.Option, multi bool) ([]string,
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
 		if part == "" {
-			return nil, fmt.Errorf("编号不能为空")
+			return nil, fmt.Errorf("number cannot be empty")
 		}
 
 		var idx int
 		if _, err := fmt.Sscanf(part, "%d", &idx); err != nil {
-			return nil, fmt.Errorf("无法识别编号 %q", part)
+			return nil, fmt.Errorf("could not parse number %q", part)
 		}
 		if idx <= 0 || idx > len(options) {
-			return nil, fmt.Errorf("编号 %d 超出范围", idx)
+			return nil, fmt.Errorf("number %d is out of range", idx)
 		}
 		if seen[idx] {
 			continue
@@ -133,7 +133,7 @@ func parseSelections(line string, options []tools.Option, multi bool) ([]string,
 		labels = append(labels, options[idx-1].Label)
 	}
 	if len(labels) == 0 {
-		return nil, fmt.Errorf("至少选择一个选项")
+		return nil, fmt.Errorf("select at least one option")
 	}
 	return labels, nil
 }

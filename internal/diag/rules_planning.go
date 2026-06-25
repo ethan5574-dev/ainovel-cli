@@ -7,7 +7,7 @@ import (
 	"github.com/voocel/ainovel-cli/internal/domain"
 )
 
-// StaleForeshadow 检测长期未推进的伏笔。
+// StaleForeshadow detects foreshadows that have not been advanced for a long time.
 func StaleForeshadow(snap *Snapshot) []Finding {
 	if snap.Progress == nil || len(snap.Foreshadow) == 0 {
 		return nil
@@ -22,7 +22,7 @@ func StaleForeshadow(snap *Snapshot) []Finding {
 		}
 		gap := latest - f.PlantedAt
 		if gap > threshold {
-			stale = append(stale, fmt.Sprintf("%s(ch%d埋下,已过%d章)", f.ID, f.PlantedAt, gap))
+			stale = append(stale, fmt.Sprintf("%s(planted ch%d, %d chapters passed)", f.ID, f.PlantedAt, gap))
 		}
 	}
 	if len(stale) == 0 {
@@ -35,13 +35,13 @@ func StaleForeshadow(snap *Snapshot) []Finding {
 		Confidence: ConfMedium,
 		AutoLevel:  AutoNone,
 		Target:     "context.foreshadow",
-		Title:      fmt.Sprintf("伏笔停滞: %d 条超过 %d 章未推进", len(stale), threshold),
+		Title:      fmt.Sprintf("Foreshadow stagnation: %d items have not been advanced for over %d chapters", len(stale), threshold),
 		Evidence:   strings.Join(stale, "; "),
-		Suggestion: "novel_context 的伏笔提醒加载可能未生效，或 Writer prompt 缺少推进伏笔的指引。检查 foreshadow_ledger 与上下文注入逻辑。",
+		Suggestion: "Foreshadow reminders in novel_context might not have taken effect, or the Writer prompt lacks instructions to advance foreshadows. Check foreshadow_ledger and context injection logic.",
 	}}
 }
 
-// CompassDrift 检测指南针长期未更新。
+// CompassDrift detects compass not being updated for a long time.
 func CompassDrift(snap *Snapshot) []Finding {
 	if snap.Progress == nil || !snap.Progress.Layered {
 		return nil
@@ -55,9 +55,9 @@ func CompassDrift(snap *Snapshot) []Finding {
 				Confidence: ConfMedium,
 				AutoLevel:  AutoNone,
 				Target:     "prompt.architect",
-				Title:      "长篇模式缺少指南针",
+				Title:      "Long-form mode missing compass",
 				Evidence:   fmt.Sprintf("layered=true, completed=%d, compass=nil", snap.CompletedCount()),
-				Suggestion: "Architect 应在初始规划时创建 compass。检查 architect-long.md 是否包含 compass 创建指令。",
+				Suggestion: "Architect should create compass during initial planning. Check if architect-long.md contains instructions for compass creation.",
 			}}
 		}
 		return nil
@@ -74,13 +74,13 @@ func CompassDrift(snap *Snapshot) []Finding {
 		Confidence: ConfLow,
 		AutoLevel:  AutoNone,
 		Target:     "prompt.architect",
-		Title:      fmt.Sprintf("指南针已 %d 章未更新", gap),
+		Title:      fmt.Sprintf("Compass has not been updated for %d chapters", gap),
 		Evidence:   fmt.Sprintf("last_updated=ch%d, latest=ch%d, open_threads=%d", snap.Compass.LastUpdated, snap.LatestCompleted(), len(snap.Compass.OpenThreads)),
-		Suggestion: "Architect 应在弧/卷边界更新 compass。检查 architect-long.md 中是否包含 compass 更新指令。",
+		Suggestion: "Architect should update compass at volume/arc boundaries. Check if architect-long.md contains instructions for compass update.",
 	}}
 }
 
-// OutlineExhausted 检测大纲耗尽但小说未完结。
+// OutlineExhausted detects outline exhausted while the novel is not completed.
 func OutlineExhausted(snap *Snapshot) []Finding {
 	if snap.Progress == nil {
 		return nil
@@ -114,13 +114,13 @@ func OutlineExhausted(snap *Snapshot) []Finding {
 		Confidence: ConfHigh,
 		AutoLevel:  AutoSafe,
 		Target:     "runtime.recovery",
-		Title:      fmt.Sprintf("大纲耗尽: 已完成 %d 章 >= 已规划 %d 章", completed, outlinedCount),
+		Title:      fmt.Sprintf("Outline exhausted: completed %d chapters >= planned %d chapters", completed, outlinedCount),
 		Evidence:   fmt.Sprintf("phase=%s, completed=%d, outlined=%d", p.Phase, completed, outlinedCount),
-		Suggestion: "展开/新卷信号可能未触发。检查宿主侧提交策略和恢复逻辑，确认弧边界检测、expand_arc 或 append_volume 是否正常执行。",
+		Suggestion: "Expansion/new volume signal might not have triggered. Check host-side commit strategy and recovery logic, confirming whether arc boundary detection, expand_arc, or append_volume are executed normally.",
 	}}
 }
 
-// MissingSummaries 检测已完成章节缺少摘要。
+// MissingSummaries detects completed chapters missing summaries.
 func MissingSummaries(snap *Snapshot) []Finding {
 	if snap.Progress == nil || len(snap.Progress.CompletedChapters) == 0 {
 		return nil
@@ -142,8 +142,8 @@ func MissingSummaries(snap *Snapshot) []Finding {
 		Confidence: ConfHigh,
 		AutoLevel:  AutoNone,
 		Target:     "runtime.flow",
-		Title:      fmt.Sprintf("缺少摘要: %d 章无摘要", len(missing)),
+		Title:      fmt.Sprintf("Missing summaries: %d chapters have no summaries", len(missing)),
 		Evidence:   fmt.Sprintf("missing=[%s]", intsToStr(missing)),
-		Suggestion: "摘要是上下文连续性的关键。检查 commit_chapter 的摘要写入逻辑是否正常工作。",
+		Suggestion: "Summaries are key to context continuity. Check if the summary writing logic of commit_chapter is working normally.",
 	}}
 }

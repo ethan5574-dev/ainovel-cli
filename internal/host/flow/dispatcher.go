@@ -10,46 +10,57 @@ import (
 	storepkg "github.com/voocel/ainovel-cli/internal/store"
 )
 
-// Dispatcher 订阅 Coordinator 事件，在子代理返回时计算路由并下达 Host 指令。
+// Dispatcher subscribes to Coordinator events, computes routing when subagents return,
+// and issues Host directives.
 //
-// 生命周期：Attach 返回一个 detach 函数；关闭 Host 时调用释放订阅。
+// Lifecycle: Attach returns a detach function; call it when shutting down the Host to
+// release the subscription.
 type Dispatcher struct {
 	coordinator *agentcore.Agent
 	store       *storepkg.Store
 
-	enabled atomic.Bool // 由 Host 控制是否派发（启动完成前应关）
+	enabled atomic.Bool // Controlled by Host; dispatching should stay off until startup completes.
 
-	// 重复追踪：记住最近一次派发的 Agent+Task 与连续下达次数。
-	// 同一指令重复计算（子代理返回后状态未推进，Route 重算结果不变）不静默吞掉，
-	// 而是带次数事实重发——"路由结果连续 N 次相同"是只有 Host 能观测到的事实；
-	// 若沉默，Coordinator 会陷入"禁止自行决定下一步"（coordinator.md）与
-	// "禁止停机"（StopGuard）的双重矛盾，自由发挥即 #24 类 freelance 死循环。
-	// 裁定权仍在 LLM：重发消息只附事实与核对许可，不设阈值、不熔断（架构 §10.13）。
-	// 消息因带次数而互不相同，不会把字面相同的指令重复压进 followUpQ。
+	// Repeat tracking: remember the most recent Agent+Task pair and how many times it was
+	// issued consecutively.
+	// When the same instruction is recomputed repeatedly (the subagent returned, state did
+	// not advance, and Route yields the same result), we do not swallow it silently.
+	// Instead, we re-send it with count facts attached. "The routing result stayed the same
+	// for N consecutive turns" is a fact only the Host can observe.
+	// If we stay silent, the Coordinator gets trapped between "do not decide the next step
+	// on its own" (coordinator.md) and "do not stop" (StopGuard), which turns into a
+	// freelance-style dead loop.
+	// The final judgment still belongs to the LLM: the resent message only adds facts and
+	// permission to verify, with no threshold and no circuit breaker (architecture §10.13).
+	// Because the message includes the count, each resend is distinct and we do not push
+	// duplicate literal instructions into followUpQ.
 	lastMu   sync.Mutex
 	lastSent *Instruction
 	repeats  int
 
-	// onRepeat 是纯 telemetry 回调（无人值守告警用），在同一指令第 repeatNotifyAt
-	// 次下达时触发一次；不反向影响派发，派发逻辑对它的存在无感知。
+	// onRepeat is a pure telemetry callback (for unattended alerts). It fires once when the
+	// same instruction is issued for the repeatNotifyAt-th time. It does not affect dispatch,
+	// and the dispatch logic is unaware of its existence.
 	onRepeat func(agent, task string, n int)
 }
 
-// repeatNotifyAt 写死不进配置：它不是控制流阈值（不触发任何动作，只是"喊人"），
-// 调它没有收益；进配置反而暗示可调出行为差异。
+// repeatNotifyAt is hard-coded rather than configurable: it is not a control-flow threshold
+// (it triggers no action, it only calls for attention), so exposing it in config would imply
+// behavior that can be tuned for semantic changes.
 const repeatNotifyAt = 3
 
-// NewDispatcher 创建 Dispatcher。使用前需调用 Attach 订阅事件。
+// NewDispatcher creates a Dispatcher. Call Attach before use to subscribe to events.
 func NewDispatcher(coordinator *agentcore.Agent, store *storepkg.Store) *Dispatcher {
 	d := &Dispatcher{coordinator: coordinator, store: store}
 	return d
 }
 
-// Enable 打开路由派发；关闭时 EventToolExecEnd 到达不会发 FollowUp。
-// Host 在 Start/Resume 完成首条 prompt 之后启用，避免与启动流程冲突。
+// Enable turns on route dispatching; when disabled, EventToolExecEnd does not emit FollowUp.
+// Host enables this only after the first prompt is complete in Start/Resume to avoid
+// interfering with startup flow.
 func (d *Dispatcher) Enable() { d.enabled.Store(true) }
 
-// Attach 订阅 Coordinator 事件；返回的函数在关闭时调用以解绑。
+// Attach subscribes to Coordinator events; call the returned function on shutdown to unbind.
 func (d *Dispatcher) Attach() func() {
 	return d.coordinator.Subscribe(d.handle)
 }
@@ -58,12 +69,16 @@ func (d *Dispatcher) handle(ev agentcore.Event) {
 	if !d.enabled.Load() {
 		return
 	}
-	// 精确触发点：子代理成功返回，或 reopen_book 把完结的书重开进返工态。
-	// 两者都推进了事实层、需要紧跟一次 Route 计算下一步——reopen_book 不是 subagent
-	// （complete 期要绕过 completePhaseGate），若不在此触发，重开后的返工队列就没有派发者。
-	// 不用 EventModelResponse，因为 agentcore 每次 LLM call 完成都会 emit 它，
-	// 会把同一条指令重复压进 followUpQ；查询类 Steer 由 coordinator.md 约束在
-	// 同一 turn 内继续调 subagent，从而命中这个触发点。
+	// Exact trigger point: a subagent returns successfully, or reopen_book reopens a finished
+	// book into rework mode.
+	// Both advance the fact layer and require an immediate Route call to compute the next
+	// step. reopen_book is not a subagent (during complete-phase handling it bypasses
+	// completePhaseGate), and if we do not trigger here, the reopened rework queue has no
+	// dispatcher.
+	// We do not use EventModelResponse because agentcore emits it after every LLM call, which
+	// would push the same instruction into followUpQ repeatedly. Query-style Steer is
+	// constrained by coordinator.md to keep calling subagent within the same turn, which hits
+	// this trigger point.
 	if ev.Type != agentcore.EventToolExecEnd || ev.IsError {
 		return
 	}
@@ -73,7 +88,8 @@ func (d *Dispatcher) handle(ev agentcore.Event) {
 	d.Dispatch()
 }
 
-// Dispatch 立即计算路由并下达指令；可被 Host 在特殊时机（如 Resume 后）主动调用。
+// Dispatch computes routing immediately and issues the instruction; Host may call it
+// directly at special moments such as after Resume.
 func (d *Dispatcher) Dispatch() {
 	state := LoadState(d.store)
 	inst := Route(state)
@@ -81,8 +97,10 @@ func (d *Dispatcher) Dispatch() {
 		return
 	}
 	n := d.trackRepeat(inst)
-	// Writer 任务：在派发同一刻把章节标为进行中，UI 右侧大纲立即反映"▸ 进行中"，
-	// 不用等 plan_chapter 真正执行（plan_chapter 会再调一次 StartChapter，幂等）。
+	// Writer task: mark the chapter in progress at dispatch time so the right-hand outline
+	// updates to "▸ In progress" immediately.
+	// We do not wait for plan_chapter to actually run (it will call StartChapter again, which
+	// is idempotent).
 	if inst.Agent == "writer" && inst.Chapter > 0 && d.store != nil {
 		if err := d.store.Progress.ValidateChapterWork(inst.Chapter); err != nil {
 			slog.Error("flow router refuses invalid writer dispatch", "module", "host.flow", "chapter", inst.Chapter, "err", err)
@@ -97,25 +115,29 @@ func (d *Dispatcher) Dispatch() {
 	d.coordinator.FollowUp(agentcore.UserMsg(msg))
 }
 
-// formatDispatchMessage 组装下达给 Coordinator 的指令消息。
-// n>1 时附加重复事实——告知"上次派发后路由事实未变化"并放开核对许可，
-// 让 LLM 自己裁定照常执行还是改派；不在 Host 层做任何强制分支。
+// formatDispatchMessage assembles the directive message sent to the Coordinator.
+// When n>1, it appends repeat facts, telling the model that the routing facts have not
+// changed since the last dispatch and allowing it to verify before choosing between the
+// original path or a different subagent. The Host does not force any branch here.
 func formatDispatchMessage(inst *Instruction, n int) string {
 	msg := FormatMessage(inst)
 	if n > 1 {
-		msg += fmt.Sprintf("\n（注意：本指令为第 %d 次下达——上次派发后路由事实未变化。本次允许先调 novel_context 核对事实，再裁定照常执行或改派其它子代理。）", n)
+		msg += fmt.Sprintf("\n(Note: this instruction has been issued %d times. The routing facts have not changed since the last dispatch. This time you may call novel_context first to verify facts, then decide whether to continue as planned or reassign to another subagent.)", n)
 	}
 	return msg
 }
 
-// SetOnRepeat 注册重复指令的 telemetry 回调。须在 Attach/派发开始前调用一次。
+// SetOnRepeat registers a telemetry callback for repeated instructions. Call it once
+// before Attach/dispatch starts.
 func (d *Dispatcher) SetOnRepeat(cb func(agent, task string, n int)) {
 	d.onRepeat = cb
 }
 
-// trackRepeat 记录连续相同指令的下达次数并返回当前次数（1 = 新指令）。
-// 用 Agent+Task 相等性（不比 Reason，因为 Reason 是给人看的辅助文本）。
-// 次数恰好到 repeatNotifyAt 时在锁外触发一次 onRepeat（键变更重计数后重新武装）。
+// trackRepeat records how many times the same instruction has been issued consecutively and
+// returns the current count (1 = new instruction).
+// It compares Agent+Task only, not Reason, because Reason is auxiliary text for humans.
+// When the count reaches repeatNotifyAt, it triggers onRepeat once outside the lock
+// (and re-arms after the key changes and counting restarts).
 func (d *Dispatcher) trackRepeat(next *Instruction) int {
 	d.lastMu.Lock()
 	if d.lastSent != nil && d.lastSent.Agent == next.Agent && d.lastSent.Task == next.Task {
@@ -134,8 +156,8 @@ func (d *Dispatcher) trackRepeat(next *Instruction) int {
 	return n
 }
 
-// ResetRepeat 清空重复追踪。Resume / 新 Start 时 Host 调用，
-// 确保恢复或新建后首条指令以"第 1 次"语义下达。
+// ResetRepeat clears repeat tracking. Host calls this on Resume / new Start so the first
+// instruction after recovery or a fresh start is issued with "first time" semantics.
 func (d *Dispatcher) ResetRepeat() {
 	d.lastMu.Lock()
 	defer d.lastMu.Unlock()

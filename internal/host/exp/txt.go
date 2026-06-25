@@ -8,7 +8,7 @@ import (
 	"github.com/voocel/ainovel-cli/internal/domain"
 )
 
-// chapterTitleIndex 给定章号查标题，缺失返回空串。
+// chapterTitleIndex maps chapter number to title, returns empty if missing.
 type chapterTitleIndex map[int]string
 
 func buildTitleIndex(outline []domain.OutlineEntry) chapterTitleIndex {
@@ -21,18 +21,18 @@ func buildTitleIndex(outline []domain.OutlineEntry) chapterTitleIndex {
 	return idx
 }
 
-// chapterLocation 是某章在分层大纲中的归属。只保留导出版式需要的卷信息——
-// 弧不进导出（读者视角下弧是过细的内部结构）。
+// chapterLocation is the location of a chapter in the layered outline. It only retains volume info required for export layout --
+// arcs are not exported (arcs are too detailed for the reader's perspective).
 type chapterLocation struct {
 	VolumeIdx       int
 	VolumeTitle     string
 	IsFirstOfVolume bool
 }
 
-// buildLocations 按分层大纲的全局章节顺序构造 {chapter -> location}。
-// 章号按 FlattenOutline 同样的规则重建（卷内弧内顺序累加），
-// 以保持与 Progress.CompletedChapters 的章号一致。弧层仍要遍历（算全局章号必经），
-// 但不落入 location——导出只在卷首插分隔。
+// buildLocations constructs {chapter -> location} in the order of the layered outline's global chapters.
+// Chapter numbers are reconstructed using the same rules as FlattenOutline (cumulative volume/arc order),
+// to maintain consistency with chapter numbers in Progress.CompletedChapters. Arcs are still traversed (necessary for calculating global chapter numbers),
+// but not included in location -- exports only insert dividers at the start of a volume.
 func buildLocations(volumes []domain.VolumeOutline) map[int]chapterLocation {
 	if len(volumes) == 0 {
 		return nil
@@ -56,17 +56,17 @@ func buildLocations(volumes []domain.VolumeOutline) map[int]chapterLocation {
 	return locs
 }
 
-// chapterHeaderRe 匹配带章号的 Markdown 标题首行（# 第N章 / ## 第 12 章 ...）。
-var chapterHeaderRe = regexp.MustCompile(`^#+\s+第.+?章`)
+// chapterHeaderRe matches the first line of a Markdown heading with a chapter number (e.g., # Chapter N / # 第N章 / ## Chapter 12 ...).
+var chapterHeaderRe = regexp.MustCompile(`^(?i)#+\s+(?:Chapter|第)\s*.+?(?:章|$)`)
 
-// atxTitleRe 提取 ATX 标题（# 标题）的文字部分。
+// atxTitleRe extracts the text part of an ATX heading (# Title).
 var atxTitleRe = regexp.MustCompile(`^#{1,6}\s+(.+?)\s*$`)
 
-// stripChapterTitleHeader 若首行是会与导出器统一标题重复的章节标题则剥掉。
-// 两种情形：① "# 第N章 …"（带章号）；② markdown 标题且其文字恰是本章标题
-// （writer 常把纯章节名当标题写进正文首行，如 "# 边村浮生"，与导出器生成的
-// "第 N 章 边村浮生" 重复）。其它 h1（如 "# 序章"）视为正文一部分，保留。
-// 调用方负责先 TrimSpace，因此前导空行不在考虑范围内。
+// stripChapterTitleHeader strips the first line if it is a chapter title that would duplicate the exporter's unified title.
+// Two cases: (1) "# Chapter N ..." / "# 第N章 ..." (with chapter number); (2) a Markdown heading whose text is exactly the chapter title
+// (writers often write the raw chapter name as a heading in the first line of the body, e.g. "# Edge Village Life", which duplicates the exporter's
+// "Chapter N: Edge Village Life"). Other H1 headings (e.g. "# Prologue") are treated as part of the body and retained.
+// The caller is responsible for calling TrimSpace first, so leading blank lines are not considered.
 func stripChapterTitleHeader(content, title string) string {
 	first, rest, hasNewline := strings.Cut(content, "\n")
 	if !isChapterTitleLine(first, title) {
@@ -89,10 +89,10 @@ func isChapterTitleLine(line, title string) bool {
 	return len(m) == 2 && strings.TrimSpace(m[1]) == title
 }
 
-// renderTXT 拼接最终文本。
+// renderTXT joins the final text.
 //
-// 章节顺序由 chapters 决定（调用方已按章号升序去重）。bodies/titleIdx/locations
-// 都按"缺失即降级"处理：标题缺失只输出 "第 N 章"；分层定位缺失就当扁平大纲。
+// Chapter order is determined by chapters (already sorted and deduplicated by chapter number). bodies/titleIdx/locations
+// are handled with a fallback-on-missing strategy: if the title is missing, it only outputs "Chapter N"; if the layered location is missing, it is treated as a flat outline.
 func renderTXT(
 	novelName string,
 	chapters []int,
@@ -114,16 +114,16 @@ func renderTXT(
 		if useLayered {
 			if loc, ok := locations[ch]; ok && loc.IsFirstOfVolume {
 				b.WriteString("\n═══════════════════════════════════════════\n")
-				fmt.Fprintf(&b, "           第 %d 卷  %s\n", loc.VolumeIdx, strings.TrimSpace(loc.VolumeTitle))
+				fmt.Fprintf(&b, "           Volume %d  %s\n", loc.VolumeIdx, strings.TrimSpace(loc.VolumeTitle))
 				b.WriteString("═══════════════════════════════════════════\n\n")
 			}
 		}
 
 		title := strings.TrimSpace(titleIdx[ch])
 		if title != "" {
-			fmt.Fprintf(&b, "第 %d 章  %s\n\n", ch, title)
+			fmt.Fprintf(&b, "Chapter %d  %s\n\n", ch, title)
 		} else {
-			fmt.Fprintf(&b, "第 %d 章\n\n", ch)
+			fmt.Fprintf(&b, "Chapter %d\n\n", ch)
 		}
 
 		body := stripChapterTitleHeader(strings.TrimSpace(bodies[ch]), title)

@@ -14,15 +14,15 @@ import (
 	"github.com/voocel/ainovel-cli/internal/errs"
 )
 
-// 长输出 + 长 ctx 场景下，reasoning-aware provider（mimo / deepseek-r1 等）
-// 思考阶段如果 server 端不流式发 reasoning delta，SSE 整段会保持沉默。
-// litellm 默认 watchdog 是 2 分钟，对 8000 字写作章节经常触发误杀。
-// 5 分钟覆盖绝大多数实测案例（参见 tasks/todo.md plan→draft 思考时长统计），
-// 仍小于 RequestTimeout 10 分钟，网络真死时仍能兜底。
+// Under long output + long ctx scenarios, reasoning-aware providers (mimo / deepseek-r1, etc.)
+// can cause SSE to remain completely silent during the thinking phase if the server side does not stream reasoning deltas.
+// The default watchdog in litellm is 2 minutes, which often triggers false kills on 8000-word writing chapters.
+// 5 minutes covers the vast majority of practical cases (see thinking time stats in tasks/todo.md plan->draft),
+// which is still less than RequestTimeout of 10 minutes, allowing a fallback when the network is truly dead.
 const streamIdleTimeout = 5 * time.Minute
 
-// FailoverEvent 表示一次显式 provider 切换。
-// Reason 为短标签（rate_limit / timeout / stream_idle / network），用于结构化日志。
+// FailoverEvent represents an explicit provider failover.
+// Reason is a short label (rate_limit / timeout / stream_idle / network), used for structured logging.
 type FailoverEvent struct {
 	Role         string
 	Reason       string
@@ -33,7 +33,7 @@ type FailoverEvent struct {
 	Err          error
 }
 
-// FailoverReporter 在发生显式切换时被调用。
+// FailoverReporter is invoked when an explicit failover occurs.
 type FailoverReporter func(FailoverEvent)
 
 type modelTarget struct {
@@ -42,8 +42,8 @@ type modelTarget struct {
 	model    agentcore.ChatModel
 }
 
-// SwappableModel 是可热切换的 ChatModel 包装器。
-// 已开始的请求继续使用旧实例；后续请求自动切到新实例。
+// SwappableModel is a swappable wrapper around ChatModel.
+// Ongoing requests continue using the old instance, while subsequent requests automatically switch to the new instance.
 type SwappableModel struct {
 	*agentcore.SwappableModel
 	mu       sync.RWMutex
@@ -98,7 +98,7 @@ func (m *SwappableModel) Current() (provider, name string) {
 	return m.provider, m.name
 }
 
-// ModelSet 持有按角色分配的模型实例，未配置的角色回退到默认模型。
+// ModelSet holds model instances assigned per role; unconfigured roles fallback to the default model.
 type ModelSet struct {
 	Default   *SwappableModel
 	models    map[string]*SwappableModel
@@ -106,7 +106,7 @@ type ModelSet struct {
 	config    Config
 }
 
-// ForRole 返回指定角色的模型，未配置时返回默认模型。
+// ForRole returns the model for the specified role, falling back to default if not configured.
 func (ms *ModelSet) ForRole(role string) agentcore.ChatModel {
 	if m, ok := ms.models[role]; ok {
 		return m
@@ -114,8 +114,8 @@ func (ms *ModelSet) ForRole(role string) agentcore.ChatModel {
 	return ms.Default
 }
 
-// ForRoleWithFailover 返回带有单次请求级 fallback 的角色模型。
-// 仅当该角色显式配置了 fallbacks 时生效；未配置时退化为普通模型。
+// ForRoleWithFailover returns the role model with a request-level fallback.
+// Only takes effect when the role explicitly configures fallbacks; degrades to a standard model if not configured.
 func (ms *ModelSet) ForRoleWithFailover(role string, report FailoverReporter) agentcore.ChatModel {
 	primary, ok := ms.models[role]
 	if !ok {
@@ -133,7 +133,7 @@ func (ms *ModelSet) ForRoleWithFailover(role string, report FailoverReporter) ag
 	}
 }
 
-// Summary 返回模型分配摘要（供日志使用）。
+// Summary returns the model allocation summary (for logging).
 func (ms *ModelSet) Summary() string {
 	var parts []string
 	for role, m := range ms.models {
@@ -148,8 +148,8 @@ func (ms *ModelSet) Summary() string {
 	return fmt.Sprintf("default=%s/%s %s", provider, name, strings.Join(parts, " "))
 }
 
-// CurrentSelection 返回角色当前生效的 provider/model。
-// role 为空或 "default" 时返回默认模型。
+// CurrentSelection returns the currently active provider/model for the role.
+// role is empty or "default" when returning the default model.
 func (ms *ModelSet) CurrentSelection(role string) (provider, model string, explicit bool) {
 	if role == "" || role == "default" {
 		provider, model = ms.Default.Current()
@@ -163,8 +163,8 @@ func (ms *ModelSet) CurrentSelection(role string) (provider, model string, expli
 	return provider, model, false
 }
 
-// Swap 切换默认模型或指定角色模型。
-// role 为空或 "default" 时切换默认模型；其他角色切换为显式覆盖。
+// Swap switches the default model or a specific role model.
+// Switches the default model when role is empty or "default"; otherwise switches to explicit override.
 func (ms *ModelSet) Swap(role, provider, model string) error {
 	pc, ok := ms.config.Providers[provider]
 	if !ok {
@@ -172,7 +172,7 @@ func (ms *ModelSet) Swap(role, provider, model string) error {
 	}
 	next, err := createModelFromConfig(provider, model, pc, make(map[string]agentcore.ChatModel))
 	if err != nil {
-		return fmt.Errorf("切换模型失败: %w", err)
+		return fmt.Errorf("failed to swap model: %w", err)
 	}
 
 	if role == "" || role == "default" {
@@ -192,8 +192,8 @@ func (ms *ModelSet) Swap(role, provider, model string) error {
 	return nil
 }
 
-// ModelName 从 ChatModel 中提取当前模型名，失败返回空字符串。
-// 支持 SwappableModel 的热切换：调用时总是返回最新值。
+// ModelName extracts the current model name from ChatModel, returning an empty string on failure.
+// Supports hot swapping of SwappableModel: always returns the latest value on invocation.
 func ModelName(m agentcore.ChatModel) string {
 	if info, ok := m.(interface{ Info() llm.ModelInfo }); ok {
 		return info.Info().Name
@@ -201,12 +201,12 @@ func ModelName(m agentcore.ChatModel) string {
 	return ""
 }
 
-// NewModelSet 根据配置创建多模型集合。
-// 相同 provider+model 组合复用同一个实例。
+// NewModelSet creates a multi-model set based on configuration.
+// Reuses the same instance for identical provider+model combinations.
 func NewModelSet(cfg Config) (*ModelSet, error) {
 	cache := make(map[string]agentcore.ChatModel)
 
-	// 创建默认模型
+	// Create default model
 	defaultPC := cfg.DefaultProviderConfig()
 	defaultModel, err := createModelFromConfig(cfg.Provider, cfg.ModelName, defaultPC, cache)
 	if err != nil {
@@ -220,7 +220,7 @@ func NewModelSet(cfg Config) (*ModelSet, error) {
 		config:    cfg,
 	}
 
-	// 创建角色覆盖模型
+	// Create role overrides
 	for role, rc := range cfg.Roles {
 		pc, ok := cfg.Providers[rc.Provider]
 		if !ok {
@@ -231,7 +231,7 @@ func NewModelSet(cfg Config) (*ModelSet, error) {
 			return nil, fmt.Errorf("role %s model: %w", role, err)
 		}
 		ms.models[role] = NewSwappableModel(rc.Provider, rc.Model, m)
-		slog.Info("角色模型分配", "module", "config", "role", role, "provider", rc.Provider, "model", rc.Model)
+		slog.Info("role model allocation", "module", "config", "role", role, "provider", rc.Provider, "model", rc.Model)
 		if len(rc.Fallbacks) == 0 {
 			continue
 		}
@@ -258,7 +258,7 @@ func NewModelSet(cfg Config) (*ModelSet, error) {
 	return ms, nil
 }
 
-// createModelFromConfig 创建或复用 ChatModel 实例。
+// createModelFromConfig creates or reuses a ChatModel instance.
 func createModelFromConfig(providerKey, model string, pc ProviderConfig, cache map[string]agentcore.ChatModel) (agentcore.ChatModel, error) {
 	cacheKey := providerKey + "|" + model
 	if m, ok := cache[cacheKey]; ok {
@@ -267,7 +267,7 @@ func createModelFromConfig(providerKey, model string, pc ProviderConfig, cache m
 
 	providerType, err := pc.ProviderType(providerKey)
 	if err != nil {
-		return nil, fmt.Errorf("解析 provider 类型失败: %w", err)
+		return nil, fmt.Errorf("failed to parse provider type: %w", err)
 	}
 
 	m, err := llm.NewModel(providerType, model,

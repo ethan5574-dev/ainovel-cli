@@ -7,24 +7,42 @@ import (
 )
 
 var premiseHeadingAliases = map[string]string{
-	"题材定位":    "题材定位",
-	"题材和基调":   "题材和基调",
-	"核心冲突":    "核心冲突",
-	"主角目标":    "主角目标",
-	"结局方向":    "终局方向",
-	"终局方向":    "终局方向",
-	"写作禁区":    "写作禁区",
-	"差异化卖点":   "差异化卖点",
-	"差异化钩子":   "差异化钩子",
-	"核心兑现承诺":  "核心兑现承诺",
-	"故事引擎":    "故事引擎",
-	"关系/成长主线": "关系/成长主线",
-	"升级路径":    "升级路径",
-	"中段转折":    "中段转折",
-	"中期转向":    "中段转折",
-	"终局命题":    "终局命题",
-	"短篇适配性":   "短篇适配性",
-	"本作为什么适合短篇/单卷收束": "短篇适配性",
+	// Chinese keys
+	"题材定位":                    "Genre Positioning",
+	"题材和基调":                  "Genre and Tone",
+	"核心冲突":                    "Core Conflict",
+	"主角目标":                    "Protagonist Goal",
+	"结局方向":                    "Ending Direction",
+	"终局方向":                    "Ending Direction",
+	"写作禁区":                    "Writing Forbidden Zones",
+	"差异化卖点":                  "Differentiated Selling Point",
+	"差异化钩子":                  "Differentiated Hook",
+	"核心兑现承诺":                "Core Promise to Deliver",
+	"故事引擎":                    "Story Engine",
+	"关系/成长主线":              "Relationship/Growth Mainline",
+	"升级路径":                    "Upgrade Path",
+	"中段转折":                    "Midpoint Twist",
+	"中期转向":                    "Midpoint Twist",
+	"终局命题":                    "Ending Theme",
+	"短篇适配性":                  "Short Story Suitability",
+	"本作为什么适合短篇/单卷收束": "Short Story Suitability",
+
+	// English keys
+	"Genre Positioning":           "Genre Positioning",
+	"Genre and Tone":              "Genre and Tone",
+	"Core Conflict":               "Core Conflict",
+	"Protagonist Goal":            "Protagonist Goal",
+	"Ending Direction":            "Ending Direction",
+	"Writing Forbidden Zones":     "Writing Forbidden Zones",
+	"Differentiated Selling Point": "Differentiated Selling Point",
+	"Differentiated Hook":         "Differentiated Hook",
+	"Core Promise to Deliver":      "Core Promise to Deliver",
+	"Story Engine":                "Story Engine",
+	"Relationship/Growth Mainline": "Relationship/Growth Mainline",
+	"Upgrade Path":                "Upgrade Path",
+	"Midpoint Twist":              "Midpoint Twist",
+	"Ending Theme":                "Ending Theme",
+	"Short Story Suitability":     "Short Story Suitability",
 }
 
 func parsePremiseSections(premise string) map[string]string {
@@ -97,34 +115,34 @@ func premiseStructure(premise string, tier domain.PlanningTier) map[string]any {
 
 func requiredPremiseHeadings(tier domain.PlanningTier) []string {
 	common := []string{
-		"题材和基调",
-		"题材定位",
-		"核心冲突",
-		"主角目标",
-		"终局方向",
-		"写作禁区",
-		"差异化卖点",
-		"差异化钩子",
-		"核心兑现承诺",
+		"Genre and Tone",
+		"Genre Positioning",
+		"Core Conflict",
+		"Protagonist Goal",
+		"Ending Direction",
+		"Writing Forbidden Zones",
+		"Differentiated Selling Point",
+		"Differentiated Hook",
+		"Core Promise to Deliver",
 	}
 
 	switch tier {
 	case domain.PlanningTierLong:
 		return append(common,
-			"故事引擎",
-			"关系/成长主线",
-			"升级路径",
-			"中段转折",
-			"终局命题",
+			"Story Engine",
+			"Relationship/Growth Mainline",
+			"Upgrade Path",
+			"Midpoint Twist",
+			"Ending Theme",
 		)
 	case domain.PlanningTierMid:
 		return append(common,
-			"故事引擎",
-			"中段转折",
+			"Story Engine",
+			"Midpoint Twist",
 		)
 	case domain.PlanningTierShort:
 		return append(common,
-			"短篇适配性",
+			"Short Story Suitability",
 		)
 	default:
 		return common

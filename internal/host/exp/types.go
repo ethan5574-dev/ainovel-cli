@@ -1,58 +1,56 @@
-// Package exp 实现已完成章节的导出能力。
+// Package exp implements the capability to export completed chapters.
 //
-// 与 imp/ 对称：纯本地 IO，不依赖 LLM，不改 store 状态。导出可以与
-// Coordinator 并发运行（只读 Progress + 章节终稿），属于横向能力。
-//
-// 第一版只支持 TXT；EPUB 留待下一轮。
+// Symmetric with imp/: pure local IO, does not depend on LLM, does not modify store state. Export can run
+// concurrently with the Coordinator (read-only Progress + final chapters), belonging to sidecar capabilities.
 package exp
 
 import "github.com/voocel/ainovel-cli/internal/store"
 
-// Format 标识导出格式。
+// Format identifies the export format.
 type Format string
 
 const (
-	// FormatTXT 纯文本输出。
+	// FormatTXT plain text output.
 	FormatTXT Format = "txt"
-	// FormatEPUB 标准 EPUB 3 容器（zip + xhtml）。
+	// FormatEPUB standard EPUB 3 container (zip + xhtml).
 	FormatEPUB Format = "epub"
 )
 
-// Options 控制导出行为。zero-value 等价于"导出全本到默认路径，文件存在时报错"。
+// Options controls the export behavior. Zero-value is equivalent to "export the entire book to default path, return error if file exists".
 //
-// 版式：《书名》 → 卷分隔 → 章节正文。两类内部数据不进导出：premise（创作蓝图，
-// 含目标读者 / 核心消费点 / 写作禁区等后台元信息，给作者与引擎看，不是读者的序）；
-// 弧分隔（读者视角下弧是过细的内部结构）。书名与卷分隔始终保留。
+// Layout: "《Book Title》" -> Volume dividers -> Chapter text. Two types of internal data are not exported: premise (creation blueprint,
+// containing background metadata such as target readers / core selling points / writing guidelines for the author and engine, not the reader's preface);
+// arc dividers (arcs are too detailed for the reader's perspective). Book title and volume dividers are always retained.
 type Options struct {
-	// Format 空字符串时由 OutPath 后缀推断（.txt → TXT，.epub → EPUB）；
-	// OutPath 也为空时回退 FormatTXT。SDK 调用方可显式指定以跳过推断。
+	// Format: if empty, inferred from OutPath extension (.txt -> TXT, .epub -> EPUB);
+	// defaults to FormatTXT if OutPath is also empty. SDK callers can specify it explicitly to skip inference.
 	Format Format
 
-	// OutPath 输出文件路径；空表示 {novelDir}/{NovelName}.{ext}，
-	// ext 由 Format 决定（NovelName 为空则用目录名）。
+	// OutPath: output file path; empty means {novelDir}/{NovelName}.{ext},
+	// where ext is determined by Format (if NovelName is empty, the directory name is used).
 	OutPath string
 
-	// From / To 章节范围，闭区间。0 表示从第 1 章 / 到最后一章。
-	// 范围内未完成的章节会被跳过并写入 Result.Skipped，不视为错误。
+	// From / To: chapter range, closed interval. 0 means from chapter 1 / to the last chapter.
+	// Uncompleted chapters in range will be skipped and written to Result.Skipped, not treated as an error.
 	From, To int
 
-	// Overwrite 文件存在时是否覆盖；默认拒绝。
+	// Overwrite: whether to overwrite if file exists; defaults to false.
 	Overwrite bool
 }
 
-// Deps 是 Run 所需依赖。仅 store；导出无需 LLM、prompt、bundle。
+// Deps: dependencies for Run. Only store; export doesn't require LLM, prompt, or bundle.
 type Deps struct {
 	Store *store.Store
 }
 
-// Result 是一次成功导出的产物摘要。
+// Result: summary of a successful export.
 type Result struct {
-	// Path 实际写入的文件路径（绝对或调用方传入的相对）。
+	// Path: actual path of the written file (absolute or relative from the caller).
 	Path string
-	// Chapters 实际写入的章节数。
+	// Chapters: number of chapters actually written.
 	Chapters int
-	// Bytes 文件字节数（UTF-8）。
+	// Bytes: file size in bytes (UTF-8).
 	Bytes int
-	// Skipped 落在请求范围内但未完成的章节号。
+	// Skipped: chapter numbers in the requested range that are not completed.
 	Skipped []int
 }

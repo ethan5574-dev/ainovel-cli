@@ -15,12 +15,12 @@ func TestParseThinkingLevel(t *testing.T) {
 		"medium":  agentcore.ThinkingMedium,
 		"high":    agentcore.ThinkingHigh,
 		"xhigh":   agentcore.ThinkingXHigh,
-		"  HIGH ": agentcore.ThinkingHigh, // 大小写/空白归一
+		"  HIGH ": agentcore.ThinkingHigh, // Case/whitespace normalization
 	}
 	for in, want := range ok {
 		got, err := ParseThinkingLevel(in)
 		if err != nil {
-			t.Errorf("ParseThinkingLevel(%q) 意外报错: %v", in, err)
+			t.Errorf("ParseThinkingLevel(%q) unexpected error: %v", in, err)
 			continue
 		}
 		if got != want {
@@ -30,7 +30,7 @@ func TestParseThinkingLevel(t *testing.T) {
 
 	for _, bad := range []string{"ultra", "max", "true", "0"} {
 		if _, err := ParseThinkingLevel(bad); err == nil {
-			t.Errorf("ParseThinkingLevel(%q) 应报错，实际通过", bad)
+			t.Errorf("ParseThinkingLevel(%q) should return error, but passed", bad)
 		}
 	}
 }

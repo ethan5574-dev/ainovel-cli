@@ -9,8 +9,8 @@ import (
 	"github.com/voocel/ainovel-cli/internal/store"
 )
 
-// Snapshot 是对 output 目录全部工件的只读快照。
-// 所有规则函数只接收 Snapshot，不直接访问文件系统。
+// Snapshot is a read-only snapshot of all artifacts in the output directory.
+// All rule functions receive only Snapshot and do not access the filesystem directly.
 type Snapshot struct {
 	Progress      *domain.Progress
 	RunMeta       *domain.RunMeta
@@ -29,11 +29,11 @@ type Snapshot struct {
 	Plans         map[int]*domain.ChapterPlan
 	Summaries     map[int]*domain.ChapterSummary
 
-	LoadErrors []string // 非 NotExist 的加载失败，区分"无数据"和"读取出错"
+	LoadErrors []string // Load failures other than NotExist, to distinguish "no data" from "read error"
 }
 
-// Load 从 store 中读取全部工件，构建只读快照。
-// 文件不存在视为"无数据"（字段保持零值）；其他错误记录到 LoadErrors。
+// Load reads all artifacts from store and constructs a read-only snapshot.
+// Non-existent files are treated as "no data" (fields remain zero-valued); other errors are recorded in LoadErrors.
 func Load(s *store.Store) Snapshot {
 	snap := Snapshot{
 		Reviews:   make(map[int]*domain.ReviewEntry),
@@ -98,7 +98,7 @@ func Load(s *store.Store) Snapshot {
 	return snap
 }
 
-// CompletedCount 返回已完成章节数（安全访问）。
+// CompletedCount returns the number of completed chapters (safe access).
 func (s *Snapshot) CompletedCount() int {
 	if s.Progress == nil {
 		return 0
@@ -106,7 +106,7 @@ func (s *Snapshot) CompletedCount() int {
 	return len(s.Progress.CompletedChapters)
 }
 
-// LatestCompleted 返回最大已完成章节号；无则返回 0。
+// LatestCompleted returns the maximum completed chapter number; returns 0 if none.
 func (s *Snapshot) LatestCompleted() int {
 	if s.Progress == nil {
 		return 0

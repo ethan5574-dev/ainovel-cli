@@ -20,15 +20,15 @@ func TestStoreSummaryCompactApplyUsesPersistentStoreData(t *testing.T) {
 	})
 
 	msgs := []agentcore.AgentMessage{
-		agentcore.UserMsg(strings.Repeat("旧上下文", 80)),
+		agentcore.UserMsg(strings.Repeat("old context", 300)),
 		agentcore.Message{
 			Role:    agentcore.RoleAssistant,
-			Content: []agentcore.ContentBlock{agentcore.TextBlock(strings.Repeat("旧回复", 80))},
+			Content: []agentcore.ContentBlock{agentcore.TextBlock(strings.Repeat("old reply", 300))},
 		},
-		agentcore.UserMsg("继续写第三章，注意承接第二章结尾。"),
+		agentcore.UserMsg("Continue writing chapter 3, pay attention to continuing from the end of chapter 2."),
 		agentcore.Message{
 			Role:    agentcore.RoleAssistant,
-			Content: []agentcore.ContentBlock{agentcore.TextBlock("收到，我先梳理当前场景。")},
+			Content: []agentcore.ContentBlock{agentcore.TextBlock("Received, I will first organize the current scene.")},
 		},
 	}
 
@@ -53,19 +53,19 @@ func TestStoreSummaryCompactApplyUsesPersistentStoreData(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected ContextSummary, got %T", out[0])
 	}
-	if !strings.Contains(summary.Summary, "最近章节摘要") {
+	if !strings.Contains(summary.Summary, "Recent Chapter Summaries") {
 		t.Fatalf("expected persistent summaries in checkpoint, got %q", summary.Summary)
 	}
-	if !strings.Contains(summary.Summary, "当前章节计划") {
+	if !strings.Contains(summary.Summary, "Current Chapter Plan") {
 		t.Fatalf("expected chapter plan in checkpoint, got %q", summary.Summary)
 	}
-	if !strings.Contains(summary.Summary, "活跃伏笔") {
+	if !strings.Contains(summary.Summary, "Active Foreshadows") {
 		t.Fatalf("expected foreshadow data in checkpoint, got %q", summary.Summary)
 	}
-	if !strings.Contains(summary.Summary, "待修审稿问题") {
+	if !strings.Contains(summary.Summary, "Pending Reviews") {
 		t.Fatalf("expected pending review section in checkpoint, got %q", summary.Summary)
 	}
-	if !strings.Contains(summary.Summary, "仓库线索需要再蓄压一拍") {
+	if !strings.Contains(summary.Summary, "warehouse clues need another beat of building tension") {
 		t.Fatalf("expected pending review details in checkpoint, got %q", summary.Summary)
 	}
 	if result.Info == nil || result.Info.CompactedCount <= 0 {
@@ -90,10 +90,10 @@ func TestStoreSummaryCompactApplyFallsBackWhenStoreDataInsufficient(t *testing.T
 
 	strategy := NewStoreSummaryCompact(StoreSummaryCompactConfig{Store: s, KeepRecentTokens: 20})
 	msgs := []agentcore.AgentMessage{
-		agentcore.UserMsg(strings.Repeat("旧上下文", 40)),
+		agentcore.UserMsg(strings.Repeat("old context", 40)),
 		agentcore.Message{
 			Role:    agentcore.RoleAssistant,
-			Content: []agentcore.ContentBlock{agentcore.TextBlock(strings.Repeat("旧回复", 40))},
+			Content: []agentcore.ContentBlock{agentcore.TextBlock(strings.Repeat("old reply", 40))},
 		},
 	}
 
@@ -126,10 +126,10 @@ func TestWriterRestorePackRefreshReusesStoreBuilder(t *testing.T) {
 	if !strings.Contains(text, "<post-compact-context>") {
 		t.Fatalf("expected wrapped restore context, got %q", text)
 	}
-	if !strings.Contains(text, "待修审稿问题") {
+	if !strings.Contains(text, "Pending Reviews") {
 		t.Fatalf("expected pending review section, got %q", text)
 	}
-	if !strings.Contains(text, "当前章节计划") {
+	if !strings.Contains(text, "Current Chapter Plan") {
 		t.Fatalf("expected chapter plan section, got %q", text)
 	}
 }
@@ -151,51 +151,51 @@ func seededWriterStore(t *testing.T) *storepkg.Store {
 		t.Fatalf("Save progress: %v", err)
 	}
 	if err := s.Outline.SaveOutline([]domain.OutlineEntry{
-		{Chapter: 1, Title: "第一章", CoreEvent: "开场"},
-		{Chapter: 2, Title: "第二章", CoreEvent: "冲突升级"},
-		{Chapter: 3, Title: "第三章", CoreEvent: "追查线索", Scenes: []string{"主角追查失踪案", "发现旧仓库线索"}},
+		{Chapter: 1, Title: "Chapter 1", CoreEvent: "Opening"},
+		{Chapter: 2, Title: "Chapter 2", CoreEvent: "Conflict escalates"},
+		{Chapter: 3, Title: "Chapter 3", CoreEvent: "Investigate clues", Scenes: []string{"Protagonist investigates missing person case", "Find old warehouse clues"}},
 	}); err != nil {
 		t.Fatalf("SaveOutline: %v", err)
 	}
 	if err := s.Drafts.SaveChapterPlan(domain.ChapterPlan{
 		Chapter:    3,
-		Title:      "第三章",
-		Goal:       "推进失踪案调查",
-		Conflict:   "主角与搭档对调查方向分歧",
-		Hook:       "仓库中发现可疑录音",
-		EmotionArc: "怀疑到紧张",
+		Title:      "Chapter 3",
+		Goal:       "Advance investigation of the missing case",
+		Conflict:   "Protagonist and partner disagree on direction",
+		Hook:       "Suspicious recording found in the warehouse",
+		EmotionArc: "Suspicion to tension",
 	}); err != nil {
 		t.Fatalf("SaveChapterPlan: %v", err)
 	}
 	if err := s.Summaries.SaveSummary(domain.ChapterSummary{
 		Chapter:    1,
-		Summary:    "主角接下委托，发现失踪案并不简单。",
-		Characters: []string{"林岚", "周策"},
-		KeyEvents:  []string{"委托成立"},
+		Summary:    "Protagonist takes on the commission and finds the missing person case is not simple.",
+		Characters: []string{"Lin Lan", "Zhou Ce"},
+		KeyEvents:  []string{"Commission established"},
 	}); err != nil {
 		t.Fatalf("SaveSummary 1: %v", err)
 	}
 	if err := s.Summaries.SaveSummary(domain.ChapterSummary{
 		Chapter:    2,
-		Summary:    "两人追查旧码头，线索指向废弃仓库。",
-		Characters: []string{"林岚", "周策", "沈叔"},
-		KeyEvents:  []string{"旧码头冲突", "仓库线索出现"},
+		Summary:    "The two investigate the old pier, clues point to the abandoned warehouse.",
+		Characters: []string{"Lin Lan", "Zhou Ce", "Uncle Shen"},
+		KeyEvents:  []string{"Old pier conflict", "Warehouse clues appear"},
 	}); err != nil {
 		t.Fatalf("SaveSummary 2: %v", err)
 	}
 	if err := s.World.SaveForeshadowLedger([]domain.ForeshadowEntry{
-		{ID: "tape", Description: "失踪者留下的录音带", PlantedAt: 2, Status: "planted"},
+		{ID: "tape", Description: "Audiotape left by the missing person", PlantedAt: 2, Status: "planted"},
 	}); err != nil {
 		t.Fatalf("SaveForeshadowLedger: %v", err)
 	}
 	if err := s.World.SaveTimeline([]domain.TimelineEvent{
-		{Chapter: 2, Time: "夜晚", Event: "旧码头交锋", Characters: []string{"林岚", "周策"}},
+		{Chapter: 2, Time: "Night", Event: "Old pier clash", Characters: []string{"Lin Lan", "Zhou Ce"}},
 	}); err != nil {
 		t.Fatalf("SaveTimeline: %v", err)
 	}
 	if err := s.World.SaveStyleRules(domain.WritingStyleRules{
-		Prose:  []string{"句子偏短，保持压迫感"},
-		Taboos: []string{"避免直白解释谜团"},
+		Prose:  []string{"Sentences tend to be short, keeping tension"},
+		Taboos: []string{"Avoid explaining the mystery directly"},
 	}); err != nil {
 		t.Fatalf("SaveStyleRules: %v", err)
 	}
@@ -203,16 +203,16 @@ func seededWriterStore(t *testing.T) *storepkg.Store {
 		Chapter: 2,
 		Scope:   "chapter",
 		Verdict: "polish",
-		Summary: "第二章结尾铺垫偏急，需要补一拍仓库前的压迫感。",
+		Summary: "Chapter 2 ending setup is a bit rushed, need to add a beat of tension before the warehouse.",
 		Issues: []domain.ConsistencyIssue{
 			{
 				Type:        "pacing",
 				Severity:    "warning",
-				Description: "仓库线索出现过快，悬疑蓄压不够。",
-				Suggestion:  "在进入仓库前增加一段迟疑与环境压迫描写。",
+				Description: "Warehouse clues appear too fast, suspense building is insufficient.",
+				Suggestion:  "Add a description of hesitation and environmental oppression before entering the warehouse.",
 			},
 		},
-		ContractMisses: []string{"章末钩子不够强"},
+		ContractMisses: []string{"End hook is not strong enough"},
 	}); err != nil {
 		t.Fatalf("Save chapter review: %v", err)
 	}
@@ -220,7 +220,7 @@ func seededWriterStore(t *testing.T) *storepkg.Store {
 		Chapter: 2,
 		Scope:   "global",
 		Verdict: "polish",
-		Summary: "第二章尾声节奏偏快，仓库线索需要再蓄压一拍。",
+		Summary: "Chapter 2 ending pacing is a bit fast, warehouse clues need another beat of building tension.",
 	}); err != nil {
 		t.Fatalf("SaveReview: %v", err)
 	}

@@ -1,25 +1,25 @@
-# 上下文管理说明
+# Context Management Guide
 
-本文档说明 `ainovel-cli` 当前的上下文管理体系，包括：
+This document explains the current context management system in `ainovel-cli`, including:
 
-- 为什么要做上下文管理
-- 上下文从哪里来
-- 运行时如何压缩、恢复、交接
-- 每个策略的价值、触发条件与适用场景
-- 出问题时应该先看哪里
+- why context management exists
+- where context comes from
+- how runtime compression, recovery, and handoff work
+- the value, trigger conditions, and use cases of each strategy
+- where to look first when something goes wrong
 
-目标不是介绍抽象概念，而是让后续维护者打开这一份文档，就能快速理解当前实现和排障入口。
+The goal is not to introduce abstract concepts, but to let future maintainers quickly understand the current implementation and troubleshooting entry points from this document alone.
 
-## 1. 设计目标
+## 1. Design Goals
 
-本项目的上下文管理不是通用聊天场景，而是面向小说创作场景。它要同时解决几类问题：
+The context management in this project is not for generic chat. It is designed for novel writing and must solve several problems at once:
 
 1. 长对话会超出模型上下文窗口。
 2. 小说创作需要保留的不是“聊天历史本身”，而是结构化叙事记忆。
 3. Writer 在压缩后不能丢掉角色状态、伏笔、章节计划、风格约束、审稿待修项。
 4. 恢复写作时不能假设模型还“记得之前聊过什么”，必须优先依赖持久化工件。
 
-因此我们采用的是一套“分层记忆”方案：
+So we use a layered memory scheme:
 
 - 短期记忆：最近保留的消息尾部
 - 中期记忆：压缩生成的 `ContextSummary`

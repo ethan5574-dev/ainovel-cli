@@ -7,16 +7,16 @@ import (
 	"strings"
 )
 
-// Merge 把 loader 返回的多个来源合并成最终 Bundle。
+// Merge merges multiple sources returned by loader into a final Bundle.
 //
-// 合并规则：
-//   - 普通结构化字段：就近优先（后者覆盖前者），多来源声明同一字段且值不一致写 field_conflict
-//   - fatigue_words：按词合并；同一词多来源声明且阈值不一致时，就近优先并写 field_conflict
-//   - Markdown 正文：按来源顺序拼接，每段加来源标题，不覆盖
-//   - sources：所有成功加载的文件路径
-//   - conflicts：解析期 conflicts + 合并期 field_conflict
+// Merge rules:
+//   - Regular structured fields: nearest priority (the latter overwrites the former), write field_conflict if multiple sources declare the same field and values mismatch
+//   - fatigue_words: merged by word; when the same word is declared in multiple sources and thresholds mismatch, nearest priority is used and field_conflict is written
+//   - Markdown body: concatenated in order of source, adding a source header for each block, without overwriting
+//   - sources: all successfully loaded file paths
+//   - conflicts: parsing conflicts + merge-time field_conflict
 //
-// 入参 layers 应已按 SourceKind 升序排好（loader.Load 的输出形态）。
+// Input parameter layers should already be sorted by SourceKind in ascending order (output format of loader.Load).
 func Merge(layers []Parsed) Bundle {
 	bundle := Bundle{
 		Structured:  Structured{},
@@ -25,7 +25,7 @@ func Merge(layers []Parsed) Bundle {
 		Conflicts:   nil,
 	}
 
-	// 阶段 A：收集每个字段的所有声明来源，便于后续冲突判定
+	// Phase A: collect all declaration sources for each field, facilitating subsequent conflict decisions
 	declarations := map[string][]Parsed{}
 	declare := func(field string, p Parsed) {
 		declarations[field] = append(declarations[field], p)
@@ -48,8 +48,8 @@ func Merge(layers []Parsed) Bundle {
 		}
 	}
 
-	// 阶段 B：合并结构化字段，得到最终结构化字段。
-	// 标量/list 字段保持就近覆盖；fatigue_words 是 map，按词叠加，便于用户只新增少量疲劳词。
+	// Phase B: merge structured fields to get the final structured fields.
+	// Scalar/list fields are overwritten by proximity; fatigue_words is a map merged by word, making it easy for users to add only a small number of fatigue words.
 	for _, p := range layers {
 		if p.Structured.Genre != "" {
 			bundle.Structured.Genre = p.Structured.Genre
@@ -68,7 +68,7 @@ func Merge(layers []Parsed) Bundle {
 		}
 	}
 
-	// 阶段 C：构造 field_conflict（多来源 + 值不一致才算冲突）
+	// Phase C: construct field_conflict (counts as conflict only when multiple sources exist and values mismatch)
 	for field, sources := range declarations {
 		if len(sources) < 2 {
 			continue
@@ -88,7 +88,7 @@ func Merge(layers []Parsed) Bundle {
 		})
 	}
 
-	// 阶段 D：合并 Markdown 偏好正文
+	// Phase D: merge Markdown preference body
 	var sb strings.Builder
 	for _, p := range layers {
 		if strings.TrimSpace(p.Preference) == "" {
@@ -102,7 +102,7 @@ func Merge(layers []Parsed) Bundle {
 	}
 	bundle.Preferences = sb.String()
 
-	// 阶段 E：汇总 sources 与解析期 conflicts
+	// Phase E: aggregate sources and parsing conflicts
 	for _, p := range layers {
 		bundle.Sources = append(bundle.Sources, p.Source)
 		bundle.Conflicts = append(bundle.Conflicts, p.Conflicts...)
@@ -171,18 +171,18 @@ func fatigueWordConflicts(sources []Parsed) []Conflict {
 			Source: winner.source,
 			Kind:   ConflictFieldConflict,
 			Field:  "fatigue_words." + word,
-			Detail: fmt.Sprintf("字段 fatigue_words[%q] 在多个来源声明且阈值不一致：%s；就近优先生效：%s",
+			Detail: fmt.Sprintf("field fatigue_words[%q] is declared in multiple sources with inconsistent thresholds: %s; nearest priority applies: %s",
 				word, strings.Join(parts, " | "), winner.source),
 		})
 	}
 	return conflicts
 }
 
-// allEqual 判定同一字段在多个来源中的值是否完全一致；一致则不报冲突。
+// allEqual determines whether the value of the same field is completely consistent across multiple sources; if consistent, no conflict is reported.
 //
-// list 字段语义上不关心顺序，但实现上 yaml 反序列化已保留声明顺序，
-// 完全相同的两份配置 reflect.DeepEqual 即返回 true，已满足"值一致"的判定。
-// 顺序不同但元素相同的特殊情况按"不一致"处理是可接受的（仍然 just info，不阻断）。
+// Semantically, list fields do not care about order, but implementation-wise yaml deserialization has preserved the declaration order.
+// Two completely identical configurations return true for reflect.DeepEqual, which satisfies the "value consistency" decision.
+// Treating cases where the elements are the same but order is different as "inconsistent" is acceptable (still just info, non-blocking).
 func allEqual(field string, sources []Parsed) bool {
 	if len(sources) < 2 {
 		return true
@@ -216,8 +216,8 @@ func extractField(field string, s Structured) any {
 	}
 }
 
-// describeFieldConflict 用人类可读的方式描述冲突：列出所有来源 + 每来源的值。
-// 末尾标注最终生效的来源（就近优先）。
+// describeFieldConflict describes the conflict in a human-readable way: lists all sources + value of each source.
+// The end indicates the final active source (nearest priority).
 func describeFieldConflict(field string, sources []Parsed) string {
 	var parts []string
 	for _, p := range sources {
@@ -225,7 +225,7 @@ func describeFieldConflict(field string, sources []Parsed) string {
 	}
 	winner := sources[len(sources)-1]
 	return fmt.Sprintf(
-		"字段 %s 在多个来源声明且值不一致：%s；就近优先生效：%s",
+		"field %s is declared in multiple sources with inconsistent values: %s; nearest priority applies: %s",
 		field, strings.Join(parts, " | "), winner.Source,
 	)
 }

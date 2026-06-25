@@ -9,50 +9,52 @@ import (
 	"github.com/voocel/ainovel-cli/internal/bootstrap"
 )
 
-// 预算状态机：单调递进，每次迁移恰好触发一次副作用，不回退。
-// 上调预算 = 用户重新授权 = 改配置后重启/新 Host 实例，不在本实例内回退状态。
+// Budget state machine: monotonically advancing, each transition triggers side effects exactly once, no rollbacks.
+// Raising budget = user re-authorization = restart after config change or a new Host instance; does not rollback within this instance.
 const (
-	budgetNormal      int32 = iota // 未到告警水位
-	budgetWarned                   // 已发告警，未越线
-	budgetStopPending              // 已越线，等子代理边界停机
-	budgetStopped                  // 已执行停机
+	budgetNormal      int32 = iota // Alarm water level not reached
+	budgetWarned                   // Alarm emitted, limit not crossed
+	budgetStopPending              // Limit crossed, waiting for sub-agent boundary stop
+	budgetStopped                  // Stop executed
 )
 
-// BudgetSentinel 监视累计成本，执行用户的预算政策（config budget 块）。
+// BudgetSentinel monitors cumulative cost and enforces the user's budget policy (config budget block).
 //
-// 合宪定位（architecture.md §8.3/§10）：不评估模型行为——越线停机等同于用户在
-// 那一刻手动 Abort，Host 只是代为执行一条预先签署的指令。它影响控制流，因此
-// 不是观察者，定位为与 flow.Dispatcher 平级的 Host 政策组件；Route/工具层不感知。
+// Architectural positioning (architecture.md §8.3/§10): Does not evaluate model behavior—stopping when crossing the limit
+// is equivalent to the user manually aborting at that moment; Host is just executing a pre-signed instruction. It impacts
+// the control flow, so it is not an observer; it is positioned as a Host policy component on par with flow.Dispatcher.
+// The Route/tool layer is unaware.
 //
-// 停机时机：默认在子代理边界（HandleEvent 监听 EventToolExecEnd(tool=subagent)，
-// 与 Dispatcher 同款触发点），不浪费 in-flight 章节；hardStop=true 时越线立即停。
-// 订阅顺序约束：Sentinel 必须先于 Dispatcher 注册——Abort 置位后 Dispatcher 的
-// FollowUp 自然落空，无需在路由层加预算感知。
+// Stopping timing: By default, at the sub-agent boundary (HandleEvent listens for EventToolExecEnd(tool=subagent),
+// the same trigger point as Dispatcher), not wasting in-flight chapters; if hardStop=true, it stops immediately when crossing the limit.
+// Subscription order constraint: Sentinel must register before Dispatcher—after Abort is set, Dispatcher's FollowUp naturally
+// fails, removing the need for budget awareness at the routing layer.
 type BudgetSentinel struct {
 	limit     float64
 	warnRatio float64
 	hardStop  bool
 
-	costNow func() float64             // 当前累计成本（usage.Totals 包装；可注入测试桩）
-	abort   func(reason string)        // Host 停机包装（带原因事件）
-	report  func(level, summary string) // 告警出口（emitEvent + notify，由 Host 注入）
+	costNow func() float64             // Current cumulative cost (wrapped by usage.Totals; test stub injectable)
+	abort   func(reason string)        // Host stop wrapper (with cause event)
+	report  func(level, summary string) // Alarm output (emitEvent + notify, injected by Host)
 
 	state atomic.Int32
 
-	// 计费盲区检测：注册表无价且 provider 不自报 cost 的模型每笔记账增量为 $0，
-	// 预算静默失效。按"连续多笔零增量"判定而非 total==0——后者抓不住长跑中途
-	// /model 切到无价模型的场景（total 停在历史值非零但不再增长）。
-	// 免费模型同样命中，提示"预算不会触发"对其同样成立。
-	lastTotal   atomic.Uint64 // math.Float64bits(上次回调的累计成本)
+	// Billing blind zone detection: For models where the registry has no price and the provider doesn't report cost, each transaction's
+	// cost increment is $0, silently invalidating the budget. Judging by "consecutive zero increments" instead of total==0—the latter
+	// cannot catch cases where the model switches to a priceless model mid-run (total stops at a non-zero historical value but stops growing).
+	// Free models will also trigger this, and the hint "budget will not trigger" is equally valid for them.
+	lastTotal   atomic.Uint64 // math.Float64bits(last callback's cumulative cost)
 	zeroStreak  atomic.Int32
 	blindWarned atomic.Bool
 }
 
-// blindZeroStreak 连续零增量记账多少笔后告警。正常计价模型每笔增量必 > 0
-//（cost 是 float 累计不取整），取 5 仅为避免极端毛刺，不是可调策略阈值。
+// blindZeroStreak alarm triggers after how many consecutive zero-increment transactions.
+// Normal pricing models must have increments > 0 (cost is a float accumulation, not rounded).
+// 5 is chosen only to prevent extreme glitches, not an adjustable policy threshold.
 const blindZeroStreak = 5
 
-// NewBudgetSentinel 创建预算哨兵；政策未启用时返回 nil（所有方法 nil 安全）。
+// NewBudgetSentinel creates a budget sentinel; returns nil if policy is not enabled (all methods are nil-safe).
 func NewBudgetSentinel(cfg bootstrap.BudgetConfig, costNow func() float64, abort func(reason string), report func(level, summary string)) *BudgetSentinel {
 	if !cfg.Enabled() {
 		return nil
@@ -67,34 +69,34 @@ func NewBudgetSentinel(cfg bootstrap.BudgetConfig, costNow func() float64, abort
 	}
 }
 
-// OnCost 由 UsageTracker 每次记账后携带最新累计成本调用（锁外）。
-// 一次回调可能连跨两级（normal→warned→stopPending），两次副作用各触发一次。
+// OnCost is called by UsageTracker after each billing with the latest cumulative cost (outside lock).
+// One callback may transition across two levels (normal->warned->stopPending), triggering side effects once for each level.
 func (s *BudgetSentinel) OnCost(total float64) {
 	if s == nil {
 		return
 	}
 	if prev := s.lastTotal.Swap(math.Float64bits(total)); total == math.Float64frombits(prev) {
 		if s.zeroStreak.Add(1) >= blindZeroStreak && s.blindWarned.CompareAndSwap(false, true) {
-			s.report("warn", fmt.Sprintf("预算盲区: 连续记账但累计成本停在 $%.2f 不再增长（当前模型注册表无价且 provider 未自报 cost，或为免费模型）——预算上限不会触发", total))
+			s.report("warn", fmt.Sprintf("Budget blind spot: Billing occurred consecutively but cumulative cost is stuck at $%.2f and no longer growing (either because the current model has no price in the registry and the provider did not report cost, or it is a free model)—budget limit will not trigger", total))
 		}
 	} else {
 		s.zeroStreak.Store(0)
 	}
 	if total >= s.limit*s.warnRatio && s.state.CompareAndSwap(budgetNormal, budgetWarned) {
-		s.report("warn", fmt.Sprintf("预算告警: 已花费 $%.2f，达到预算 $%.2f 的 %.0f%%", total, s.limit, s.warnRatio*100))
+		s.report("warn", fmt.Sprintf("Budget warning: Spent $%.2f, reaching %.0f%% of the $%.2f budget", total, s.limit, s.warnRatio*100))
 	}
 	if total >= s.limit && s.state.CompareAndSwap(budgetWarned, budgetStopPending) {
 		if s.hardStop {
-			s.report("error", fmt.Sprintf("预算用尽: 已花费 $%.2f，超出预算 $%.2f，立即停机", total, s.limit))
+			s.report("error", fmt.Sprintf("Budget exhausted: Spent $%.2f, exceeding the $%.2f budget, stopping immediately", total, s.limit))
 			s.stop(total)
 			return
 		}
-		s.report("error", fmt.Sprintf("预算用尽: 已花费 $%.2f，超出预算 $%.2f，将在当前子代理任务结束后停机", total, s.limit))
+		s.report("error", fmt.Sprintf("Budget exhausted: Spent $%.2f, exceeding the $%.2f budget, will stop after the current sub-agent task ends", total, s.limit))
 	}
 }
 
-// HandleEvent 在子代理边界执行待定的停机。订阅必须先于 Dispatcher。
-// 不跳过 IsError——出错返回同样是边界，停机不应因子代理失败而推迟。
+// HandleEvent executes pending stops at sub-agent boundaries. Subscriptions must precede the Dispatcher.
+// Do not skip IsError—an error response is also a boundary; stopping should not be postponed due to sub-agent failure.
 func (s *BudgetSentinel) HandleEvent(ev agentcore.Event) {
 	if s == nil {
 		return
@@ -110,23 +112,23 @@ func (s *BudgetSentinel) HandleEvent(ev agentcore.Event) {
 
 func (s *BudgetSentinel) stop(total float64) {
 	if s.state.CompareAndSwap(budgetStopPending, budgetStopped) {
-		s.abort(fmt.Sprintf("预算停机: 已花费 $%.2f，超出预算 $%.2f；上调 budget.book_usd 后可恢复续跑", total, s.limit))
+		s.abort(fmt.Sprintf("Budget stop: Spent $%.2f, exceeding budget $%.2f; resume by raising budget.book_usd", total, s.limit))
 	}
 }
 
-// Refuse 启动前置检查：预算已超返回拒绝错误（Start/Resume/Continue 恢复路径调用）。
-// 用户上调预算 = 重新授权，新配置下 Refuse 自然放行。
+// Refuse is the pre-start check: returns refusal error if budget is exceeded (called by Start/Resume/Continue recovery paths).
+// Raising budget = re-authorization; Refuse naturally permits starting under the new configuration.
 func (s *BudgetSentinel) Refuse() error {
 	if s == nil {
 		return nil
 	}
 	if cost := s.costNow(); cost >= s.limit {
-		return fmt.Errorf("本书已花费 $%.2f，达到预算上限 $%.2f；请上调配置 budget.book_usd 后重试", cost, s.limit)
+		return fmt.Errorf("This book has spent $%.2f, reaching the budget limit of $%.2f; please raise budget.book_usd and retry", cost, s.limit)
 	}
 	return nil
 }
 
-// Limit 返回预算上限（UI 展示用）；未启用返回 0。
+// Limit returns the budget limit (for UI display); returns 0 if disabled.
 func (s *BudgetSentinel) Limit() float64 {
 	if s == nil {
 		return 0

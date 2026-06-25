@@ -120,7 +120,7 @@ func TestOutlineExhaustedMeta(t *testing.T) {
 func TestOrphanedSteerMeta(t *testing.T) {
 	snap := &Snapshot{
 		RunMeta: &domain.RunMeta{
-			PendingSteer: "把主角的性格改一下",
+			PendingSteer: "Change the protagonist's personality slightly",
 		},
 		Progress: &domain.Progress{
 			Flow: domain.FlowWriting,

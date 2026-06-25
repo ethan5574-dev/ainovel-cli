@@ -38,7 +38,7 @@ func TestCompletePhaseGate_BlocksSubagentAtComplete(t *testing.T) {
 	}
 
 	gate := completePhaseGate(st)
-	decision, err := gate(context.Background(), subagentCall(`{"agent":"writer","task":"写第 1 章"}`))
+	decision, err := gate(context.Background(), subagentCall(`{"agent":"writer","task":"write chapter 1"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestCompletePhaseGate_AllowsSubagentWhenWriting(t *testing.T) {
 	st := newTestStore(t)
 
 	gate := completePhaseGate(st)
-	decision, err := gate(context.Background(), subagentCall(`{"agent":"writer","task":"写第 1 章"}`))
+	decision, err := gate(context.Background(), subagentCall(`{"agent":"writer","task":"write chapter 1"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestCompletePhaseGate_AllowsWhenNoProgress(t *testing.T) {
 	st := store.NewStore(t.TempDir())
 
 	gate := completePhaseGate(st)
-	decision, err := gate(context.Background(), subagentCall(`{"agent":"writer","task":"写第 1 章"}`))
+	decision, err := gate(context.Background(), subagentCall(`{"agent":"writer","task":"write chapter 1"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

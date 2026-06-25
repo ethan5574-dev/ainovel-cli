@@ -2,7 +2,7 @@ package models
 
 import "strings"
 
-// SameModelID 判断两个模型标识是否指向同一个规范模型（忽略日期后缀、大小写、点/横线差异）。
+// SameModelID reports whether two model identifiers point to the same canonical model (ignoring date suffixes, case, and dot/hyphen differences).
 func SameModelID(a, b string) bool {
 	return modelLookupMatches(normalizeModelLookupID(a), normalizeModelLookupID(b))
 }
@@ -26,8 +26,8 @@ func normalizeModelLookupID(modelID string) string {
 	return strings.ReplaceAll(modelID, ".", "-")
 }
 
-// modelLookupMatches 精确匹配或带日期后缀的匹配。
-// e.g. "claude-sonnet-4" 匹配 "claude-sonnet-4-20250514"。
+// modelLookupMatches performs an exact match or a match allowing for a date suffix.
+// e.g. "claude-sonnet-4" matches "claude-sonnet-4-20250514".
 func modelLookupMatches(knownID, targetID string) bool {
 	if knownID == targetID {
 		return true
@@ -41,7 +41,7 @@ func modelLookupMatches(knownID, targetID string) bool {
 	return false
 }
 
-// isDatedModelSuffix 判断字符串是否形如 "-20250514"（连字符 + 8 位数字）。
+// isDatedModelSuffix reports whether a string matches the format "-YYYYMMDD" (hyphen followed by 8 digits).
 func isDatedModelSuffix(s string) bool {
 	if len(s) != 9 || s[0] != '-' {
 		return false

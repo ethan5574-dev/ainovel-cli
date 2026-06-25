@@ -160,8 +160,8 @@ func renderCommandPalette(width int, items []commandPaletteItem, cursor int) str
 		}
 
 		name := nameRenderer.Render(item.Name)
-		// truncateWidth 按视觉宽度截断（中文字符算 2 列）；用 truncate 会按 rune 数算，
-		// 中文场景实际宽度 = 期望的 2 倍，导致弹窗溢出。
+		// truncateWidth truncates by visual width (CJK characters count as 2 columns); using truncate would count by rune,
+		// making the actual width in Chinese twice the expected, causing the modal to overflow.
 		desc := truncateWidth(item.Description, max(12, contentW-18))
 		descText := descRenderer.Render(desc)
 		line := prefix + name
@@ -175,16 +175,16 @@ func renderCommandPalette(width int, items []commandPaletteItem, cursor int) str
 	if selectedIdx < 0 || selectedIdx >= len(visible) {
 		selectedIdx = 0
 	}
-	hint := mutedStyle.Render("↑↓ 选择 · Tab/Enter 接受 · Esc 关闭")
+	hint := mutedStyle.Render("↑↓ Move · Tab/Enter Accept · Esc Close")
 	usage := "Usage: " + visible[selectedIdx].Usage
 	if remaining > 0 {
-		usage = usage + " · 还有 " + strconv.Itoa(remaining) + " 个命令"
+		usage = usage + " · and " + strconv.Itoa(remaining) + " more commands"
 	}
 	usageLine := mutedStyle.Render(truncateWidth(usage, contentW))
 	body = append(body, usageLine+strings.Repeat(" ", max(0, contentW-lipgloss.Width(usageLine))))
 	body = append(body, hint+strings.Repeat(" ", max(0, contentW-lipgloss.Width(hint))))
 
-	return renderPaddedModalFrame(boxW, len(body)+2, "命令", "", body)
+	return renderPaddedModalFrame(boxW, len(body)+2, "Commands", "", body)
 }
 
 func commandPaletteWindow(total, cursor, limit int) (start, end int) {

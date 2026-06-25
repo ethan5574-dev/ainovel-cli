@@ -7,24 +7,24 @@ import (
 	"github.com/voocel/ainovel-cli/internal/domain"
 )
 
-// maxDirectives 是长效指令的容量上限：防止挂机数月后信封拖着一长串历史干预
-// （大信封撑上下文的变体）。超限由 coordinator 裁定先 remove 合并旧要求。
+// maxDirectives is the upper bound of user directives: preventing envelope dragging a long sequence of historical interventions after months of running.
+// Exceeding limits will trigger coordinator to arbitrate and merge/remove old demands.
 const maxDirectives = 20
 
-// DirectivesStore 管理用户长效创作指令（meta/user_directives.json）。
+// DirectivesStore manages user persistent writing instructions (meta/user_directives.json).
 type DirectivesStore struct{ io *IO }
 
 func NewDirectivesStore(io *IO) *DirectivesStore { return &DirectivesStore{io: io} }
 
-// Load 读取全部长效指令。文件不存在时返回空列表。
+// Load reads all persistent writing instructions. Returns empty list if file doesn't exist.
 func (s *DirectivesStore) Load() ([]domain.UserDirective, error) {
 	s.io.mu.RLock()
 	defer s.io.mu.RUnlock()
 	return s.loadUnlocked()
 }
 
-// Add 追加一条长效指令并返回更新后的全量列表。
-// Text 与已有条目完全相同时不重复追加（幂等）；超过容量上限时返回错误。
+// Add appends a persistent writing instruction and returns the updated complete list.
+// Text identical to existing items won't be appended (idempotent); returns error when exceeding capacity limits.
 func (s *DirectivesStore) Add(d domain.UserDirective) ([]domain.UserDirective, error) {
 	var list []domain.UserDirective
 	err := s.io.WithWriteLock(func() error {
@@ -39,7 +39,7 @@ func (s *DirectivesStore) Add(d domain.UserDirective) ([]domain.UserDirective, e
 			}
 		}
 		if len(existing) >= maxDirectives {
-			return fmt.Errorf("长效指令已达上限 %d 条，请先用 remove 删除或合并旧要求再添加", maxDirectives)
+			return fmt.Errorf("persistent instructions have reached the limit of %d, please delete using remove or merge old demands first", maxDirectives)
 		}
 		list = append(existing, d)
 		return s.io.WriteJSONUnlocked("meta/user_directives.json", list)
@@ -50,7 +50,7 @@ func (s *DirectivesStore) Add(d domain.UserDirective) ([]domain.UserDirective, e
 	return list, nil
 }
 
-// Remove 按 1-based 序号删除一条长效指令并返回更新后的全量列表。
+// Remove deletes a persistent writing instruction by 1-based index and returns the updated complete list.
 func (s *DirectivesStore) Remove(index int) ([]domain.UserDirective, error) {
 	var list []domain.UserDirective
 	err := s.io.WithWriteLock(func() error {
@@ -59,7 +59,7 @@ func (s *DirectivesStore) Remove(index int) ([]domain.UserDirective, error) {
 			return err
 		}
 		if index < 1 || index > len(existing) {
-			return fmt.Errorf("序号 %d 超出范围（当前共 %d 条）", index, len(existing))
+			return fmt.Errorf("index %d out of bounds (currently %d items total)", index, len(existing))
 		}
 		list = append(existing[:index-1], existing[index:]...)
 		return s.io.WriteJSONUnlocked("meta/user_directives.json", list)

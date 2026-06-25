@@ -8,20 +8,20 @@ import (
 	"github.com/voocel/ainovel-cli/internal/domain"
 )
 
-// CastStore 管理配角名册（meta/cast_ledger.json）。
+// CastStore manages the supporting characters ledger (meta/cast_ledger.json).
 //
-// 配角名册记录"出现过的有名字的次要角色"，与 characters.json（核心角色档案）正交：
-//   - characters.json：Architect 显式设计的主角 + 关键配角，写作期不修改
-//   - cast_ledger.json：commit_chapter 工具自动累加，所有有名字的非核心配角
+// Supporting characters ledger records "named minor characters that appeared", orthogonal to characters.json (core character profiles):
+//   - characters.json: main + key supporting characters explicitly designed by the Architect, not modified during writing
+//   - cast_ledger.json: automatically accumulated by the commit_chapter tool, containing all named non-core supporting characters
 //
-// MergeAppearances 是幂等的：同一章重复 commit 不会重复累加 AppearanceCount。
+// MergeAppearances is idempotent: repeatedly committing the same chapter won't duplicate AppearanceCount.
 type CastStore struct{ io *IO }
 
 func NewCastStore(io *IO) *CastStore { return &CastStore{io: io} }
 
 const castLedgerPath = "meta/cast_ledger.json"
 
-// Load 读取配角名册。文件不存在时返回空切片。
+// Load reads the supporting characters ledger. Returns nil slice when file does not exist.
 func (s *CastStore) Load() ([]domain.CastEntry, error) {
 	var entries []domain.CastEntry
 	if err := s.io.ReadJSON(castLedgerPath, &entries); err != nil {
@@ -33,25 +33,25 @@ func (s *CastStore) Load() ([]domain.CastEntry, error) {
 	return entries, nil
 }
 
-// Save 整体保存配角名册（原子写入）。
+// Save saves the supporting characters ledger as a whole (atomic write).
 func (s *CastStore) Save(entries []domain.CastEntry) error {
 	return s.io.WriteJSON(castLedgerPath, entries)
 }
 
-// MergeAppearances 把本章出场记录合并进名册。
+// MergeAppearances merges this chapter's character appearance records into the ledger.
 //
-// 参数:
-//   - chapter: 本章号
-//   - characters: 本章出场名字数组（来自 commit_chapter.Characters）
-//   - intros: Writer 显式声明的新角色简介（首次出场或补全 BriefRole）
-//   - knownCore: characters.json 中已有的核心角色名集合（这些跳过 ledger 写入）
+// Parameters:
+//   - chapter: current chapter number
+//   - characters: array of character names appearing in this chapter (from commit_chapter.Characters)
+//   - intros: brief new character descriptions declared explicitly by the Writer (first appearance or completing BriefRole)
+//   - knownCore: map of core character names already in characters.json (these skip ledger writing)
 //
-// 行为:
-//   - 名字在 knownCore 中：跳过（核心角色档案是其唯一记录入口）
-//   - 名字已在 ledger 且 chapter 已在 AppearanceChapters：完全跳过（幂等）
-//   - 名字已在 ledger 但 chapter 是新的：更新 LastSeenChapter + 追加 chapter + count++
-//   - 名字未在 ledger：新增条目
-//   - intros 中的 BriefRole 仅在 ledger 条目 BriefRole 仍为空时采用，避免覆盖更早的简介
+// Behavior:
+//   - Name is in knownCore: skip (core character profiles are their sole record entrypoint)
+//   - Name is already in ledger and chapter is already in AppearanceChapters: completely skip (idempotent)
+//   - Name is already in ledger but chapter is new: update LastSeenChapter + append chapter + count++
+//   - Name is not in ledger: add new entry
+//   - BriefRole in intros is adopted only when ledger entry's BriefRole is empty, to avoid overwriting earlier descriptions
 func (s *CastStore) MergeAppearances(
 	chapter int,
 	characters []string,
@@ -123,10 +123,10 @@ func (s *CastStore) MergeAppearances(
 	})
 }
 
-// RecentActive 返回最近活跃的 N 条配角条目（按 LastSeenChapter 倒序）。
-// 用于 novel_context 召回 Writer 写下一章时可能需要的"近期出场配角"。
+// RecentActive returns the top N recently active supporting characters (descending by LastSeenChapter).
+// Used by novel_context to recall "recently appeared supporting characters" that Writer might need when writing the next chapter.
 //
-// 已升格到 characters.json 的条目（Promoted=true）会被跳过，避免与核心档案重复召回。
+// Entries already promoted to characters.json (Promoted=true) are skipped to avoid duplicate recall.
 func (s *CastStore) RecentActive(limit int) ([]domain.CastEntry, error) {
 	if limit <= 0 {
 		return nil, nil

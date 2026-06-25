@@ -9,7 +9,7 @@ import (
 	"github.com/voocel/ainovel-cli/internal/store"
 )
 
-// completedBook 构造一本已完结的 N 章小说（phase=complete，CompletedChapters=1..n）。
+// completedBook constructs a completed N-chapter novel (phase=complete, CompletedChapters=1..n).
 func completedBook(t *testing.T, n int) *store.Store {
 	t.Helper()
 	s := store.NewStore(t.TempDir())
@@ -34,7 +34,7 @@ func TestReopenBookReopensCompletedBook(t *testing.T) {
 	s := completedBook(t, 3)
 	tool := NewReopenBookTool(s)
 
-	args, _ := json.Marshal(map[string]any{"chapters": []int{3, 1}, "reason": "清理特殊字符"})
+	args, _ := json.Marshal(map[string]any{"chapters": []int{3, 1}, "reason": "clean special characters"})
 	raw, err := tool.Execute(context.Background(), args)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -55,7 +55,7 @@ func TestReopenBookReopensCompletedBook(t *testing.T) {
 		t.Errorf("flow = %s, want rewriting", p.Flow)
 	}
 	if len(p.PendingRewrites) != 2 || p.PendingRewrites[0] != 3 || p.PendingRewrites[1] != 1 {
-		t.Errorf("PendingRewrites = %v, want [3 1] (原样入队)", p.PendingRewrites)
+		t.Errorf("PendingRewrites = %v, want [3 1] (queued as is)", p.PendingRewrites)
 	}
 
 	if cp := s.Checkpoints.LatestByStep(domain.GlobalScope(), "reopen"); cp == nil {
@@ -64,7 +64,7 @@ func TestReopenBookReopensCompletedBook(t *testing.T) {
 }
 
 func TestReopenBookRejectsNonCompleteBook(t *testing.T) {
-	// 写作中（未完结）的书不能 reopen
+	// A book in writing (not completed) cannot be reopened
 	s := store.NewStore(t.TempDir())
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
@@ -86,12 +86,12 @@ func TestReopenBookRejectsUnwrittenChapters(t *testing.T) {
 	s := completedBook(t, 3)
 	tool := NewReopenBookTool(s)
 
-	// 第 5 章不存在 → 拒绝（属续写/越界，应走篇幅调整）
+	// Chapter 5 does not exist -> reject (it is an addition/out-of-bounds, size adjustment should be used instead)
 	args, _ := json.Marshal(map[string]any{"chapters": []int{2, 5}})
 	if _, err := tool.Execute(context.Background(), args); err == nil {
 		t.Fatal("expected reopen to be rejected for unwritten chapter")
 	}
-	// 空 chapters → 拒绝
+	// Empty chapters -> reject
 	args, _ = json.Marshal(map[string]any{"chapters": []int{}})
 	if _, err := tool.Execute(context.Background(), args); err == nil {
 		t.Fatal("expected reopen to be rejected for empty chapters")

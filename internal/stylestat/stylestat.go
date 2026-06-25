@@ -1,8 +1,10 @@
-// Package stylestat 对已写正文做全书级风格统计，产出纯事实。
+// Package stylestat performs book-level style statistics on written text, producing pure facts.
 //
-// 动机：弧内评审窗口（~10 章）对全书级模式固化天然失明——句式 tic 章均几十次、
-// 章末形态同构、跨章复读，单章看每处都"正常"，只有全书统计能暴露。统计归代码
-//（确定性、零幻觉），裁定归 LLM（editor 按数字判维度分，writer 据此自避免）。
+// Motivation: The intra-arc review window (~10 chapters) is naturally blind to book-level patterns—sentence tics
+// appearing dozens of times per chapter, isomorphic chapter endings, or cross-chapter repetition. Each occurrence
+// seems "normal" in isolation, but only a book-level statistic exposes it. Statistics belong to code
+// (deterministic, zero hallucination), while judgment is left to the LLM (the Editor scores dimensions based on metrics,
+// and the Writer self-adjusts accordingly).
 package stylestat
 
 import (
@@ -11,21 +13,21 @@ import (
 	"strings"
 )
 
-// minChapters 少于此章数不出统计——样本太小，频率没有意义。
+// minChapters: statistics are not generated if the chapter count is lower than this—the sample is too small to be meaningful.
 const minChapters = 5
 
-// phraseWindow 动态短语挖掘只看最近 N 章：writer 需要避免的是"现在的口头禅"。
+// phraseWindow: dynamic phrase mining only looks at the last N chapters; the writer needs to avoid "recent crutch phrases".
 const phraseWindow = 20
 
-// Input 统计输入。Chapters 按章号升序；Stopwords 为角色名等专有名词，
-// 动态短语挖掘时跳过（出场人名天然高频，不是文风问题）。
+// Input represents the stats input. Chapters are sorted in ascending order; Stopwords are proper nouns like character names,
+// which are skipped during dynamic phrase mining (as characters naturally appear frequently, which is not a style issue).
 type Input struct {
 	Chapters  []string
 	Titles    []string
 	Stopwords []string
 }
 
-// Stats 全书风格统计结果。所有字段都是事实计数，不含任何裁定或指令。
+// Stats represents the book-level style statistics results. All fields are factual counts, without judgment or instructions.
 type Stats struct {
 	Chapters          int            `json:"chapters"`
 	Patterns          []PatternStat  `json:"patterns,omitempty"`
@@ -36,48 +38,48 @@ type Stats struct {
 	TitleFormats      *TitleStat     `json:"title_formats,omitempty"`
 }
 
-// PatternStat 固定句式模式类的全书计数（通用 AI 文风 tic）。
+// PatternStat represents the book-level count of fixed sentence pattern structures (common AI style tics).
 type PatternStat struct {
 	Name       string  `json:"name"`
 	Total      int     `json:"total"`
 	PerChapter float64 `json:"per_chapter"`
 }
 
-// PhraseStat 最近 phraseWindow 章内挖掘出的高频短语。
+// PhraseStat represents high-frequency phrases mined within the recent phraseWindow chapters.
 type PhraseStat struct {
 	Text  string `json:"text"`
 	Count int    `json:"count"`
 }
 
-// SentenceStat 跨章逐字重复的长句（复读交代的直接证据）。
+// SentenceStat represents long sentences repeated word-for-word across multiple chapters (direct evidence of repeated explanations).
 type SentenceStat struct {
 	Text     string `json:"text"`
 	Chapters int    `json:"chapters"`
 	Count    int    `json:"count"`
 }
 
-// EndingStat 章末行形态分布。短结尾本身合法，全书同构才是问题。
+// EndingStat represents the distribution of chapter-ending line structures. A short ending is valid on its own; book-wide isomorphism is the issue.
 type EndingStat struct {
 	ShortRatio  float64 `json:"short_ratio"`
 	MedianRunes int     `json:"median_runes"`
 }
 
-// TitleStat 章节标题「第N章」前缀混用计数（混用=机制痕迹暴露在产物里）。
+// TitleStat represents the mix count of chapter title prefixes like "Chapter N" (mixing them exposes mechanical artifacts in output).
 type TitleStat struct {
 	WithPrefix    int `json:"with_prefix"`
 	WithoutPrefix int `json:"without_prefix"`
 }
 
-// patternDefs 通用 AI 文风句式模式。计数是近似（正则不做语法分析），
-// 用途是本书自身的纵向基线对比，绝对精度不重要。
+// patternDefs defines common AI writing style patterns. The count is approximate (regex without syntactic analysis),
+// used for longitudinal baseline comparison of this book, so absolute accuracy is not critical.
 var patternDefs = []struct {
 	name string
 	re   *regexp.Regexp
 }{
-	{"矫正句『不是…(而)是…』", regexp.MustCompile(`不是[^。！？\n]{1,24}?[，、]?(?:而)?是`)},
-	{"计时量词『X息/X瞬』", regexp.MustCompile(`[一两二三四五六七八九十几数半][息瞬]`)},
-	{"明喻『像一/仿佛/如同/宛如』", regexp.MustCompile(`像一|仿佛|如同|宛如`)},
-	{"沉默节拍『沉默了/没有说话/没有回头』", regexp.MustCompile(`沉默了|没有说话|没有回头`)},
+	{"Correction sentence 『not...(but) is...』", regexp.MustCompile(`不是[^。！？\n]{1,24}?[，、]?(?:而)?是`)},
+	{"Timing quantifier 『X breaths/X moments』", regexp.MustCompile(`[一两二三四五六七八九十几数半][息瞬]`)},
+	{"Simile 『like a/as if/as though』", regexp.MustCompile(`像一|仿佛|如同|宛如`)},
+	{"Silence beat 『was silent/did not speak/did not look back』", regexp.MustCompile(`沉默了|没有说话|没有回头`)},
 }
 
 var (
@@ -86,10 +88,10 @@ var (
 	titlePrefixRe = regexp.MustCompile(`^#{0,2}\s*第[零〇一二三四五六七八九十百千万\d]+章`)
 )
 
-// shortEndingRunes 末行不超过此字数计为"短结尾"。
+// shortEndingRunes: ending line with no more than this rune count is counted as a "short ending".
 const shortEndingRunes = 30
 
-// Compute 计算全书风格统计；章数不足时返回 nil。
+// Compute calculates the book-level style statistics; returns nil if there are insufficient chapters.
 func Compute(in Input) *Stats {
 	n := len(in.Chapters)
 	if n < minChapters {
@@ -124,8 +126,8 @@ func recentWindow(chapters []string) []string {
 	return chapters[len(chapters)-phraseWindow:]
 }
 
-// minePhrases 在窗口内挖掘 3-6 字高频短语。
-// 过滤：含标点/空白、首尾虚词、命中专有名词；去重：与已选短语互为子串的丢弃。
+// minePhrases mines 3-6 character high-frequency phrases within the window.
+// Filters: contains punctuation/whitespace, leading/trailing function words, hits proper nouns; Deduplicates: discards phrases that are substrings of already chosen ones.
 func minePhrases(chapters []string, stopwords []string) []PhraseStat {
 	text := strings.Join(chapters, "\n")
 	runes := []rune(text)
@@ -158,7 +160,7 @@ func minePhrases(chapters []string, stopwords []string) []PhraseStat {
 		if cands[i].count != cands[j].count {
 			return cands[i].count > cands[j].count
 		}
-		// 同频取更长的（信息量更大），再按字典序稳定排序
+		// For equal frequency, pick the longer one (higher information content), then sort stably by dictionary order.
 		if len(cands[i].text) != len(cands[j].text) {
 			return len(cands[i].text) > len(cands[j].text)
 		}
@@ -184,12 +186,12 @@ func minePhrases(chapters []string, stopwords []string) []PhraseStat {
 	return out
 }
 
-// gramEdgeStop 首尾为这些虚词/代词的 n-gram 不是文风短语，跳过。
+// gramEdgeStop: n-grams with these function words/pronouns at either end are not style phrases, skip.
 const gramEdgeStop = "的了着是在和与就也都还又把被他她它我你这那"
 
 func validGram(gram []rune) bool {
 	for _, r := range gram {
-		if r < 0x4E00 || r > 0x9FFF { // 仅纯汉字片段
+		if r < 0x4E00 || r > 0x9FFF { // Only pure Han characters
 			return false
 		}
 	}
@@ -199,9 +201,9 @@ func validGram(gram []rune) bool {
 	return true
 }
 
-// stopwordBigrams 把专有名词拆成 2 字片段：人名常以部分形式入文
-//（"九渊负手"含"九渊"），按整名匹配会漏网。宁可过滤偏严——短语事实少一条
-// 无碍，人名混进口头禅清单才是噪声。
+// stopwordBigrams splits proper nouns into 2-character fragments: character names often appear as subsegments in the text
+// (e.g. "Jiuyuan hands behind back" contains "Jiuyuan"), and matching the full name would miss them. Filter stringently—losing one
+// mined phrase is fine, but having character names mix into the crutch phrases list introduces noise.
 func stopwordBigrams(stopwords []string) []string {
 	var grams []string
 	for _, w := range stopwords {
@@ -225,7 +227,7 @@ func hitStopword(gram string, stopGrams []string) bool {
 	return false
 }
 
-// repeatedSentences 找跨 ≥3 章逐字重复的 ≥12 字句子，按次数取 top 5。
+// repeatedSentences finds sentences with >= 12 characters repeated word-for-word across >= 3 chapters, picking the top 5 by count.
 func repeatedSentences(chapters []string) []SentenceStat {
 	type rec struct {
 		count    int
@@ -234,7 +236,7 @@ func repeatedSentences(chapters []string) []SentenceStat {
 	seen := make(map[string]*rec)
 	for ci, text := range chapters {
 		for _, sent := range sentenceSplit.Split(text, -1) {
-			// 剥掉包裹引号再归并：同一句台词带/不带前引号不应算成两条
+			// Strip enclosing quotes before merging: the same quote with/without quotes should not be counted as separate entries.
 			sent = strings.Trim(strings.TrimSpace(sent), `"“”‘’「」『』`)
 			if len([]rune(sent)) < 12 {
 				continue
@@ -317,7 +319,7 @@ func titleFormats(titles []string) *TitleStat {
 			t.WithoutPrefix++
 		}
 	}
-	// 只有混用才值得上报；统一格式不是事实意义上的问题
+	// Only mixing is worth reporting; a uniform format is not a factual issue.
 	if t.WithPrefix == 0 || t.WithoutPrefix == 0 {
 		return nil
 	}
@@ -334,7 +336,7 @@ func lastNonEmptyLine(text string) string {
 	return ""
 }
 
-// firstParagraph 取第一个非空且非 Markdown 标题的行（章文件首行常是 # 标题）。
+// firstParagraph returns the first non-empty line that is not a Markdown heading (the first line of a chapter file is often "# Title").
 func firstParagraph(text string) string {
 	for line := range strings.SplitSeq(text, "\n") {
 		line = strings.TrimSpace(line)

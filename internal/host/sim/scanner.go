@@ -72,8 +72,8 @@ func scanSources(root string) ([]scannedSource, error) {
 				ModTime:      info.ModTime().Format(time.RFC3339),
 			},
 			absPath: path,
-			// 指纹算在原始字节上（文件身份，增量去重稳定）；content 解码后供
-			// LLM 分析——GBK 语料直接当 UTF-8 读是乱码，画像会被静默喂垃圾。
+			// Fingerprints are calculated on raw bytes (file identity, stable for incremental deduplication); content is decoded for
+			// LLM analysis -- GBK corpus read directly as UTF-8 is garbled, and profiles would be silently fed garbage.
 			content: utils.DecodeText(data),
 		})
 		return nil

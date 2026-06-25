@@ -11,21 +11,21 @@ import (
 	"github.com/voocel/ainovel-cli/internal/store"
 )
 
-// StopGuard 是"物理不可停机"的最后防线。
-// 当 LLM 试图 end_turn 时：
-//   - Progress.Phase = Complete → 放行
-//   - 否则注入 user message，让 agent 继续下一 turn
-//   - 连续阻拦超过 maxConsecutive 次 → Escalate 终止 run（说明 prompt/reminder 严重失灵）
+// StopGuard is the last line of defense against an impossible early stop.
+// When the LLM tries to end_turn:
+//   - Progress.Phase = Complete -> allow
+//   - otherwise inject a user message so the agent continues to the next turn
+//   - if the block happens more than maxConsecutive times in a row -> escalate and terminate the run
 //
-// Guard 内部维护 consecutive block 计数；一旦成功放行或成功注入后重置为 0。
-// 真正驱动 Coordinator 行为的是 Reminder + Prompt，StopGuard 只是兜底。
+// The guard maintains a consecutive block counter and resets it after a successful allow or injection.
+// Reminder + Prompt actually drive Coordinator behavior; StopGuard is only a fallback.
 const maxConsecutiveBlocks = 5
 
-// NewStopGuard 构造 Coordinator 专用 StopGuard。
-// onBlock 可选，非 nil 时每次阻拦调一次，用于审计。
+// NewStopGuard constructs the Coordinator-specific StopGuard.
+// onBlock is optional; when non-nil it is called on every block for auditing.
 func NewStopGuard(st *store.Store, onBlock func(reason string, consecutive int32)) agentcore.StopGuard {
 	var consecutive atomic.Int32
-	var lastBlockTurn atomic.Int64 // 上次 block 的 TurnIndex；-1 表示尚未 block 过
+	var lastBlockTurn atomic.Int64 // TurnIndex of the last block; -1 means no block has happened yet
 	lastBlockTurn.Store(-1)
 	return func(_ context.Context, info agentcore.StopInfo) agentcore.StopDecision {
 		progress, _ := st.Progress.Load()
@@ -34,8 +34,8 @@ func NewStopGuard(st *store.Store, onBlock func(reason string, consecutive int32
 			lastBlockTurn.Store(-1)
 			return agentcore.StopDecision{Allow: true}
 		}
-		// 只有"相邻 turn 连续被拦"才累计计数；否则视为新一轮（LLM 已做过 tool call 取得过进展，
-		// 或用户注入 / resume 导致 TurnIndex 倒流），重置计数。
+		// Only consecutive blocked turns are counted; otherwise treat it as a new round
+		// (the LLM already made tool progress, or user injection / resume rewound TurnIndex).
 		last := lastBlockTurn.Load()
 		if last < 0 || int64(info.TurnIndex) != last+1 {
 			consecutive.Store(0)
@@ -43,18 +43,18 @@ func NewStopGuard(st *store.Store, onBlock func(reason string, consecutive int32
 		lastBlockTurn.Store(int64(info.TurnIndex))
 		n := consecutive.Add(1)
 		if n > maxConsecutiveBlocks {
-			slog.Error("stop_guard 连续阻拦超限，升级为终止",
+			slog.Error("stop_guard consecutive block limit exceeded, escalating to termination",
 				"module", "host.reminder", "turn", info.TurnIndex, "consecutive", n)
 			if onBlock != nil {
 				onBlock("escalated", n)
 			}
 			return agentcore.StopDecision{Allow: false, Escalate: true}
 		}
-		inject := "禁止结束对话。Phase 尚未 Complete，请继续下一步（查 novel_context 或调子代理）。"
+		inject := "Do not end the conversation. Phase is not Complete yet; continue with the next step (check novel_context or call a subagent)."
 		if progress != nil && len(progress.PendingRewrites) > 0 {
-			inject = fmt.Sprintf("禁止结束对话。待重写队列未清：%v，请立即调 writer 处理。", progress.PendingRewrites)
+			inject = fmt.Sprintf("Do not end the conversation. Pending rewrites remain: %v. Call writer immediately.", progress.PendingRewrites)
 		}
-		slog.Warn("stop_guard 拦截 end_turn",
+		slog.Warn("stop_guard intercepted end_turn",
 			"module", "host.reminder", "turn", info.TurnIndex, "consecutive", n)
 		if onBlock != nil {
 			onBlock("blocked", n)

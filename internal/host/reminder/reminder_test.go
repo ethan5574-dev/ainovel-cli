@@ -26,7 +26,7 @@ func TestStopGuard_AllowsStopOnlyWhenComplete(t *testing.T) {
 
 	guard := NewStopGuard(s, nil)
 
-	// 尚未 Complete：必须阻拦 + 注入
+	// Not yet Complete: must block + inject
 	decision := guard(context.Background(), agentcore.StopInfo{TurnIndex: 1})
 	if decision.Allow {
 		t.Fatal("stop must be blocked before Phase=Complete")
@@ -35,7 +35,7 @@ func TestStopGuard_AllowsStopOnlyWhenComplete(t *testing.T) {
 		t.Fatal("inject message required when blocking")
 	}
 
-	// 转 Complete：放行
+	// Transition to Complete: allow stop
 	if err := s.Progress.UpdatePhase(domain.PhaseComplete); err != nil {
 		t.Fatalf("update phase: %v", err)
 	}
@@ -74,19 +74,20 @@ func TestStopGuard_EscalatesAfterTooManyConsecutiveBlocks(t *testing.T) {
 	}
 }
 
-// TestSubAgentGuard_HardStopReasonEscalatesImmediately 验证：模型返回
-// safety / content_filter 这类不可恢复的 provider 端拒答时，子代理 StopGuard
-// 必须立即 Escalate 而不是注入催促消息。
+// TestSubAgentGuard_HardStopReasonEscalatesImmediately verifies that when the model returns
+// an unrecoverable provider-side rejection like safety / content_filter, the subagent StopGuard
+// must escalate immediately instead of injecting prompt messages.
 //
-// 历史背景：实测 hy3-preview:free 写第 2 章时连续 8 次 stop_reason='safety'
-// 拒答；旧逻辑反复注入"必须 commit"，模型继续 safety，攒到 3 次 block 才 escalate，
-// 之后 coordinator 又重派 writer 总共 3 次。每次重派都是新的 SubAgent → 缓存
-// 前缀全部冷启动。修复后第一次 safety 立即 escalate，coordinator 从 LLM
-// 错误消息看到不可恢复，倾向于换路径而不是重派。
+// Historical context: in testing, hy3-preview:free writing chapter 2 got stop_reason='safety'
+// 8 consecutive times; the old logic repeatedly injected "must commit", the model continued safety,
+// and accumulated 3 blocks before escalating, after which the coordinator redeployed the writer 3 times.
+// Each redeploy is a new SubAgent -> prefix cache entirely cold starts.
+// With the fix, the first safety escalates immediately, and the coordinator sees the unrecoverable error
+// from the LLM error message, tending to change paths rather than redeploying.
 //
-// 注意只测 safety / content_filter：StopReasonError / StopReasonAborted 走
-// agentcore loop.go 直接终止 run 的分支，根本不会调用 StopGuard，列进来反而
-// 引入死代码。
+// Note that only safety / content_filter are tested: StopReasonError / StopReasonAborted go through
+// agentcore loop.go and terminate the run directly, without calling StopGuard at all, so listing them
+// would just introduce dead code.
 func TestSubAgentGuard_HardStopReasonEscalatesImmediately(t *testing.T) {
 	cases := []agentcore.StopReason{
 		agentcore.StopReason("safety"),
@@ -111,8 +112,8 @@ func TestSubAgentGuard_HardStopReasonEscalatesImmediately(t *testing.T) {
 	}
 }
 
-// TestSubAgentGuard_NormalStopStillBlocks 确保对正常 stop_reason 的拦截行为
-// 不受硬错误旁路的影响——LLM 自停且没 commit 时仍然要催。
+// TestSubAgentGuard_NormalStopStillBlocks ensures that intercepting normal stop_reason
+// is not affected by the hard error bypass -- when LLM stops on its own without committing, it still needs to be prompted.
 func TestSubAgentGuard_NormalStopStillBlocks(t *testing.T) {
 	s := newTestStore(t)
 	guard := NewWriterStopGuard(s)
@@ -132,8 +133,8 @@ func TestSubAgentGuard_NormalStopStillBlocks(t *testing.T) {
 	}
 }
 
-// TestStopGuard_NonConsecutiveTurnResetsCounter 验证：两次 block 之间 TurnIndex
-// 不相邻（中间 LLM 做了 tool call 或用户 resume）时，consecutive 计数重置。
+// TestStopGuard_NonConsecutiveTurnResetsCounter verifies that when TurnIndex is not consecutive
+// between two blocks (e.g. LLM called a tool in between or user resumed), the consecutive counter is reset.
 func TestStopGuard_NonConsecutiveTurnResetsCounter(t *testing.T) {
 	s := newTestStore(t)
 	if err := s.Progress.Init("test", 3); err != nil {
@@ -162,15 +163,15 @@ func TestStopGuard_NonConsecutiveTurnResetsCounter(t *testing.T) {
 	}
 }
 
-// TestEditorStopGuard_TaskAware 验证任务感知：被派生成弧摘要时，仅 save_review（复核）
-// 不算完成，必须产出 arc_summary 才放行——封堵卷中骨架弧死循环的起点 Defect C。
+// TestEditorStopGuard_TaskAware verifies task perception: when dispatched to generate an arc summary, only save_review (review)
+// is not considered complete. An arc_summary must be produced to pass -- plugging Defect C, the starting point of the volume skeleton arc infinite loop.
 func TestEditorStopGuard_TaskAware(t *testing.T) {
 	normalStop := agentcore.StopInfo{TurnIndex: 1, Message: agentcore.Message{StopReason: agentcore.StopReasonStop}}
 
-	// 摘要任务 + 只存了 review → 必须阻拦（review 不满足 arc_summary 要求）。
+	// Summary task + only review saved -> must block (review does not satisfy arc_summary requirement).
 	t.Run("summary task blocks on review only", func(t *testing.T) {
 		s := newTestStore(t)
-		guard := NewEditorStopGuard(s, "生成第 5 卷第 1 弧摘要（save_arc_summary）")
+		guard := NewEditorStopGuard(s, "Generate arc summary for volume 5, arc 1 (save_arc_summary)")
 		if _, err := s.Checkpoints.Append(domain.ArcScope(5, 1), "review", "reviews/v05a01.json", "d1"); err != nil {
 			t.Fatalf("append review: %v", err)
 		}
@@ -179,10 +180,10 @@ func TestEditorStopGuard_TaskAware(t *testing.T) {
 		}
 	})
 
-	// 摘要任务 + 已存 arc_summary → 放行。
+	// Summary task + arc_summary saved -> allow.
 	t.Run("summary task allows on arc_summary", func(t *testing.T) {
 		s := newTestStore(t)
-		guard := NewEditorStopGuard(s, "生成第 5 卷第 1 弧摘要（save_arc_summary）")
+		guard := NewEditorStopGuard(s, "Generate arc summary for volume 5, arc 1 (save_arc_summary)")
 		if _, err := s.Checkpoints.Append(domain.ArcScope(5, 1), "arc_summary", "summaries/arc-v05a01.json", "d1"); err != nil {
 			t.Fatalf("append arc_summary: %v", err)
 		}
@@ -191,10 +192,10 @@ func TestEditorStopGuard_TaskAware(t *testing.T) {
 		}
 	})
 
-	// 评审任务 + 存了 review → 放行（默认宽松行为不变）。
+	// Review task + review saved -> allow (maintaining default loose behavior).
 	t.Run("review task allows on review", func(t *testing.T) {
 		s := newTestStore(t)
-		guard := NewEditorStopGuard(s, "对第 5 卷第 1 弧做弧级评审（scope=arc）")
+		guard := NewEditorStopGuard(s, "Run arc review for volume 5, arc 1 (scope=arc)")
 		if _, err := s.Checkpoints.Append(domain.ArcScope(5, 1), "review", "reviews/v05a01.json", "d1"); err != nil {
 			t.Fatalf("append review: %v", err)
 		}
