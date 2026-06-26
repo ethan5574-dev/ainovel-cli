@@ -1,280 +1,283 @@
-# 重构提案：Hybrid Coordinator — Host 路由 × LLM 裁定
+# Refactoring Proposal: Hybrid Coordinator — Host Routing × LLM Adjudication
 
-> 状态：**已采纳并落地**（2026-04-20）
-> 调研时间：2026-04-20
-> 对应现行文档：`docs/architecture.md` §2 / §3 / §7 / §8 / §13 已同步更新
+> Status: **Adopted and Landed** (2026-04-20)
+> Research Date: 2026-04-20
+> Corresponding Current Document: `docs/architecture.md` §2 / §3 / §7 / §8 / §13 has been updated synchronously
 >
-> **本文档是第二稿。**第一稿激进方案（完全删除 Coordinator）的问题详见附录 A，保留该节避免重走弯路。
+> **This document is the second draft.** See Appendix A for issues with the first radical draft (completely removing the Coordinator), which is retained to avoid repeating mistakes.
 >
-> 落地结果：
-> - `internal/host/flow/` 新建（router.go / state.go / dispatcher.go / router_test.go，15 个分支单测全通过）
-> - `internal/host/reminder/` 删除 `flow.go` / `queue_guard.go` / `book_complete.go`；保留 StopGuard 与子代理 Guard
-> - `assets/prompts/coordinator.md` 从 88 行压到 ~45 行（职责收窄到执行 Host 指令 + 裁定 + 启动选型）
-> - `internal/host/resume.go` 大幅简化，只生成 label 与简短 prompt，具体下一步由 Router 在首次 TurnEnd 后派发
-> - `internal/store/` 新增 `HasArcReview` / `HasArcSummary` / `HasVolumeSummary` / `CheckConsistency` 辅助方法
-> - `observer.go` agent state 不再停在 working 的 bug 一并修复
+> Implementation Results:
+> - `internal/host/flow/` newly created (router.go / state.go / dispatcher.go / router_test.go; all 15 branch unit tests passed)
+> - `internal/host/reminder/` deleted `flow.go` / `queue_guard.go` / `book_complete.go`; retained StopGuard and sub-agent Guards
+> - `assets/prompts/coordinator.md` compressed from 88 lines to ~45 lines (responsibility narrowed to executing Host instructions + adjudication + startup selection)
+> - `internal/host/resume.go` significantly simplified, generating only a label and a short prompt; the specific next step is dispatched by the Router after the first TurnEnd
+> - `internal/store/` added helper methods `HasArcReview` / `HasArcSummary` / `HasVolumeSummary` / `CheckConsistency`
+> - Fixed the bug where the observer agent state failed to stay on "working"
 
 ---
 
-## 1. 背景
+## 1. Background
 
-### 1.1 项目定位
+### 1.1 Project Positioning
 
 ```
-agentcore       — 通用 agent 框架
-litellm         — 通用 LLM 网关
-ainovel-cli     — 小说创作垂直 agent（本项目）
+agentcore       — General agent framework
+litellm         — General LLM gateway
+ainovel-cli     — Novel writing vertical agent (this project)
 ```
 
-垂类 agent 的决策空间是**封闭的**：流程图固定，分支有限，事实驱动。通用 agent 的设计哲学（"押注模型能力"）套到垂类场景有过度纯粹的嫌疑。
+The decision space of a vertical agent is **closed**: the flowchart is fixed, branches are limited, and it is fact-driven. Applying the design philosophy of general agents ("betting on model capabilities") to vertical scenarios is overly pure.
 
-### 1.2 用户目标（按优先级）
+### 1.2 User Goals (in order of priority)
 
-1. **稳定性** — 持续不断写下去，不因路由错误中断
-2. **吃 LLM 升级福利** — 架构不对抗模型能力
-3. **充分利用多 agent 能力** — 职能分工清晰
+1. **Stability** — Continue writing smoothly without interruption due to routing errors.
+2. **Reaping LLM Upgrade Benefits** — The architecture does not fight against model capabilities.
+3. **Fully Leveraging Multi-agent Capabilities** — Clear division of functional roles.
 
-本提案在三者之间做**帕累托改进**（不牺牲任一目标换取另一目标）。
+This proposal represents a **Pareto improvement** among the three goals (without sacrificing any goal to exchange for another).
 
 ---
 
-## 2. 现状调研
+## 2. Current Status Survey
 
-### 2.1 Coordinator 的决策点分类
+### 2.1 Classification of Coordinator Decision Points
 
-逐条提取 `coordinator.md` 决策点：
+Extracting the decision points of `coordinator.md` one by one:
 
-| # | 决策点 | 性质 | 频率 |
+| # | Decision Point | Nature | Frequency |
 |---|---|---|---|
-| 1 | 启动时选 architect_long / short | 裁定（语义理解）| 一本书 1 次 |
-| 2 | 输入扩展（<20 字自动补充）| 裁定（创作性）| 一本书 0-1 次 |
-| 3 | 规划补齐循环 | 路由（事实驱动）| 1-3 次 |
-| 4 | 每章 commit 后下一步 | **路由** | **每章 1-2 次** |
-| 5 | 弧末评审分步执行 | 路由 | 每弧 3-5 次 |
-| 6 | 评审 verdict 分叉 | 路由（已代码化，见 §2.3）| 每弧 1 次 |
-| 7 | 用户干预处理 | 裁定（必须 LLM）| 任意 |
-| 8 | 子代理报错重派 | 路由 | 偶发 |
-| 9 | 全书完成输出总结 | 路由 | 1 次 |
+| 1 | Select `architect_long` / `short` at startup | Adjudication (semantic understanding) | 1 time per book |
+| 2 | Input expansion (auto-completion for <20 characters) | Adjudication (creativity) | 0-1 time per book |
+| 3 | Plan completion loop | Routing (fact-driven) | 1-3 times |
+| 4 | Next step after each chapter commit | **Routing** | **1-2 times per chapter** |
+| 5 | Step-by-step execution of arc-end review | Routing | 3-5 times per arc |
+| 6 | Verdict branching in review | Routing (already codified, see §2.3) | 1 time per arc |
+| 7 | User intervention handling | Adjudication (must use LLM) | Arbitrary |
+| 8 | Sub-agent error re-dispatch | Routing | Occasional |
+| 9 | Output summary upon book completion | Routing | 1 time |
 
-**结论**：9 个决策点里 6 个是纯路由（查表），3 个是真正需要 LLM 的裁定。**路由发生频率远高于裁定**（每章 1-2 次 vs 一本书几次）。
+**Conclusion**: Among the 9 decision points, 6 are pure routing (table lookup), and 3 are genuine adjudications that require the LLM. **Routing happens far more frequently than adjudication** (1-2 times per chapter vs a few times per book).
 
-### 2.2 Reminder 通道已经是流程代码化的半成品
+### 2.2 The Reminder Channel is Already a Semi-Finished Product of Process Codification
 
-`internal/host/reminder/` 下的生成器每轮根据事实生成**具体到动作的指令**：
+Generators under `internal/host/reminder/` produce **action-specific instructions** based on facts each round:
 
-- `flow.go` → `"当前 flow=writing，next_chapter=37。请直接调 subagent(writer, \"写第 37 章\")..."`
-- `queue_guard.go` → `"当前 flow=rewriting，待处理队列：[3,5]。请立即调 writer 逐章重写..."`
-- `book_complete.go` → `"全书已完成。请输出全书总结..."`
+- `flow.go` → `"Current flow=writing, next_chapter=37. Please call subagent(writer, \"write chapter 37\")..."`
+- `queue_guard.go` → `"Current flow=rewriting, pending queue: [3, 5]. Please call writer to rewrite chapter-by-chapter immediately..."`
+- `book_complete.go` → `"The book is complete. Please output the book summary..."`
 
-**当前架构存在 double dispatch**：
+**Double dispatch currently exists in the architecture**:
 ```
-规则层：coordinator.md 定义"如果 A 则 B"
+Policy layer: coordinator.md defines "if A, then B"
   ↓
-Reminder 层：每轮根据事实把规则具体化 → 生成"现在请做 B"
+Reminder layer: concrete rules based on facts each round → generates "please do B now"
   ↓
-LLM 层：读 reminder 生成 tool_call（基本就是复述 reminder）
+LLM layer: reads reminder to generate tool_call (basically repeating the reminder)
   ↓
-SubAgent 执行
+SubAgent execution
 ```
 
-**LLM 实际上只是在"执行" Reminder 给它的指令**。这中间环节既消耗 tokens，又引入不确定性（LLM 可能不完全遵守 reminder，比如观察到的 mid 路由错误）。
+**The LLM is actually just "executing" the instructions given to it by the Reminder.** This middle step both consumes tokens and introduces uncertainty (the LLM might not fully comply with the reminder, such as the observed mid-routing errors).
 
-### 2.3 工具层已经承担大量判断
+### 2.3 The Tool Layer Already Carries a Large Number of Judgments
 
-- `save_review.evaluateScorecardGate()`：评分卡门禁，自动把 accept 升级到 polish/rewrite
-- `save_review.ContractStatus` 检查：contract=missed 自动升级为 rewrite
-- `commit_chapter.CheckArcBoundary()`：即时计算 `arc_end / needs_expansion / needs_new_volume`
-- `commit_chapter.applyCompletion()`：即时判定 `book_complete`
-- `CommitResult` 返回 17 个事实字段
+- `save_review.evaluateScorecardGate()`: Scorecard gate, automatically upgrading "accept" to "polish/rewrite".
+- `save_review.ContractStatus` check: `contract=missed` automatically upgrades to "rewrite".
+- `commit_chapter.CheckArcBoundary()`: Instantly computes `arc_end / needs_expansion / needs_new_volume`.
+- `commit_chapter.applyCompletion()`: Instantly determines `book_complete`.
+- `CommitResult` returns 17 fact fields.
 
-**结论**：工具层已经把大部分"判断"代码化了，Coordinator 拿到这些事实做的决策基本就是 if-else。
+**Conclusion**: The tool layer has already codified most "judgments," and the decisions the Coordinator makes upon receiving these facts are basically if-else logic.
 
-### 2.4 现状的实际成本
+### 2.4 Actual Cost of Current Status
 
-每章 Coordinator LLM 轮次：
-- **每章 1-2 turns**（读 system prompt ~3000 tokens + reminder ~200 tokens + 历史 + CommitResult ~500 tokens → 生成 tool_call ~50 tokens）
-- 200 章长篇约 **200-400 turns** Coordinator LLM 调用
-- 其中 **~90% 是纯路由**（LLM 复述 reminder），**~10% 是裁定**
+Coordinator LLM turns per chapter:
+- **1-2 turns per chapter** (reading system prompt ~3000 tokens + reminder ~200 tokens + history + CommitResult ~500 tokens → generating tool_call ~50 tokens).
+- About **200-400 turns** of Coordinator LLM calls for a 200-chapter novel.
+- Among them, **~90% are pure routing** (LLM repeating the reminder), and **~10% are adjudications**.
 
-**每章 ~3500-7000 tokens 花在 Coordinator 决策上，95% 是冗余**（Reminder 已经算出答案）。
+**About 3500-7000 tokens are spent on Coordinator decisions per chapter, 95% of which is redundant** (the Reminder has already computed the answer).
 
 ---
 
-## 3. 设计方案：Hybrid Coordinator
+## 3. Design Proposal: Hybrid Coordinator
 
-### 3.1 核心思路
+### 3.1 Core Concept
 
-**把流程决策从 LLM 搬到 Host，但保留 Coordinator 作为裁定节点和指令执行通道**。
+**Move process decisions from the LLM to the Host, but retain the Coordinator as an adjudication node and command execution channel.**
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                   Entry (TUI / headless)                   │
+│                   Entry (TUI / headless)                 │
 └────────────────────────────────┬─────────────────────────┘
                                  │ Start / Resume / Steer
 ┌────────────────────────────────▼─────────────────────────┐
-│                            Host                            │
-│                                                             │
-│   ┌──────────────────────────────────────────────────┐     │
-│   │  Flow Router（新增核心）                           │     │
-│   │  ───────────                                      │     │
-│   │  订阅 Coordinator 事件：subagent tool 返回时触发    │     │
-│   │  纯函数：route(Progress, Checkpoint, Boundary)     │     │
-│   │      → NextInstruction                             │     │
-│   │  有指令 → coordinator.FollowUp(指令)                │     │
-│   │  无指令（裁定场景）→ 不干预，让 LLM 自主            │     │
-│   └──────────────────────────────────────────────────┘     │
-│                                                             │
-│   保留：生命周期 API / Observer / Usage Tracker             │
-│   保留：resume.go（简化，不变核心逻辑）                       │
+│                            Host                          │
+│                                                          │
+│   ┌──────────────────────────────────────────────────┐   │
+│   │  Flow Router (Newly added core)                  │   │
+│   │  ───────────                                     │   │
+│   │  Subscribes Coordinator events: triggered on     │   │
+│   │  subagent tool return                            │   │
+│   │  Pure function: route(Progress, Checkpoint,      │   │
+│   │      Boundary) → NextInstruction                 │   │
+│   │  With command → coordinator.FollowUp(command)    │   │
+│   │  No command (adjudication) → let LLM decide      │   │
+│   └──────────────────────────────────────────────────┘   │
+│                                                          │
+│   Retained: Lifecycle API / Observer / Usage Tracker     │
+│   Retained: resume.go (simplified, core logic unchanged) │
 └────────────────────────────────┬─────────────────────────┘
                                  │
 ┌────────────────────────────────▼─────────────────────────┐
-│                    Coordinator Agent (LLM)                  │
-│                                                             │
-│   职责收窄到两类：                                             │
-│   1. 接收 Host FollowUp 指令 → 生成对应 tool_call             │
-│   2. 用户 Steer 到达时自主裁定（查询/修改评估）                  │
-│                                                             │
-│   coordinator.md: 88 行 → ~25 行                             │
-│   MaxTurns: 1000 保留（响应用户 steer + 执行 Host 指令）      │
+│                    Coordinator Agent (LLM)               │
+│                                                          │
+│   Responsibilities narrowed to two types:                │
+│   1. Receive Host FollowUp commands → generate           │
+│      corresponding tool_call                             │
+│   2. Adjudicate user Steer on arrival (evaluation/query) │
+│                                                          │
+│   coordinator.md: 88 lines → ~25 lines                   │
+│   MaxTurns: 1000 retained (responding to user steer      │
+│      + executing Host commands)                          │
 └────────────────────────────────┬─────────────────────────┘
                                  │
                                  ▼
-         ┌──────────────────────┼───────────────────────┐
-         ▼                      ▼                       ▼
-    ┌────────┐             ┌────────┐             ┌────────┐
-    │Architect│             │ Writer │             │ Editor │
-    └────────┘             └────────┘             └────────┘
+          ┌──────────────────────┼───────────────────────┐
+          ▼                      ▼                       ▼
+     ┌────────┐             ┌────────┐             ┌────────┐
+     │Architect│             │ Writer │             │ Editor │
+     └────────┘             └────────┘             └────────┘
 ```
 
-### 3.2 职责重新划分
+### 3.2 Redistribution of Responsibilities
 
-| 层 | 做什么 | 不做什么 |
+| Layer | What it does | What it does not do |
 |---|---|---|
-| **Host / Flow Router** | 读事实 → 纯函数路由 → FollowUp 指令 | 自己调 SubAgent（仍通过 Coordinator）|
-| **Coordinator** | 执行 Host 指令 + 裁定用户干预 + 启动时选规划师 | 自主决策"下一步做什么" |
-| **SubAgent（A/W/E）** | 各自本职工作 | 无变化 |
-| **工具层** | 原子落盘 + 返回事实 | 无变化 |
+| **Host / Flow Router** | Reads facts → pure function routing → FollowUp commands | Calls SubAgent directly (still goes through Coordinator) |
+| **Coordinator** | Executes Host commands + adjudicates user intervention + selects planner at startup | Decides "what to do next" on its own |
+| **SubAgent (A/W/E)** | Respective duties | Unchanged |
+| **Tool Layer** | Atomic persistence + returns facts | Unchanged |
 
-**关键不变性**：
-- ✅ Coordinator 仍然是一个连续的 agent run，保留全书"连续感知"
-- ✅ 用户 Steer 仍通过 `coordinator.Inject()`，立即打断能力保留
-- ✅ SubAgentTool 仍由 LLM 调用（走 agentcore 原生路径），事件流 / ContextManager / 模型切换都不变
-- ✅ agentcore 零修改
+**Key Invariants**:
+- ✅ The Coordinator remains a continuous agent run, retaining whole-book "continuous awareness".
+- ✅ User Steer still goes through `coordinator.Inject()`, preserving the immediate interruption capability.
+- ✅ `SubAgentTool` is still called by the LLM (following the agentcore native path); event stream / ContextManager / model switching remain unchanged.
+- ✅ Zero modifications to agentcore.
 
-### 3.3 Flow Router 的具体逻辑
+### 3.3 Concrete Logic of Flow Router
 
 ```go
 // internal/host/flow/router.go
 
 type NextInstruction struct {
     Agent  string   // architect_long / architect_short / writer / editor
-    Task   string   // 给子代理的任务描述
-    Reason string   // 给 Coordinator 看的理由（可选，方便调试）
+    Task   string   // description of the task for the sub-agent
+    Reason string   // optional reason for the Coordinator (convenient for debugging)
 }
 
 type RouterState struct {
     Progress        *domain.Progress
     LatestCheckpoint *domain.Checkpoint
-    // 分层模式的弧边界（上一章已完成时计算）
+    // Arc boundary in layered mode (computed when the previous chapter is completed)
     LastCompleted   int
     ArcBoundary     *store.ArcBoundary
     HasArcReview    bool
     HasArcSummary   bool
-    // 基础设定缺项
+    // Missing items in basic settings
     FoundationMissing []string
 }
 
-// Route 返回下一步指令。返回 nil 表示让 Coordinator 自主裁定（裁定场景）。
+// Route returns the next step command. Returning nil means letting the Coordinator adjudicate (adjudication scenario).
 func Route(s RouterState) *NextInstruction {
     p := s.Progress
 
-    // 0. 终态：让 LLM 输出总结，不路由
+    // 0. Terminal state: let LLM output summary, no routing
     if p.Phase == domain.PhaseComplete {
         return nil
     }
 
-    // 1. 规划阶段：裁定（选规划师）由 LLM 做，不路由
+    // 1. Planning phase: adjudication (selecting planner) is handled by LLM, no routing
     if p.Phase != domain.PhaseWriting {
         return nil
     }
 
-    // 2. 写作阶段
-    // 2a. 重写/打磨队列优先
+    // 2. Writing phase
+    // 2a. Rewrite/Polish queue prioritized
     if len(p.PendingRewrites) > 0 {
         ch := p.PendingRewrites[0]
-        verb := "重写"
+        verb := "rewrite"
         if p.Flow == domain.FlowPolishing {
-            verb = "打磨"
+            verb = "polish"
         }
         return &NextInstruction{
             Agent:  "writer",
-            Task:   fmt.Sprintf("%s第 %d 章", verb, ch),
-            Reason: fmt.Sprintf("PendingRewrites 队列剩余 %d 章", len(p.PendingRewrites)),
+            Task:   fmt.Sprintf("%s chapter %d", verb, ch),
+            Reason: fmt.Sprintf("PendingRewrites queue has %d chapters remaining", len(p.PendingRewrites)),
         }
     }
 
-    // 2b. 审阅中：不路由，让 Coordinator 根据 save_review 结果走 verdict 分叉
+    // 2b. Reviewing: no routing, let the Coordinator branch based on save_review verdict
     if p.Flow == domain.FlowReviewing {
         return nil
     }
 
-    // 2c. 分层模式的弧末后处理
+    // 2c. Arc-end post-processing in layered mode
     if p.Layered && s.ArcBoundary != nil && s.ArcBoundary.IsArcEnd {
         b := s.ArcBoundary
         if !s.HasArcReview {
             return &NextInstruction{
                 Agent:  "editor",
-                Task:   fmt.Sprintf("对第 %d 卷第 %d 弧做弧级评审", b.Volume, b.Arc),
-                Reason: "弧末评审未完成",
+                Task:   fmt.Sprintf("perform arc-level review for volume %d arc %d", b.Volume, b.Arc),
+                Reason: "arc-end review incomplete",
             }
         }
         if !s.HasArcSummary {
             return &NextInstruction{
                 Agent:  "editor",
-                Task:   fmt.Sprintf("生成第 %d 卷第 %d 弧摘要", b.Volume, b.Arc),
-                Reason: "弧摘要未完成",
+                Task:   fmt.Sprintf("generate arc summary for volume %d arc %d", b.Volume, b.Arc),
+                Reason: "arc summary incomplete",
             }
         }
         if b.NeedsExpansion {
             return &NextInstruction{
                 Agent:  "architect_long",
-                Task:   fmt.Sprintf("展开第 %d 卷第 %d 弧（save_foundation type=expand_arc）", b.NextVolume, b.NextArc),
-                Reason: "下一弧骨架待展开",
+                Task:   fmt.Sprintf("expand volume %d arc %d (save_foundation type=expand_arc)", b.NextVolume, b.NextArc),
+                Reason: "next arc skeleton to be expanded",
             }
         }
         if b.NeedsNewVolume {
             return &NextInstruction{
                 Agent:  "architect_long",
-                Task:   "评估并执行 save_foundation(type=append_volume) 或 mark_final",
-                Reason: "卷结束需决定追加新卷",
+                Task:   "evaluate and execute save_foundation(type=append_volume) or mark_final",
+                Reason: "volume end requires deciding whether to append new volume",
             }
         }
     }
 
-    // 2d. 正常续写
+    // 2d. Normal continuation
     next := p.NextChapter()
     return &NextInstruction{
         Agent:  "writer",
-        Task:   fmt.Sprintf("写第 %d 章", next),
-        Reason: "续写",
+        Task:   fmt.Sprintf("write chapter %d", next),
+        Reason: "continuation",
     }
 }
 ```
 
-**函数特性**：
-- 纯函数（输入 RouterState，输出 NextInstruction）
-- 可单测（给定状态，断言路由结果）
-- **返回 nil 是合法的**——表示"这是裁定场景，请让 LLM 自主"
+**Function Characteristics**:
+- Pure function (input: RouterState, output: NextInstruction).
+- Unit testable (assert routing results given states).
+- **Returning nil is legal** — indicates "this is an adjudication scenario, please let the LLM decide."
 
-### 3.4 触发时机
+### 3.4 Trigger Timing
 
-Host 订阅 `agentcore.EventToolExecEnd` 事件：
+Host subscribes to `agentcore.EventToolExecEnd` events:
 
 ```go
 coordinator.Subscribe(func(ev agentcore.Event) {
     if ev.Type == agentcore.EventToolExecEnd && ev.Tool == "subagent" && !ev.IsError {
-        // SubAgent 刚返回 → 读最新状态 → 路由
+        // SubAgent just returned → read latest state → route
         h.flowRouter.Dispatch()
     }
 })
@@ -285,7 +288,7 @@ func (r *FlowRouter) Dispatch() {
     state := r.loadState()
     instruction := Route(state)
     if instruction == nil {
-        return // 裁定场景，让 LLM 自主
+        return // adjudication scenario, let LLM decide
     }
     msg := formatInstruction(instruction)
     _ = r.coordinator.FollowUp(agentcore.UserMsg(msg))
@@ -293,362 +296,360 @@ func (r *FlowRouter) Dispatch() {
 
 func formatInstruction(i *NextInstruction) string {
     return fmt.Sprintf(
-        "[Host 下达指令] 下一步：调用 subagent(%s, %q)\n"+
-        "理由：%s\n"+
-        "这是流程层的明确指令，请立即执行，不要先调 novel_context，不要先输出推理。",
+        "[Host issued command] Next step: call subagent(%s, %q)\n"+
+        "Reason: %s\n"+
+        "This is an explicit instruction from the process layer. Please execute it immediately without calling novel_context first and without outputting reasoning.",
         i.Agent, i.Task, i.Reason,
     )
 }
 ```
 
-### 3.5 响应性与并发
+### 3.5 Reactivity and Concurrency
 
-**用户 Steer 路径**（无变化）：
+**User Steer Path** (unchanged):
 ```
-Steer → coordinator.Inject(UserMsg("[用户干预] xxx"))
+Steer → coordinator.Inject(UserMsg("[User intervention] xxx"))
 ```
 
-- 正在运行：消息插入当前 run 队列
-- Idle：resume run
-- Paused：排队
+- Running: message inserted into current run queue
+- Idle: resume run
+- Paused: queued up
 
-**路由指令 + Steer 的并发**：
-- 都进入 Coordinator 的消息队列，按 agentcore 原生顺序处理
-- 如果 Host 刚发 `FollowUp("[Host 指令] 写第 37 章")`，紧接着用户 Steer `"停一下，调整风格"`
-  - Coordinator 先处理 Host 指令？还是先处理 Steer？
-  - **`Inject` 的语义是插队到当前队列头部**，所以 Steer 先被处理
-  - 这是期望行为：用户干预优先级高于 Host 例行调度
+**Concurrency of Routing Commands + Steer**:
+- Both enter the Coordinator's message queue, processed in native agentcore order.
+- If Host just sent `FollowUp("[Host command] write chapter 37")`, and user Steer `"stop, adjust style"` arrives immediately after:
+  - Does the Coordinator process Host command first? Or user Steer?
+  - **The semantic of `Inject` is enqueuing at the head of the current queue**, so user Steer is processed first.
+  - This is expected behavior: user intervention has higher priority than Host routine scheduling.
 
-**避免 Host 指令与 Steer 冲突**：
-- Flow Router 在收到"Steer 已注入"信号后**短暂暂停**几 turn（让 Coordinator 处理完 Steer 再路由）
-- 通过订阅 `agentcore.EventMessageEnd` + 检查 Progress 状态变化感知 Steer 处理结果
+**Avoiding Host Command conflicts with Steer**:
+- The Flow Router **briefly pauses** for a few turns upon receiving the "Steer injected" signal (letting the Coordinator finish processing Steer before routing).
+- Perceives Steer processing results by subscribing to `agentcore.EventMessageEnd` + checking Progress state changes.
 
-### 3.6 coordinator.md 简化示例
+### 3.6 Simplified coordinator.md Example
 
-从 88 行砍到约 25 行：
+Cut down from 88 lines to about 25 lines:
 
 ```markdown
-你是小说创作总协调者。
+You are the general coordinator of novel creation.
 
-## 你的工作模式
+## Your Working Mode
 
-**主线**：Host 会在每次子代理返回后下达 `[Host 下达指令]` 消息，告诉你下一步调哪个子代理做什么。收到指令立即生成对应 tool_call，不要先调 novel_context 推理，不要复述。
+**Mainline**: The Host will issue a `[Host issued command]` message after each sub-agent returns, telling you which sub-agent to call next and what to do. Generate the corresponding tool_call immediately upon receiving the command; do not call novel_context for reasoning first, and do not repeat.
 
-**裁定**：遇到以下情况时你需要自主判断（Host 不会下达指令，你必须主动行动）：
+**Adjudication**: You need to judge independently in the following scenarios (the Host will not issue commands; you must act actively):
 
-### 启动时：选规划师
+### Startup: Select Planner
 
-- 默认 → `architect_long`
-- 仅当用户显式要求短篇/单卷/小品且篇幅限定在 25 章内 → `architect_short`
+- Default → `architect_long`
+- Only when the user explicitly requests short/single-volume/sketches and limits the length to 25 chapters → `architect_short`
 
-如用户输入 < 20 字，先在 task 描述里补充差异化方向、目标读者、至少一个非常规故事钩子，再派发。
+If user input is < 20 characters, supplement the differentiation direction, target readers, and at least one unconventional story hook in the task description before dispatching.
 
-### 用户 Steer
+### User Steer
 
-格式：`[用户干预] xxx`
+Format: `[User intervention] xxx`
 
-- **查询类**（问状态/设定）：直接输出文字答案，无需再调工具；Host 会继续派发。
-- **修改类**（要求改设定/重写/调整风格）：评估影响范围：
-  - 涉及设定变更 → 调 architect_* 做 `save_foundation(type=...)`
-  - 涉及已写章节 → 让工具自动把目标章节写入 `PendingRewrites`（可通过再次调 writer 时说明重写意图）
-  - 仅影响后续风格 → 把要求简短描述后，下次收到 Host 指令时附加到 writer 的 task 描述里
+- **Query** (asking about status/settings): Output the text answer directly without calling tools; the Host will continue dispatching.
+- **Modification** (requesting setup change / rewrite / style adjustment): Evaluate the impact scope:
+  - Involves setup changes → call architect_* to do `save_foundation(type=...)`
+  - Involves already written chapters → let the tool automatically write target chapters into `PendingRewrites` (can be done by explaining rewrite intentions when calling writer again)
+  - Only affects subsequent style → describe requirements briefly, and append to the task description of the writer next time you receive the Host command.
 
-## 工具
+## Tools
 
-- `subagent(agent, task)`：调用子代理
-- `novel_context`：仅在用户查询需要时使用，不要在 Host 指令到达后先调
+- `subagent(agent, task)`: Call sub-agents.
+- `novel_context`: Only use when required by user queries; do not call first after Host commands arrive.
 
-## 子代理
+## Sub-agents
 
 - `architect_long` / `architect_short` / `writer` / `editor`
 
-## 禁止
+## Prohibited
 
-- 在 Host 指令到达时先调 novel_context 再行动
-- 在没有用户 Steer 且没有 Host 指令的情况下自行决定下一步
+- Calling novel_context first before acting upon Host commands.
+- Deciding the next step on your own without user Steer and without Host commands.
 ```
 
-### 3.7 Reminder 通道大幅瘦身
+### 3.7 Significant Slimming of the Reminder Channel
 
-**删除**：
-- `flow.go`（Host FollowUp 已经下达具体指令，Reminder 的路由提醒失去价值）
-- `queue_guard.go`（队列由 Host Router 保证）
-- `book_complete.go`（Host 在 Phase=Complete 时 FollowUp 输出总结指令）
+**Deleted**:
+- `flow.go` (The Host FollowUp already issues specific instructions; Reminder's routing alerts lose value)
+- `queue_guard.go` (Queuing is guaranteed by Host Router)
+- `book_complete.go` (Host issues summary command via FollowUp when Phase=Complete)
 
-**保留**：
-- `subagent_guards.go`（Writer/Architect/Editor 的 StopGuard，确保子代理不空手结束）
-- 新增一个轻量 `foundation_reminder.go`：规划阶段告知 Coordinator 缺项（这是**裁定需要的信息**而非路由指令）
+**Retained**:
+- `subagent_guards.go` (Writer/Architect/Editor's StopGuard, ensuring sub-agents do not end empty-handed)
+- Newly added lightweight `foundation_reminder.go`: informs Coordinator of missing items during planning (this is **information needed for adjudication** rather than routing commands)
 
-**StopGuard 保留**：
-- Coordinator 的 StopGuard 保留（`Phase != Complete` 时拦 end_turn 作兜底）
-- 新增"收到 Host 指令但本轮未调对应 subagent"时注入提醒
+**StopGuard Retained**:
+- Coordinator's StopGuard is retained (intercepts `end_turn` as backup when `Phase != Complete`)
+- Adds reminder injection when "Host command received but corresponding sub-agent not called in this round".
 
-### 3.8 resume.go 小幅简化
+### 3.8 Minor Simplification of resume.go
 
-当前 `buildResumePrompt` 按 checkpoint 生成精确到 step 的自然语言指令（121 行）。
+Currently, `buildResumePrompt` generates natural language instructions precise to the step based on checkpoints (121 lines).
 
-新架构：
-- Resume 时先读 Progress，Flow Router 算出 `NextInstruction`
-- Coordinator 收到一个**非常简短**的 resume prompt，然后等 Host 的 FollowUp 指令
+New Architecture:
+- Reads Progress first on Resume; Flow Router computes `NextInstruction`.
+- Coordinator receives a **very short** resume prompt, then waits for the Host's FollowUp command.
 
 ```
-[恢复] 本书「xxx」已完成 N 章，进入 XX 阶段。
-请等待 Host 下一步指令，或处理可能在停机期间留下的用户干预。
+[Resume] The book "xxx" has completed N chapters, entering the XX phase.
+Please wait for the Host's next command, or process user interventions that might have been left during downtime.
 ```
 
-几乎所有分支逻辑下沉到 Flow Router（Router 本来就要按状态路由，Resume 不需要特殊路径）。
+Almost all branch logic sinks to the Flow Router (the Router naturally routes based on state; Resume does not need a special path).
 
 ---
 
-## 4. 目标达成度评估
+## 4. Evaluation of Goal Attainment
 
-### 4.1 稳定性
+### 4.1 Stability
 
-| 风险 | 当前 | 新架构 |
+| Risk | Current | New Architecture |
 |---|---|---|
-| Coordinator 选错 architect | 发生过（mid 路由错）| 启动时仍是裁定，但 prompt 从三档变二元（已做），错误面大幅缩小 |
-| Coordinator 不遵守"只说写第 N 章" | 发生过 | Host 下达固定格式指令，不再需要 LLM 生成 task 描述 |
-| Coordinator 漏掉 queue_drained 检查 | 发生过 | Host Router 强制按顺序走 |
-| 弧末 commit 后 Coordinator 忘记调 editor | 可能 | Host Router 检测到 IsArcEnd && !HasArcReview 直接派发 |
-| 崩溃恢复分支遗漏 | 已知缺口 | Flow Router 的状态机天然覆盖所有分支 |
-| StopGuard 连续拦 5 次升级 fatal | 存在 | Host 指令明确后 LLM 很难连续拦（除非 prompt 严重失灵）|
+| Coordinator selects wrong architect | Occurred (mid-routing error) | Adjudication at startup remains, but prompt goes from three tiers to binary (completed), significantly reducing error rate |
+| Coordinator violates "only say write chapter N" | Occurred | Host issues fixed-format commands, no longer requiring LLM to generate task descriptions |
+| Coordinator misses queue_drained check | Occurred | Host Router forces sequential progression |
+| Coordinator forgets to call editor after arc-end commit | Possible | Host Router dispatches directly upon detecting IsArcEnd && !HasArcReview |
+| Crash recovery branch omission | Known gap | Flow Router's state machine naturally covers all branches |
+| StopGuard consecutive 5 blocks upgrades to fatal | Exists | Once Host commands are clear, it is hard for LLM to block consecutively (unless prompt completely fails) |
 
-### 4.2 LLM 升级红利
+### 4.2 LLM Upgrade Benefits
 
-| 维度 | 保留度 |
+| Dimension | Retention |
 |---|---|
-| Writer 模型升级 → 写作质量 | 100% |
-| Editor 模型升级 → 评审准确 | 100% |
-| Architect 模型升级 → 规划精致 | 100% |
-| **Coordinator 模型升级 → 裁定更准** | **100%**（裁定场景保留）|
-| ~~Coordinator 模型升级 → 路由更准~~ | 放弃（路由错误率本来就应该是 0，不需要 LLM 变聪明）|
+| Writer model upgrade → Writing quality | 100% |
+| Editor model upgrade → Review accuracy | 100% |
+| Architect model upgrade → Refined planning | 100% |
+| **Coordinator model upgrade → Better adjudication** | **100%** (adjudication scenarios retained) |
+| ~~Coordinator model upgrade → Better routing~~ | Waived (routing dimension waived) |
 
-**重要保留**：用户干预评估、规划师选型、verdict 边界判断等裁定场景仍由 LLM 处理，模型升级直接受益。
+**Important Retention**: Adjudication scenarios such as user intervention evaluation, planner selection, and verdict boundary judgments are still handled by the LLM, benefiting directly from model upgrades.
 
-### 4.3 多 agent 能力
+### 4.3 Multi-agent Capabilities
 
-- SubAgent 数量、职能、装配方式**完全不变**
-- 模型异构（coordinator/architect/writer/editor 独立配置）**完全不变**
-- Coordinator 仍是连续 run，保留"全书视角"
-- 协作媒介（Store 中的产物）不变
+- SubAgent count, duties, and assembly methods **remain completely unchanged**.
+- Model heterogeneity (coordinator/architect/writer/editor independent configurations) **remains completely unchanged**.
+- Coordinator remains a continuous run, preserving the "whole-book perspective."
+- Collaboration media (artifacts in the Store) remain unchanged.
 
-### 4.4 响应性
+### 4.4 Reactivity
 
-- 用户 Steer 通过 `coordinator.Inject` 打断的能力**完全保留**
-- Host Router 在 SubAgent 返回时派发指令，和用户 Steer 走同一条消息通道
-- Inject 的优先级高于 FollowUp（`Inject` 语义是插队），Steer 不会被 Host 指令挤掉
+- Immediate interruption capability of user Steer via `coordinator.Inject` is **completely retained**.
+- Host Router dispatches commands when SubAgent returns, sharing the same message channel with user Steer.
+- The priority of `Inject` is higher than `FollowUp` (`Inject` is queue-jumping), so Steer will not be crowded out by Host commands.
 
-### 4.5 Token 成本
+### 4.5 Token Cost
 
-当前每章：Coordinator ~3500-7000 tokens × 1-2 turns = 3500-14000 tokens
+Current per chapter: Coordinator ~3500-7000 tokens × 1-2 turns = 3500-14000 tokens
 
-新架构每章：
-- Coordinator prompt 从 ~3000 tokens 压到 ~800 tokens
-- 每章仍需 1 个 turn（Coordinator 读 FollowUp 指令 + 生成 tool_call）
-- 总计 ~1000-1500 tokens
+New architecture per chapter:
+- Coordinator prompt compressed from ~3000 tokens to ~800 tokens.
+- Still requires 1 turn per chapter (Coordinator reading FollowUp command + generating tool_call).
+- Totals ~1000-1500 tokens.
 
-**节省 60-80%**。200 章长篇节省约 400k-1M tokens（不如激进方案的 100%，但不牺牲响应性和全书视角）。
-
----
-
-## 5. 对 docs/architecture.md 的影响
-
-### 5.1 §2 核心原则调整
-
-**原则一**（LLM 驱动主循环）→ 调整为：
-```
-LLM 驱动创作与裁定，Host 驱动流程路由。
-
-- 创作与裁定（需要语义理解、质量判断、意图识别的决策）仍留给 LLM
-- 流程路由（读事实→查表→发指令）由 Host 代码承担
-- Host 不绕过 Coordinator 直接调 SubAgent，而是通过 FollowUp 下达明确指令，
-  保留 Coordinator 作为指令执行通道和裁定节点
-```
-
-**原则二**（押注模型能力，不押注硬编码）→ 调整为：
-```
-在创作与裁定维度押注模型（Writer/Editor/Architect/Coordinator 裁定能力），
-在流程路由维度用代码表达（垂类 agent 的决策空间是封闭的，查表任务 LLM 无红利）。
-```
-
-### 5.2 §13 禁止列表调整
-
-- §13.13 "不做 Host 读信号文件 → 注入下一步指令的确定性控制面" →
-  **修正措辞**："不用信号文件做 IPC（直接读 Progress + Checkpoint 即可），Host 读事实后通过 `coordinator.FollowUp` 下达明确的子代理调用指令，是合理的垂类路由"
-- §13.14 "不做状态机硬编码 Flow 迁移" →
-  **修正措辞**："Flow 标签仍只由工具更新（不在 Host 里写'如果 A 则 SetFlow(B)'的状态机），但 Flow Router 可以根据 Flow 和其他事实决定下一步调谁"
-
-### 5.3 §7 Agent 装配调整
-
-- 保留 Coordinator 装配
-- `coordinator.md` 从 88 行砍到 ~25 行
-- Reminder 通道缩减（删 flow/queue_guard/book_complete，保留 foundation/subagent_guards）
-- 新增 `internal/host/flow/` 包
+**Saves 60-80%** (not as high as the radical 100% savings, but preserves reactivity and whole-book perspective).
 
 ---
 
-## 6. 已知弱点（诚实列出）
+## 5. Impact on docs/architecture.md
 
-### 6.1 Flow Router 的长期演化
+### 5.1 §2 Core Principles Adjustment
 
-- 随着新场景加入（新 flow 状态、新的弧末后处理），Router 的 switch-case 会变长
-- 需要严格约束：**只处理路由，不处理业务逻辑**；决策规则写单测
-- 类似 v0.0.1 `handleSubAgentDone` 的警示永远有效；但本方案通过"纯函数 + 单测 + 只调用纯事实"避免滑向上帝对象
+**Principle 1** (LLM driving main loop) → adjusted to:
+```
+LLM-driven creation and adjudication, Host-driven process routing.
 
-### 6.2 用户干预的复杂性
+- Creation and adjudication (decisions requiring semantic understanding, quality judgment, or intent recognition) remain with the LLM.
+- Process routing (reading facts → table lookup → issuing commands) is handled by Host code.
+- The Host does not call SubAgents bypassing the Coordinator; instead, it issues explicit commands via FollowUp, retaining the Coordinator as a command execution channel and adjudication node.
+```
 
-- 当前设计把 Steer 完全交给 Coordinator 的 LLM 裁定
-- 但某些 Steer 跨多个类别（如"把角色 A 前几章改清楚 + 后面给他加支线"）
-- 需要依赖 LLM 的能力来拆解，prompt 需要给出清晰指引
-- **这部分模型升级直接受益**（比起硬编码 InterventionAgent 的 enum 分类，LLM 灵活裁定更匹配真实场景）
+**Principle 2** (betting on model capabilities, not hard-coding) → adjusted to:
+```
+Bet on the model in creation and adjudication dimensions (Writer/Editor/Architect/Coordinator adjudication capabilities); represent process routing in code (vertical agents have a closed decision space; LLMs have no advantage in table lookup tasks).
+```
 
-### 6.3 事实层一致性的前置依赖
+### 5.2 §13 Prohibited List Adjustment
 
-- Router 基于 Progress + Checkpoint 做决策，事实层必须可靠
-- 当前 `withWriteLock` 封装良好，commit_chapter 的三件套原子完成
-- 但如果事实层出现不一致（如 Progress 说第 3 章完成但 chapters/ 下没有），Router 会做错决策
-- 建议：启动时加一次**事实层一致性检查**（如发现 Progress.CompletedChapters 与 chapters/ 目录对不上，报 warning）
+- §13.13 "No deterministic control plane where Host reads signals → injects next step commands" →
+  **Corrected wording**: "Do not use signal files for IPC (directly read Progress + Checkpoint instead); the Host reading facts and issuing explicit sub-agent call commands via `coordinator.FollowUp` is a reasonable vertical route."
+- §13.14 "No hard-coded Flow transitions in state machines" →
+  **Corrected wording**: "Flow labels are still only updated by tools (do not write state machines like 'if A, then SetFlow(B)' in the Host), but the Flow Router can decide who to call next based on Flow and other facts."
 
-### 6.4 Coordinator 仍保留 LLM 路由可能性
+### 5.3 §7 Agent Assembly Adjustment
 
-- 即使指令明确，LLM 可能"创造性"地不执行（比如生成一段思考文字后才调工具）
-- StopGuard 兜底：收到 Host 指令但本轮未调 subagent 则注入提醒
-- 这是兜底，不是禁止——强模型偶尔的"多一步思考"也不是坏事
-
-### 6.5 测试覆盖要求提高
-
-- Flow Router 是纯函数，必须有完备单测（覆盖所有 Phase × Flow × Boundary 组合）
-- 集成测试：模拟"commit → router → FollowUp → coordinator 响应 → subagent"的完整链路
-- 崩溃恢复测试：kill 进程后 resume，断言 Router 推导出正确的下一步
+- Retain Coordinator assembly.
+- `coordinator.md` compressed from 88 lines to ~25 lines.
+- Reminder channel reduced (deleted flow/queue_guard/book_complete, retained foundation/subagent_guards).
+- Added `internal/host/flow/` package.
 
 ---
 
-## 7. 实施路线
+## 6. Known Weaknesses (Honestly Listed)
 
-### 阶段 1：事实层强化（约 0.5 天）
+### 6.1 Long-term Evolution of Flow Router
 
-- 补齐 §6.3 的一致性检查：启动/Resume 时扫描一次，生成 warning
-- 确保 `store.HasArcReview(vol, arc)` 和 `HasArcSummary(vol, arc)` API 可用（如没有就加）
+- As new scenarios are added (new flow states, new arc-end post-processing), the Router's switch-case will grow longer.
+- Strict constraint required: **only process routing, no business logic**; write unit tests for decision rules.
+- Warning of v0.0.1 `handleSubAgentDone` is always valid; but this proposal avoids sliding into a god object via "pure functions + unit tests + calling only pure facts."
 
-### 阶段 2：引入 Flow Router 骨架（约 1 天）
+### 6.2 Complexity of User Intervention
 
-- 新建 `internal/host/flow/` 包：
-  - `route.go` — 纯函数 `Route(state) → *NextInstruction`
-  - `dispatcher.go` — 订阅事件 + FollowUp 下达
-  - `route_test.go` — 覆盖所有分支的单测
-- 通过 config 开关 `flow_driven: true/false` 控制是否激活
-- 默认关闭（false），先做对照运行
+- Current design leaves Steer entirely to Coordinator LLM adjudication.
+- But some Steer spans multiple categories (e.g. "clear up character A's past chapters + add subplots for him later").
+- Relies on LLM's capability to dissect; prompt needs to give clear guidelines.
+- **This part directly benefits from model upgrades** (compared to hard-coding InterventionAgent's enum classification, LLM flexible adjudication matches real scenarios better).
 
-### 阶段 3：激活并验证（约 1 天）
+### 6.3 Pre-requisite Dependency of Fact Layer Consistency
 
-- 打开 `flow_driven: true`
-- 跑一本 30-50 章的小说，对比指标：
-  - Coordinator LLM 调用次数
-  - 路由错误数（应为 0）
-  - 响应性（steer 打断是否正常）
-- 修 bug，调整 Router 规则
+- Router makes decisions based on Progress + Checkpoint; the fact layer must be reliable.
+- Current `withWriteLock` is well encapsulated; commit_chapter's triple-actions complete atomically.
+- But if inconsistency occurs in the fact layer (e.g. Progress says chapter 3 is completed but it is missing under chapters/), the Router will make wrong decisions.
+- Suggestion: Add an **integrity/consistency check for the fact layer** at startup (e.g. warn if Progress.CompletedChapters does not match the chapters/ directory).
 
-### 阶段 4：coordinator.md 简化 + Reminder 瘦身（约 0.5 天）
+### 6.4 Coordinator Still Retains Possibility of LLM Routing
 
-- 按 §3.6 改 coordinator.md
-- 删除 `reminder/flow.go / queue_guard.go / book_complete.go`
-- 保留必要的 foundation reminder
-- 更新 subagent StopGuard 如需（一般不用）
+- Even if instructions are explicit, the LLM might "creatively" fail to execute them (e.g. generating a block of reasoning text before calling tools).
+- StopGuard fallback: injects reminder if Host command is received but sub-agent is not called in this round.
+- This is a backup, not a prohibition—occasional "extra thinking steps" from strong models are not a bad thing.
 
-### 阶段 5：resume.go 简化（约 0.5 天）
+### 6.5 Higher Requirements for Test Coverage
 
-- 删除 `buildResumePrompt` 的大部分分支
-- 替换为简短通用的 "[恢复] 请等待 Host 指令" 消息
-- Resume 后 Router 自然推导出继续的动作
-
-### 阶段 6：架构文档更新（约 0.5 天）
-
-- 按 §5 修改 `docs/architecture.md` §2 / §13 / §7
-- 把本提案文档状态改为"已采纳"，归档到 `docs/history/`
-
-### 阶段 7：观察期（2-4 周）
-
-- 连续跑 2-3 本长篇（各 100+ 章）
-- 记录所有路由错误（如有）、响应性问题、Coordinator 意外行为
-- 根据观察微调 Router 规则和 coordinator.md
-
-**总计约 4 天实施 + 观察期**。
+- Flow Router is a pure function and must have complete unit tests (covering all Phase × Flow × Boundary combinations).
+- Integration tests: simulate the complete chain of "commit → router → FollowUp → coordinator response → subagent".
+- Crash recovery test: kill process and then resume, asserting the Router derives the correct next step.
 
 ---
 
-## 8. 对比表
+## 7. Implementation Roadmap
 
-| 维度 | 当前架构 | Hybrid（本方案）| 激进方案（附录 A）|
+### Phase 1: Fact Layer Strengthening (approx. 0.5 day)
+
+- Implement consistency checks in §6.3: scan once during startup/Resume, generating warnings.
+- Ensure `store.HasArcReview(vol, arc)` and `HasArcSummary(vol, arc)` APIs are available (add if missing).
+
+### Phase 2: Introducing Flow Router Skeleton (approx. 1 day)
+
+- Create `internal/host/flow/` package:
+  - `route.go` — pure function `Route(state) → *NextInstruction`
+  - `dispatcher.go` — subscribes to events + issues FollowUp commands
+  - `route_test.go` — unit tests covering all branches
+- Control activation via config switch `flow_driven: true/false`.
+- Default to false, running comparisons first.
+
+### Phase 3: Activation and Verification (approx. 1 day)
+
+- Turn on `flow_driven: true`.
+- Run a 30-50 chapter novel, comparing metrics:
+  - Coordinator LLM call counts
+  - Routing errors (should be 0)
+  - Reactivity (steer interruption working normally)
+- Fix bugs, adjust Router rules.
+
+### Phase 4: coordinator.md Simplification + Reminder Slimming (approx. 0.5 day)
+
+- Modify coordinator.md according to §3.6.
+- Delete `reminder/flow.go / queue_guard.go / book_complete.go`.
+- Retain necessary foundation reminders.
+- Update sub-agent StopGuards if needed (usually not required).
+
+### Phase 5: resume.go Simplification (approx. 0.5 day)
+
+- Delete most branches of `buildResumePrompt`.
+- Replace with a short, generic "[Resume] Please wait for Host instructions" message.
+- After Resume, the Router naturally derives the next action to continue.
+
+### Phase 6: Architecture Document Update (approx. 0.5 day)
+
+- Modify `docs/architecture.md` §2 / §13 / §7 according to §5.
+- Change this proposal document status to "Adopted" and archive it to `docs/history/`.
+
+### Phase 7: Observation Period (2-4 weeks)
+
+- Continuously run 2-3 long novels (100+ chapters each).
+- Record all routing errors (if any), reactivity issues, and unexpected Coordinator behavior.
+- Fine-tune Router rules and coordinator.md based on observations.
+
+**Total of about 4 days of implementation + observation period.**
+
+---
+
+## 8. Comparison Table
+
+| Dimension | Current Architecture | Hybrid (This Proposal) | Radical Proposal (Appendix A) |
 |---|---|---|---|
-| 稳定性 | 中（LLM 偶尔路由错）| **高** | 高 |
-| 响应性 | 高 | **高** | **低**（Host 直调 SubAgent 无法打断）|
-| LLM 红利 | 100% | **100%** | 85%（路由维度放弃）|
-| Token 节省 | 0 | ~70% | ~95% |
-| 全书视角 | 有 | **有** | 无（每次 SubAgent 独立）|
-| 实施成本 | - | 中（约 4 天）| 高（约 1 周 + 改 agentcore）|
-| 文档更新 | - | 小（§2/§13 微调）| 大（§2 原则重写）|
-| 需要改 agentcore | - | 否 | 可能（直接调 SubAgent）|
-| 回滚难度 | - | 低（config 开关）| 高 |
+| Stability | Mid (LLM occasionally routes wrong) | **High** | High |
+| Reactivity | High | **High** | **Low** (Host directly calling SubAgent cannot be interrupted) |
+| LLM Benefit | 100% | **100%** | 85% (routing dimension waived) |
+| Token Savings | 0 | ~70% | ~95% |
+| Whole-book View | Yes | **Yes** | None (each SubAgent runs independently) |
+| Implementation Cost | - | Mid (approx. 4 days) | High (approx. 1 week + modify agentcore) |
+| Document Update | - | Minor (§2/§13 fine-tuning) | Major (§2 principles rewritten) |
+| Modifies agentcore | - | No | Possible (calling SubAgent directly) |
+| Rollback Difficulty | - | Low (config switch) | High |
 
 ---
 
-## 9. 决策点
+## 9. Decision Points
 
-1. **是否采纳本提案（Hybrid Coordinator）？** [ ] 采纳 · [ ] 修改后采纳 · [ ] 不采纳
-2. 阶段 3 是否作为独立 PR 先落地验证？ [ ]
-3. `docs/architecture.md` §2 / §13 调整是否一并在本次处理？ [ ]
-4. 观察期长度：[ ] 2 周 · [ ] 4 周 · [ ] 更长
-
----
-
-## 附录 A：已评估的激进方案（完全删除 Coordinator）
-
-> 第一稿方案。因响应性退步、技术可行性存疑、Coordinator 全书视角丢失等问题降级为参考。
-
-激进方案的核心：Host 直接调 `SubAgentTool.Execute`，不经过 Coordinator LLM。
-
-**已识别的问题**：
-
-1. **响应性倒退**：`SubAgentTool.Execute` 是阻塞同步调用，用户 Steer 必须等当前 SubAgent 返回后才能处理。当前架构的 `Inject` 可以立即打断。
-2. **技术可行性存疑**：
-   - Host 直接调 SubAgentTool 违反 agentcore 使用惯例
-   - 事件流（`Subscribe` 的 Event）可能不会正确冒泡给 observer
-   - SubAgent 的 `ContextManagerFactory` / `OnMessage` 回调路径未知
-   - 需要改 agentcore 或大改 observer
-3. **Coordinator 全书视角丢失**：每次 SubAgent 独立 run，没有"连续 LLM 守望者"。长跑中风格漂移、角色割裂等问题少了一层隐形守护。
-4. **InterventionAgent 简化过度**：激进方案用 enum（query/modify_setting/rewrite_chapters/adjust_style/noop）分类用户意图，真实 Steer 可能横跨多类别，强制 schema 会误分类。
-5. **架构文档重写工作量大**：§2 核心原则推翻，文档 30% 论述受影响。
-6. **FlowDriver 会长成上帝对象**：一个循环塞所有路由逻辑，每加场景都要改，和 v0.0.1 `handleSubAgentDone` 同构。
-
-Hybrid 方案规避了前 4 条问题，第 5 条降为微调，第 6 条通过"纯函数 + 单测"管控。
+1. **Adopt this proposal (Hybrid Coordinator)?** [x] Adopt · [ ] Adopt with modifications · [ ] Reject
+2. Should Phase 3 land and be validated as an independent PR first? [x]
+3. Should `docs/architecture.md` §2 / §13 adjustments be handled together in this run? [x]
+4. Observation period length: [x] 2 weeks · [ ] 4 weeks · [ ] Longer
 
 ---
 
-## 附录 B：决策点落位明细
+## Appendix A: Evaluated Radical Proposal (Completely Removing Coordinator)
 
-| 决策点 | 当前位置 | 新架构位置 | 类型 |
+> First draft proposal. Demoted to reference due to reactivity regression, technical feasibility concerns, and loss of Coordinator's whole-book perspective.
+
+The core of the radical proposal: Host directly calls `SubAgentTool.Execute`, bypassing Coordinator LLM.
+
+**Identified Issues**:
+
+1. **Reactivity Regression**: `SubAgentTool.Execute` is a blocking synchronous call; user Steer must wait for the current SubAgent to return before being processed. Current architecture's `Inject` can interrupt immediately.
+2. **Technical Feasibility Concerns**:
+   - Host directly calling SubAgentTool violates agentcore usage conventions.
+   - Event stream (Event of `Subscribe`) might not bubble up to observer correctly.
+   - SubAgent's `ContextManagerFactory` / `OnMessage` callback paths are unknown.
+   - Requires modifying agentcore or majorly rewriting observer.
+3. **Loss of Coordinator Whole-book Perspective**: Each SubAgent runs independently without a "continuous LLM watcher." In long runs, issues like style drift and character division lack a layer of invisible guard.
+4. **InterventionAgent Over-simplification**: Radical proposal uses an enum (query/modify_setting/rewrite_chapters/adjust_style/noop) to classify user intent; real Steer might span multiple categories, and a forced schema will misclassify.
+5. **Heavy Architecture Document Rewrite**: §2 core principles overturned; 30% of document reasoning affected.
+6. **FlowDriver Grows into God Object**: A loop stuffing all routing logic, modified whenever a scenario is added, isomorphic to v0.0.1 `handleSubAgentDone`.
+
+The Hybrid proposal sidesteps the first 4 issues, reduces the 5th to fine-tuning, and manages the 6th via "pure functions + unit tests."
+
+---
+
+## Appendix B: Allocation of Decision Points
+
+| Decision Point | Current Location | New Architecture Location | Type |
 |---|---|---|---|
-| 选规划师 | coordinator.md L26-29 | Coordinator LLM 裁定（启动时）| 裁定 |
-| 输入扩展 | coordinator.md L31 | Coordinator LLM 裁定（启动时）| 裁定 |
-| 规划补齐循环 | coordinator.md L36-38 | Host Router Phase=Premise/Outline 分支（返回 nil 放 LLM 自主 or 显式 FollowUp architect）| 混合 |
-| 每章下一步 | coordinator.md L46-51 + reminder/flow | **Host Router 2d 分支**（FollowUp writer）| 路由 |
-| 弧末评审 | coordinator.md L78-82 | **Host Router 2c 分支**（FollowUp editor/architect）| 路由 |
-| verdict 分叉 | coordinator.md L59-61 + save_review 工具 | 工具层已代码化，Router 只读 Flow | 路由（已完成）|
-| 用户干预 | coordinator.md L67-70 | Coordinator LLM 裁定（收到 Inject 消息时）| 裁定 |
-| 规划师报错重派 | coordinator.md L40 | Host Router 检测到 FoundationMissing 未变化，重试计数 | 路由 |
-| 全书完成总结 | coordinator.md L63-65 + reminder/book_complete | Host Router 检测 Phase=Complete → FollowUp "输出总结" | 路由 |
+| Select Planner | coordinator.md L26-29 | Coordinator LLM Adjudication (at startup) | Adjudication |
+| Input Expansion | coordinator.md L31 | Coordinator LLM Adjudication (at startup) | Adjudication |
+| Plan Completion Loop | coordinator.md L36-38 | Host Router Phase=Premise/Outline branches (returns nil to let LLM decide or explicit FollowUp architect) | Mixed |
+| Next Step per Chapter | coordinator.md L46-51 + reminder/flow | **Host Router 2d branch** (FollowUp writer) | Routing |
+| Arc-end Review | coordinator.md L78-82 | **Host Router 2c branch** (FollowUp editor/architect) | Routing |
+| verdict Branching | coordinator.md L59-61 + save_review tool | Tool layer already codified; Router only reads Flow | Routing (Completed) |
+| User Intervention | coordinator.md L67-70 | Coordinator LLM Adjudication (upon receiving Inject message) | Adjudication |
+| Planner Error Re-dispatch | coordinator.md L40 | Host Router detects FoundationMissing unchanged, retry count | Routing |
+| Summary on Book Completion | coordinator.md L63-65 + reminder/book_complete | Host Router detects Phase=Complete → FollowUp "output summary" | Routing |
 
 ---
 
-## 附录 C：参考源码位置
+## Appendix C: Reference Source Code Locations
 
-- `assets/prompts/coordinator.md` — 待简化
-- `internal/host/reminder/flow.go` / `queue_guard.go` / `book_complete.go` — 待删除
-- `internal/host/reminder/subagent_guards.go` — 保留
-- `internal/host/reminder/stop_guard.go` — 保留 + 加"收到 Host 指令必须执行"检查
-- `internal/host/resume.go` — 大幅简化
-- `internal/host/observer.go` — 新订阅 EventToolExecEnd 触发 Router
-- `internal/host/flow/` — 新增包
-- `internal/tools/commit_chapter.go` L220-280 — CommitResult 17 字段已完备
-- `internal/tools/save_review.go` L76-116 — verdict 升级与 Flow 迁移已代码化
-- `internal/store/outline.go` `CheckArcBoundary` — 弧边界事实 API
+- `assets/prompts/coordinator.md` — to be simplified
+- `internal/host/reminder/flow.go` / `queue_guard.go` / `book_complete.go` — to be deleted
+- `internal/host/reminder/subagent_guards.go` — retained
+- `internal/host/reminder/stop_guard.go` — retained + adds "must execute Host command" check
+- `internal/host/resume.go` — significantly simplified
+- `internal/host/observer.go` — new subscription to EventToolExecEnd triggers Router
+- `internal/host/flow/` — newly added package
+- `internal/tools/commit_chapter.go` L220-280 — CommitResult 17 fields completed
+- `internal/tools/save_review.go` L76-116 — verdict upgrades and Flow transitions codified
+- `internal/store/outline.go` `CheckArcBoundary` — arc boundary facts API

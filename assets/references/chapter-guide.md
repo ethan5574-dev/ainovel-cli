@@ -1,261 +1,259 @@
-# 章节写作指南
+# Chapter Writing Guide
 
-每一章都应该是一个完整的叙事单元，同时推动整体故事向前发展。
+Every chapter should be a complete narrative unit while pushing the overall story forward.
 
-## ⚠️ 关键原则：前 20% 决定生死
+## ⚠️ Critical Principle: The First 20% Determines Life or Death
 
-**读者在前 20% 的内容决定是否继续阅读。**
+**Readers decide whether to continue reading based on the first 20% of the content.**
 
-如果开头不够吸引人，读者会放弃，无论后面写得多么精彩。
+If the opening is not engaging enough, readers will abandon it, no matter how wonderful the rest of the writing is.
 
-### 前 20% 必须达到的效果
+### Goals to Achieve in the First 20%
 
-1. **即时紧张感** - 读者立即感受到危机/冲突
-2. **重大事件** - 发生推动剧情的重要事情
-3. **情感冲击** - 读者产生强烈情绪（好奇、震惊、担忧）
-4. **继续阅读的欲望** - 迫切想知道接下来发生什么
+1. **Immediate Tension** - Readers immediately perceive a crisis/conflict.
+2. **Major Event** - A significant occurrence that drives the plot happens.
+3. **Emotional Impact** - Readers experience a strong emotion (curiosity, shock, worry).
+4. **Desire to Keep Reading** - An urgent need to find out what happens next.
 
-### 开头致命错误（绝对避免）
+### Fatal Opening Mistakes (Absolutely Avoid)
 
-| 错误类型 | 示例 | 为什么致命 |
+| Error Type | Example | Why it is Fatal |
 |---------|------|-----------|
-| 天气描写 | "那天天气晴朗，万里无云..." | 与故事无关，读者无耐心 |
-| 日常流程 | "李明醒来，刷牙洗脸，吃早餐..." | 无聊，没有冲突 |
-| 回顾上章 | "上一章我们说到..." | 读者已经知道，浪费时间 |
-| 缓慢铺垫 | "先介绍一下这个城市的背景..." | 信息倾倒，没有行动 |
-| 平淡对话 | "你好，你好吗？我很好。" | 无意义对话，没有张力 |
-| 过度解释 | "这是因为，所以，然后..." | 讲述而非展示 |
+| Weather Description | "The weather was sunny that day, with not a cloud in the sky..." | Irrelevant to the story, tests reader patience. |
+| Daily Routine | "Li Ming woke up, brushed his teeth, washed his face, ate breakfast..." | Boring, lacks conflict. |
+| Recap Previous Chapter | "In the last chapter we mentioned..." | Readers already know this, wastes time. |
+| Slow Exposition | "First, let's introduce the background of this city..." | Infodump, lacks action. |
+| Flat Dialogue | "Hello. How are you? I'm fine." | Meaningless dialogue, lacks tension. |
+| Over-explanation | "Because of this, therefore, then..." | Telling instead of showing. |
 
 ---
 
-## 十种强力开头技巧
+## Ten Powerful Opening Techniques
 
-### 1. 行动中开场（In Media Res）
+### 1. In Media Res (Action Start)
 
-直接从冲突/动作的高潮点开始。
+Start directly at the climax of a conflict or action.
 
-**示例：**
-> 子弹擦过他的耳边，击碎了身后的花瓶。李明没有回头，翻滚躲到沙发后面。
+**Example:**
+> A bullet grazed his ear, shattering the vase behind him. Li Ming did not look back, rolling to hide behind the sofa.
 
-**为什么有效：** 立即建立紧张感，读者想知道为什么被打。
+**Why it works:** Establishes tension immediately, leaving readers wanting to know why he is being shot at.
 
-### 2. 反常情境
+### 2. Anomalous Situation
 
-呈现一个不符合常理的场景，激发好奇。
+Present an unconventional scene to stimulate curiosity.
 
-**示例：**
-> 死人坐在办公桌前，正在写一份报告。
+**Example:**
+> The dead man sat at the desk, writing a report.
 
-**为什么有效：** 不可能的事物，读者想了解怎么回事。
+**Why it works:** Presents an impossible scenario, making readers want to understand what is going on.
 
-### 3. 震撼对话
+### 3. Shocking Dialogue
 
-用一句惊人的对话开场。
+Start with a startling line of dialogue.
 
-**示例：**
-> "我把孩子卖了。" 妻子平静地说，继续翻阅杂志。
+**Example:**
+> "I sold the child," the wife said calmly, continuing to flip through the magazine.
 
-**为什么有效：** 立即制造情感冲击和悬念。
+**Why it works:** Immediately creates emotional impact and suspense.
 
-### 4. 倒计时开场
+### 4. Countdown Opening
 
-从时间压力开始。
+Start with time pressure.
 
-**示例：**
-> 还有三分钟，炸弹就会爆炸。而拆弹包里少了一根红线。
+**Example:**
+> There were only three minutes left before the bomb would explode. And a red wire was missing from the bomb disposal kit.
 
-**为什么有效：** 紧迫感，读者想知道能否及时。
+**Why it works:** High urgency, leaving readers wondering if he can make it in time.
 
-### 5. 重大发现
+### 5. Major Discovery
 
-从发现关键线索/真相开始。
+Start with the discovery of a key clue or truth.
 
-**示例：**
-> 法医报告摊在桌上。死因不是意外，是精心策划的谋杀。而嫌疑人只有一个——他自己。
+**Example:**
+> The forensic report lay spread on the table. The cause of death was not an accident, but a meticulously planned murder. And there was only one suspect—himself.
 
-**为什么有效：** 重大转折，重新理解之前的事件。
+**Why it works:** A major twist that forces a re-evaluation of previous events.
 
-### 6. 危机时刻
+### 6. Crisis Moment
 
-从角色面临最大危机开始。
+Start with the character facing a massive crisis.
 
-**示例：**
-> 门被踹开的瞬间，她知道藏不住了。保险箱里的秘密即将曝光。
+**Example:**
+> The moment the door was kicked open, she knew she could no longer hide. The secret in the safe was about to be exposed.
 
-**为什么有效：** 高风险，读者关心角色命运。
+**Why it works:** High stakes make readers care about the character's destiny.
 
-### 7. 谜团浮现
+### 7. Emerging Mystery
 
-从无法解释的现象开始。
+Start with an inexplicable phenomenon.
 
-**示例：**
-> 醒来时，他发现右手背上出现了一个从未见过的纹身。而他不记得昨晚发生了什么。
+**Example:**
+> When he woke up, he found a tattoo he had never seen before on the back of his right hand. And he did not remember what happened last night.
 
-**为什么有效：** 神秘感，读者想解开谜题。
+**Why it works:** Creates mystery, driving readers to want to solve the puzzle.
 
-### 8. 背叛开场
+### 8. Betrayal Opening
 
-从背叛/信任崩塌开始。
+Start with betrayal or the collapse of trust.
 
-**示例：**
-> 枪口对准他的后背。"对不起，" 他信任了十年的搭档说，"他们给的太多了。"
+**Example:**
+> The muzzle was aimed at his back. "I'm sorry," said his partner of ten years, whom he trusted implicitly. "They offered too much."
 
-**为什么有效：** 情感冲击，角色陷入绝境。
+**Why it works:** High emotional impact, leaving the character in a desperate situation.
 
-### 9. 重大选择
+### 9. Major Choice
 
-从角色的艰难决定开始。
+Start with a character's difficult decision.
 
-**示例：**
-> 救生艇只能载一个人。她的丈夫和女儿都在冰冷的海水里挣扎。她伸出手——
+**Example:**
+> The lifeboat could only carry one person. Her husband and daughter were both struggling in the freezing ocean water. She reached out her hand—
 
-**为什么有效：** 道德困境，读者想知道她如何选择。
+**Why it works:** A moral dilemma, making readers want to see how she chooses.
 
-### 10. 结局预告
+### 10. Ending Preview
 
-从未来的某个关键时刻开始，然后倒叙。
+Start at a key moment in the future, and then use a flashback.
 
-**示例：**
-> 三天后，所有人都会后悔今天的决定。但此刻，会议室里的每个人都在微笑。
+**Example:**
+> Three days later, everyone would regret today's decision. But right now, everyone in the conference room was smiling.
 
-**为什么有效：** 预示灾难，读者想知道如何发生。
-
----
-
-## 标准章节结构
-
-### 1. 开头钩子（前 20%）⚠️ 最关键
-
-**必须包含：**
-- ✅ 即时冲突/危机
-- ✅ 重大事件/信息
-- ✅ 强烈情感冲击
-- ✅ 行动场景
-
-**使用上述十种技巧之一，或组合使用。**
-
-### 2. 发展推进（中间 50-60%）
-
-本章的核心内容，必须推进剧情或深化人物。
-
-**推进方式：**
-- **新信息揭示**：让读者/主角获得重要信息
-- **关系变化**：人物关系发生转变
-- **问题升级**：现状恶化，新危机出现
-- **角色成长**：主角获得新技能、新认知
-
-**避免：**
-- 纯粹的场景描写（风景、房间布局等）
-- 与剧情无关的人物互动
-- 重复已知的对话
-
-### 3. 高潮时刻（后 15-20%）
-
-本章的情感或动作最高点。
-
-**高潮类型：**
-- **动作高潮**：战斗、追逐、对抗
-- **情感高潮**：重大发现、背叛、告白、牺牲
-- **心理高潮**：主角的内心转折点
-
-### 4. 结尾钩子（最后 5-10%）
-
-留下悬念，让读者想看下一章。详见 [hook-techniques.md](hook-techniques.md)
+**Why it works:** Foreshadows disaster, making readers want to know how it happens.
 
 ---
 
-## 章节类型分类
+## Standard Chapter Structure
 
-### 情节推进章
+### 1. Opening Hook (First 20%) ⚠️ Most Critical
 
-**目的**：推动主线剧情发展
-**特征**：有明确的事件进展、重要信息揭示
-**示例**：主角发现线索、敌人发动攻击、盟友背叛
+**Must Contain:**
+- ✅ Immediate conflict/crisis
+- ✅ Major event/information
+- ✅ Strong emotional impact
+- ✅ Action scene
 
-### 人物深化章
+**Use one or a combination of the ten techniques listed above.**
 
-**目的**：深化读者对人物的理解
-**特征**：揭示人物背景、动机、内心冲突
-**示例**：回忆片段、私密对话、独处时刻
-**注意**：必须与主线相关，不能是纯粹的人物小传
+### 2. Progression & Advancement (Middle 50-60%)
 
-### 氛围营造章
+The core content of the chapter must advance the plot or deepen the characters.
 
-**目的**：建立特定情绪或紧张感
-**特征**：注重感官描写、节奏控制
-**示例**：暴风雨前的宁静、潜伏行动、等待审判
+**Methods of Progression:**
+- **New Information Reveal**: Allow the readers/protagonist to acquire key info.
+- **Relationship Shifts**: Changes in character relationships.
+- **Problem Escalation**: The situation worsens, or a new crisis emerges.
+- **Character Growth**: Protagonist acquires a new skill or realization.
 
-### 过渡衔接章
+**Avoid:**
+- Pure scenery description (landscapes, room layouts, etc.).
+- Character interactions irrelevant to the plot.
+- Repeating already known dialogues.
 
-**目的**：连接两个重大事件
-**特征**：信息整理、位置转换、时间跳跃
-**注意**：保持简洁，避免拖沓
+### 3. Climax Moment (Middle-to-End 15-20%)
+
+The highest emotional or action point of the chapter.
+
+**Climax Types:**
+- **Action Climax**: Battle, chase, confrontation.
+- **Emotional Climax**: Major discovery, betrayal, confession, sacrifice.
+- **Psychological Climax**: A turning point in the protagonist's inner world.
+
+### 4. Ending Hook (Last 5-10%)
+
+Leave suspense to make readers want to read the next chapter. See [hook-techniques.md](hook-techniques.md).
 
 ---
 
-## 章节节奏控制
+## Chapter Type Classification
 
-### 节奏变化
+### Plot-Driven Chapters
 
-同一章内应包含节奏变化：
+**Goal**: Drive the main plot forward.
+**Features**: Clear events unfold, or key information is revealed.
+**Example**: Protagonist discovers a clue, enemy launches an attack, or an ally betrays them.
+
+### Character-Deepening Chapters
+
+**Goal**: Deepen the reader's understanding of the characters.
+**Features**: Reveal character backgrounds, motivations, and internal conflicts.
+**Example**: Flashback segments, intimate dialogues, or moments of solitude.
+**Note**: Must remain relevant to the main plot; do not write them as detached character biographies.
+
+### Atmosphere-Building Chapters
+
+**Goal**: Establish a specific mood or tension.
+**Features**: Emphasize sensory descriptions and pacing control.
+**Example**: The calm before the storm, stealth operations, or waiting for judgment.
+
+### Transition Chapters
+
+**Goal**: Connect two major events.
+**Features**: Synthesize information, change locations, or skip time.
+**Note**: Keep it concise and avoid dragging.
+
+---
+
+## Chapter Pacing Control
+
+### Pacing Variations
+
+A single chapter should contain variations in pacing:
 
 ```
-紧张 → 缓解 → 新紧张 → 更紧张
+Tension → Relief → New Tension → Higher Tension
 ```
 
-示例：
-```
-紧张：主角被追捕
-缓解：躲进安全屋，短暂喘息
-新紧张：发现安全屋已被入侵
-更紧张：必须立即逃离
-```
+**Example:**
+- **Tension**: Protagonist is hunted.
+- **Relief**: Hides in a safe house, catching their breath.
+- **New Tension**: Discovers the safe house has already been compromised.
+- **Higher Tension**: Must escape immediately.
 
-### 信息密度
+### Information Density
 
-- **高密度**：动作场面、大量对话、快速事件
-- **低密度**：内心独白、环境描写、情感沉淀
+- **High Density**: Action scenes, heavy dialogue, rapid events.
+- **Low Density**: Internal monologues, environmental descriptions, emotional digests.
 
-**原则**：高低密度交替，避免持续高密度（读者疲劳）或持续低密度（读者无聊）
+**Principle**: Alternate high and low densities; avoid constant high density (which causes reader fatigue) or constant low density (which causes reader boredom).
 
 ---
 
-## 章节长度与内容密度对照
+## Chapter Length and Density Correlation
 
-| 章节字数 | 核心事件数量 | 场景数量 |
+| Chapter Word Count | Core Events Count | Scenes Count |
 |---------|-------------|---------|
-| 800-1500 | 1 个主要事件 | 1-2 个场景 |
-| 1500-3000 | 1-2 个主要事件 | 2-3 个场景 |
-| 3000-6000 | 2-3 个主要事件 | 3-5 个场景 |
+| 800-1500 | 1 major event | 1-2 scenes |
+| 1500-3000 | 1-2 major events | 2-3 scenes |
+| 3000-6000 | 2-3 major events | 3-5 scenes |
 
-**原则**：每章至少包含一个不可删除的核心事件。如果一个事件可以移除而不影响理解，则应删除。
+**Principle**: Each chapter must contain at least one indispensable core event. If an event can be removed without affecting understanding, delete it.
 
 ---
 
-## 章节写作检查清单
+## Chapter Writing Checklist
 
-撰写每章后自查：
+Self-check after writing each chapter:
 
-### ⚠️ 开头检查（最关键）
-- [ ] **前 20% 是否极其吸引人？**（如果不是，重写）
-- [ ] 是否在第一段就建立冲突/紧张？
-- [ ] 是否有重大事件或信息揭示？
-- [ ] 是否有强烈的情感冲击？
-- [ ] 读者是否会迫切想知道接下来发生什么？
-- [ ] 是否避免了所有"致命错误"？（天气、日常、回顾等）
+### ⚠️ Opening Check (Most Critical)
+- [ ] **Is the first 20% extremely engaging?** (If not, rewrite.)
+- [ ] Is conflict/tension established in the first paragraph?
+- [ ] Is there a major event or information reveal?
+- [ ] Is there a strong emotional impact?
+- [ ] Will readers be eager to find out what happens next?
+- [ ] Were all "fatal mistakes" avoided? (Weather, routines, recaps, etc.)
 
-### 内容检查
-- [ ] 本章是否推进了主线剧情或深化了人物？
-- [ ] 是否有冲突或转折？
-- [ ] 对话是否推动情节或揭示人物？
-- [ ] 是否展示了而非讲述了关键信息？
-- [ ] 结尾是否留下悬念钩子？
-- [ ] 是否为下一章埋下伏笔？
+### Content Check
+- [ ] Did this chapter advance the main plot or deepen characters?
+- [ ] Is there conflict or a twist?
+- [ ] Does dialogue drive the plot or reveal character?
+- [ ] Was key information shown instead of told?
+- [ ] Does the ending leave a suspense hook?
+- [ ] Were seeds of foreshadowing planted for future chapters?
 
-### 开头自测问题
-如果对开头有任何问题回答"否"，必须重写：
-1. 读者读了前三段后，会想继续读吗？
-2. 开头是否有冲突或危机？
-3. 开头是否有意外或转折？
-4. 开头是否让读者产生强烈情绪？
-5. 开头是否避免了平淡的日常/天气/背景说明？
+### Opening Self-Test Questions
+If any answer is "No" to the following questions, the opening must be rewritten:
+1. After reading the first three paragraphs, will readers want to continue?
+2. Is there conflict or crisis at the start?
+3. Is there a surprise or twist at start?
+4. Does the start make readers experience a strong emotion?
+5. Did the start avoid flat routines, weather, or background infodumps?

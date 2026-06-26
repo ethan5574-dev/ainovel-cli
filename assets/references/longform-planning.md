@@ -1,121 +1,121 @@
-# 通用长篇规划参考
+# General Long-form Planning Reference
 
-这份参考用于“适合长篇连载”的题材，不限定具体品类。
+This reference is used for genres "suitable for long-form serialization", not limited to any specific category.
 
-## 长篇不是把短篇拉长
+## Long-form is Not Just Stretching Short Stories
 
-长篇的核心不是章节更多，而是具备长期展开能力。判断一部作品能否写长，关键看它是否具备以下“故事引擎”：
+The core of long-form writing is not having more chapters, but having the ability to expand over the long term. The key to judging whether a work can run long lies in whether it has the following "story engines":
 
-- **目标引擎**：主角会不断追求新的阶段目标
-- **世界引擎**：世界规则、势力格局、资源结构可以持续制造新问题
-- **关系引擎**：主要人物关系会持续演化，而不是定型后停滞
-- **身份引擎**：主角的位置、身份、阵营、责任会变化
-- **代价引擎**：每次成长都带来新的约束、损失或风险
+- **Goal Engine**: The protagonist constantly pursues new stage goals.
+- **World Engine**: World rules, faction dynamics, and resource structures continuously generate new problems.
+- **Relationship Engine**: Key character relationships continue to evolve rather than stagnate after taking shape.
+- **Identity Engine**: The protagonist's position, identity, faction, and responsibilities change.
+- **Cost Engine**: Every growth brings new constraints, losses, or risks.
 
-如果这几个引擎都很弱，再多章节也只会变成重复灌水。
+If these engines are weak, writing more chapters will only result in repetitive filler/padding.
 
-## 长篇推荐规划顺序
+## Recommended Long-form Planning Sequence
 
-### 1. 作品卖点
+### 1. Selling Points of the Work
 
-先明确：
+Clarify first:
 
-- 这本书最吸引读者的承诺是什么
-- 它和同题材常见写法最不同的点是什么
-- 读者为什么愿意跟随主角走到中后期
+- What is the most attractive promise this book makes to readers?
+- What is the most distinct point that differentiates it from common approaches in the same genre?
+- Why are readers willing to follow the protagonist into the middle and late stages?
 
-### 2. 长期冲突
+### 2. Long-term Conflicts
 
-不要只有一个“终极反派”。长篇更适合多阶段冲突：
+Do not have only one "ultimate villain." Long-form writing is better suited for multi-stage conflicts:
 
-- 近程冲突：当前生存、当前任务、当前阶段目标
-- 中程冲突：势力博弈、关系重组、身份变化
-- 远程冲突：世界真相、时代命题、终局选择
+- Short-term Conflict: Current survival, current task, current stage goal.
+- Mid-term Conflict: Faction play, relationship restructuring, identity change.
+- Long-term Conflict: World truth, thematic propositions of the era, final choices.
 
-### 3. 卷级设计
+### 3. Volume-level Design
 
-每一卷至少要有一个明确功能，常见功能包括：
+Each volume must have at least one clear function. Common functions include:
 
-- 立足
-- 扩张
-- 试错
-- 反噬
-- 失去
-- 转向
-- 收束
-- 终局
+- Establishing a foothold
+- Expansion
+- Trial and error
+- Backlash
+- Loss
+- Turn/Pivot
+- Convergence
+- Endgame
 
-每卷不只升级强度，还要升级问题类型。
+Each volume should not only upgrade the intensity, but also upgrade the types of problems.
 
-### 4. 弧级设计
+### 4. Arc-level Design
 
-每一弧都应该像“一个可独立成立的小故事”：
+Each arc should feel like "a self-contained short story":
 
-- 有明确目标
-- 有明确阻力
-- 有阶段转折
-- 有结果与代价
+- Has a clear goal.
+- Has clear resistance.
+- Has stage turning points.
+- Has results and costs.
 
-### 5. 章节设计
+### 5. Chapter Design
 
-章节不是平均分配事件，而是为弧服务：
+Chapters are not about distributing events evenly, but about serving the arc:
 
-- 关键推进章
-- 关系变化章
-- 代价兑现章
-- 误判与反噬章
-- 转折章
-- 收束与引出下弧章
+- Key progression chapters.
+- Relationship change chapters.
+- Cost-realization chapters.
+- Misjudgment and backlash chapters.
+- Turning point chapters.
+- Convergence and next arc introduction chapters.
 
-## 避免长篇同质化
+## Avoiding Long-form Homogenization
 
-### 错误做法
+### Incorrect Approaches
 
-- 每一卷都只是“换地图 + 换敌人”
-- 每次升级都只是“主角更强了”
-- 中期仍然重复前期的爽点结构
-- 配角只在需要时出现，没有独立动机
-- 世界规则只在设定里写，剧情中不产生压力
+- Every volume is just "new map + new enemies."
+- Every upgrade is just "the protagonist gets stronger."
+- The mid-term still repeats the satisfaction structures of the early stage.
+- Supporting characters only appear when needed, lacking independent motivations.
+- World rules are only written in the setting, creating no pressure in the plot.
 
-### 正确做法
+### Correct Approaches
 
-- 升级“冲突类型”，不只升级“敌人强度”
-- 升级“选择代价”，不只升级“资源规模”
-- 升级“关系复杂度”，不只升级“出场人数”
-- 升级“命题”，不只升级“舞台大小”
+- Upgrade the "conflict type," not just the "enemy strength."
+- Upgrade the "cost of choices," not just the "scale of resources."
+- Upgrade "relationship complexity," not just the "number of characters."
+- Upgrade the "proposition/theme," not just the "size of the stage."
 
-## 中期转向必须提前规划
+## Mid-term Pivots Must Be Planned in Advance
 
-很多作品前 20 章能写，50 章后就开始重复，根因是没有中期转向。
+Many works write well for the first 20 chapters, but start repeating after 50 chapters. The root cause is the lack of a mid-term pivot.
 
-在规划时必须提前想清楚：
+In planning, you must think through in advance:
 
-- 第一次结构转向发生在什么时候
-- 为什么前期方法在中期失效
-- 主角到中期后必须学会什么新的思维方式
-- 中后期的核心吸引力与前期有什么不同
+- When does the first structural pivot occur?
+- Why do early methods fail in the mid-term?
+- What new way of thinking must the protagonist learn in the mid-term?
+- How does the core appeal of the mid-to-late stage differ from the early stage?
 
-## 弧级节奏密度
+## Arc-level Pacing Density
 
-每个弧应遵循”铺垫→积累→爆发→收获”的节奏循环。以下是通用弧型的参考密度（根据题材自行映射）：
+Each arc should follow a pacing cycle of "foreshadowing/setup → accumulation → outbreak/climax → harvest." Below is a reference density for common arc types (map them according to genre):
 
-- **成长突破弧**（10-15 章）：3-4 章能力不足/准备 → 2-3 章外部考验/试炼 → 2-3 章关键突破 → 1-2 章展示+收获。适用于：修炼升级、技能习得、破案突破、职场晋升等
-- **竞技对抗弧**（12-20 章）：2-3 章赛前准备/情报 → 6-10 章多轮对决（穿插角色互动和意外） → 2-3 章决胜+奖惩。适用于：比武大会、商业竞标、法庭辩论、选拔赛等
-- **探索发现弧**（15-25 章）：2-3 章情报收集+组队 → 8-15 章层层深入（每层新挑战） → 2-3 章最终发现+收获。适用于：秘境探险、调查真相、解谜寻宝、深入敌后等
-- **恩怨冲突弧**（8-12 章）：2-3 章矛盾积累 → 1-2 章冲突爆发 → 3-5 章多方博弈 → 1-2 章解决+后果。适用于：仇敌对决、派系斗争、情感纠葛、权力争夺等
-- **日常过渡弧**（5-8 章）：角色发展/社交/伏笔布局/休整，为下一高潮弧蓄势
+- **Growth/Breakthrough Arc** (10-15 chapters): 3-4 chapters of insufficient ability/preparation → 2-3 chapters of external tests/trials → 2-3 chapters of critical breakthrough → 1-2 chapters of demonstration + harvest. Applicable to: cultivation upgrades, skill acquisition, case breakthroughs, workplace promotions, etc.
+- **Competitive Confrontation Arc** (12-20 chapters): 2-3 chapters of pre-match preparation/intel → 6-10 chapters of multi-round matchups (interwoven with character interactions and accidents) → 2-3 chapters of decisive victory + rewards/penalties. Applicable to: martial arts tournaments, business bidding, courtroom debates, qualifiers, etc.
+- **Exploration/Discovery Arc** (15-25 chapters): 2-3 chapters of information gathering + teaming up → 8-15 chapters of deep diving (new challenges at each level) → 2-3 chapters of final discovery + harvest. Applicable to: secret realm exploration, investigating truth, puzzle/treasure hunts, deep behind enemy lines, etc.
+- **Grudge/Conflict Arc** (8-12 chapters): 2-3 chapters of conflict accumulation → 1-2 chapters of conflict outbreak → 3-5 chapters of multi-party chess play → 1-2 chapters of resolution + consequences. Applicable to: arch-enemy showdowns, faction struggles, emotional entanglements, power struggles, etc.
+- **Daily/Transition Arc** (5-8 chapters): Character development/socializing/foreshadowing layout/rest and recovery, building momentum for the next high-climax arc.
 
-关键原则：
-- 每次重大转折不是一章的事，而是整个弧的高潮
-- 弧的 estimated_chapters 不低于 8（太短无法展开节奏循环）
-- 弧内章节要有起伏，不是匀速推进
-- 不同类型的弧交替使用，避免节奏单调
+Key Principles:
+- Each major turn is not a single chapter's business, but the climax of the entire arc.
+- The `estimated_chapters` of an arc should not be less than 8 (too short to unfold the pacing cycle).
+- Chapters within an arc must have ups and downs, not progress at a uniform speed.
+- Alternate different types of arcs to avoid monotonous pacing.
 
-## 长篇通用检查清单
+## General Long-form Checklist
 
-- 这本书是否具备至少 3 个阶段性主矛盾？
-- 前 3 卷是否各自承担不同功能？
-- 主角的”得到”和”失去”是否同步增长？
-- 主要配角是否会改变主线，而不是只被主角改变？
-- 世界规则是否真的限制了剧情决策？
-- 中期转向后，作品是否仍然成立？
+- Does this book have at least 3 stages of primary contradictions?
+- Do the first 3 volumes each carry different functions?
+- Do the protagonist's "gains" and "losses" grow synchronously?
+- Do main supporting characters change the main storyline rather than only being changed by the protagonist?
+- Do world rules actually restrict plot decisions?
+- Does the work still stand after the mid-term pivot?

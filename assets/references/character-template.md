@@ -1,31 +1,29 @@
-# 人物档案
+# Character Profiles
 
-## 主角
+## Protagonists
 
-### [角色一姓名]
-- **别名/称号**：（如"废物少年"、"炎哥"、"不灭战神"等，正文中可能用到的各种称呼）
-- **年龄/职业**：
-- **外貌特征**：
-- **性格核心**：
-- **核心价值观**：
-- **最大恐惧**：
-- **致命缺陷**：
-- **内心渴望**：
-- **背景故事**：
-- **MBTI:**
+### [Character 1 Name]
+- **Aliases/Titles**: (e.g., "Useless Youth", "Brother Yan", "Undying God of War", etc., various names that may be used in the text)
+- **Age/Occupation**:
+- **Physical Features**:
+- **Core Personality**:
+- **Core Values**:
+- **Greatest Fear**:
+- **Fatal Flaw**:
+- **Inner Desire**:
+- **Background Story**:
+- **MBTI**:
 
-### [角色二姓名]
+### [Character 2 Name]
 
 ......
 
+## Antagonists
 
+### [Character Name]
+- [Same format as protagonist]
 
-## 反派
+## Supporting Characters
 
-### [角色姓名]
-- [同主角格式]
-
-## 配角
-
-### [角色姓名]
-- [简化格式]
+### [Character Name]
+- [Simplified format]

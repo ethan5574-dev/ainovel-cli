@@ -1,38 +1,38 @@
-## 奇幻/仙侠 弧型参考
+## Fantasy/Xianxia Arc Templates
 
-以下弧型适用于修仙、玄幻、奇幻冒险类长篇。根据具体设定自由组合，不必全部使用。
+The following arc templates are suitable for long-form cultivation, Xuanhuan, and fantasy adventure novels. Combine them freely based on the specific settings; not all of them must be used.
 
-### 修炼突破弧（10-15 章）
-3-4 章瓶颈困境/资源不足 → 2-3 章外部干扰或意外机缘 → 2-3 章闭关突破（穿插危机） → 1-2 章实力展示+收获
-- 突破前必须有明确代价或风险
-- 不要"坐下修炼三天就突破了"，过程中穿插人物互动和外部威胁
-- 突破后立刻用新实力解决一个之前无法解决的问题
+### Cultivation Breakthrough Arc (10-15 chapters)
+3-4 chapters of bottleneck dilemma/insufficient resources → 2-3 chapters of external interference or accidental opportunities → 2-3 chapters of closed-door breakthrough (interwoven with crises) → 1-2 chapters of power demonstration + harvest
+- There must be a clear cost or risk before breaking through.
+- Avoid the "sat down and cultivated for three days to break through" cliché; interweave character interactions and external threats during the process.
+- Immediately use the new power to solve a problem that was previously unsolvable after the breakthrough.
 
-### 宗门大比/擂台弧（12-20 章）
-2-3 章赛前准备/情报收集 → 6-10 章逐轮对决（每轮对手有特色，穿插角色互动） → 2-3 章决赛高潮+奖惩
-- 每轮对手不能只是"更强的人"，要有性格和动机
-- 比赛间隙穿插阴谋、结盟、赌约等副线
-- 结局不一定是夺冠，失败或意外中断也能推动剧情
+### Sect Tournament / Arena Arc (12-20 chapters)
+2-3 chapters of pre-tournament prep/intel gathering → 6-10 chapters of round-by-round matchups (each opponent has unique characteristics, interwoven with character interactions) → 2-3 chapters of final climax + rewards/penalties
+- Opponents in each round should not just be "stronger people"; they must have personality and motivation.
+- Interweave subplots such as conspiracies, alliances, and bets during the match intervals.
+- The outcome does not have to be winning the tournament; failure or unexpected interruption can also drive the plot.
 
-### 秘境/副本探险弧（15-25 章）
-2-3 章情报收集+组队 → 8-15 章层层深入（每层新机制/新危险） → 2-3 章最终Boss或宝藏+收获
-- 每层有独特的环境、规则和挑战，不是简单的打怪升级
-- 队伍内部关系在压力下发生变化（信任/背叛/牺牲）
-- 收获不只是法宝，也包括认知和关系转变
+### Secret Realm / Dungeon Exploration Arc (15-25 chapters)
+2-3 chapters of intel gathering + teaming up → 8-15 chapters of deep diving (new mechanics/hazards at each level) → 2-3 chapters of final boss or treasure + harvest
+- Each level has a unique environment, rules, and challenges, rather than simple monster-grinding upgrades.
+- Team dynamics change under pressure (trust/betrayal/sacrifice).
+- The harvest should include not just magical treasures, but also changes in perception and relationships.
 
-### 势力争霸/门派斗争弧（12-18 章）
-2-3 章矛盾积累/站队 → 3-5 章暗战博弈 → 3-5 章正面冲突 → 2-3 章结算+格局重塑
-- 不是简单的正邪对立，各方都有合理立场
-- 主角在其中的角色要有演变（旁观→卷入→被迫选择→主导）
-- 结局要改变势力版图，为后续卷埋线
+### Faction Hegemony / Sect Struggle Arc (12-18 chapters)
+2-3 chapters of conflict accumulation/choosing sides → 3-5 chapters of shadow-play and chess play → 3-5 chapters of open conflict → 2-3 chapters of resolution + restructuring of the landscape
+- This should not be a simple good-vs-evil opposition; each faction has its own reasonable stance.
+- The protagonist's role within it must evolve (observer → dragged in → forced choice → leader).
+- The ending must alter the faction landscape, planting seeds for subsequent volumes.
 
-### 渡劫/大战弧（8-12 章）
-2-3 章战前态势/最后准备 → 4-6 章多线战斗（不同战场交叉叙事） → 1-2 章决定性转折+代价
-- 战斗要有策略层面，不是纯粹的力量碾压
-- 要有重要角色的牺牲或重大损失
-- 战后世界发生不可逆变化
+### Tribulation / Major Battle Arc (8-12 chapters)
+2-3 chapters of pre-war posture/final preparations → 4-6 chapters of multi-thread combat (cross-cutting narration of different battlefields) → 1-2 chapters of decisive turn + cost
+- Battles must have a strategic dimension, not just raw power suppression.
+- There should be sacrifices of important characters or major losses.
+- The post-war world undergoes irreversible changes.
 
-### 日常/过渡弧（5-8 章）
-修炼日常/人物社交/势力建设/伏笔布局/角色情感发展
-- 不是水字数，每章至少推进一条暗线
-- 为下一个高潮弧蓄势，建立情感连接后破坏才有冲击力
+### Daily / Transition Arc (5-8 chapters)
+Cultivation routines / character socialization / faction building / foreshadowing layouts / character romance/emotional development
+- This is not filler; each chapter must advance at least one hidden thread.
+- Build momentum for the next climax arc; breaking emotional connections after establishing them creates a stronger impact.

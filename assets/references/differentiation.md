@@ -1,86 +1,77 @@
-# 通用差异化设计参考
+# General Differentiation Design Reference
 
-这份参考用于避免同题材作品自动滑向“最高频模板”。
+This reference is used to prevent works in the same genre from automatically sliding into the "highest-frequency templates."
 
-## 当用户只给出一个大题材词时，不能直接套最常见范式
+## Do not apply the most common paradigm when the user only provides a broad genre term
 
-例如用户说：
+For example, when the user says:
+- Urban
+- Fantasy
+- Xianxia (Cultivation)
+- Mystery/Suspense
+- Romance
+- Sci-Fi
 
-- 都市
-- 奇幻
-- 修仙
-- 悬疑
-- 言情
-- 科幻
+This does not mean "write according to the most common opening of that genre." You must first supplement differentiation dimensions.
 
-这不等于“照该题材最常见的开局写”。你必须先补足差异化维度。
+## Five Dimensions of Differentiation
 
-## 差异化的五个维度
+### 1. Protagonist Dimension
+- Is the origin/background too common?
+- Are the initial advantages/disadvantages too common?
+- What is the protagonist's strongest driving force?
+- What is the protagonist's biggest blind spot?
 
-### 1. 主角维度
+### 2. Conflict Dimension
+- Is the main conflict just the default contradiction of the genre?
+- Is there a second layer of conflict that changes the reader's expectation?
+- Will the conflict transform mid-term?
 
-- 出身是否过于常见
-- 初始优势/劣势是否过于常见
-- 主角最强驱动力是什么
-- 主角最大的盲区是什么
+### 3. World Dimension
+- Do world rules actually change character behaviors?
+- Can the social, resource, and power structures continuously manufacture problems?
+- Does the world have a logic that functions reasonably even outside the protagonist's perspective?
 
-### 2. 冲突维度
+### 4. Relationship Dimension
+- Do the main relationships only have three static functions: "teammates/lovers/enemies"?
+- Is there a relationship of long-term mutual shaping, mutual hurt, mutual utilization, and mutual fulfillment?
+- Does the relationship thread push the main plot in return?
 
-- 主冲突是否只是该题材默认矛盾
-- 有没有第二层冲突改变读者预期
-- 冲突是否会在中期转型
+### 5. Pacing Dimension
+- Are the payoffs/satisfaction points monotonous and repetitive?
+- Are reading drivers for different stages planned?
+- Is the early-stage appeal consistent with the mid-to-late stage, or is there a natural upgrade?
 
-### 3. 世界维度
+## Common Homogenization Signals
 
-- 世界规则是否真的改变角色行为
-- 社会结构、资源结构、权力结构是否能持续制造问题
-- 世界是否存在非主角视角也合理运转的逻辑
+The more these appear, the more the work is sliding into generic templates:
+- The most common protagonist origin/background.
+- The most common "being looked down upon" opening.
+- The most common mentor/sect/academy/wealthy family/case opening.
+- The most common villain motivations.
+- The most common stage upgrade pacing.
+- The same "discovering a secret" type hook appearing repeatedly.
 
-### 4. 关系维度
+## Actively Set Constraints for Yourself During Planning
 
-- 主要关系是否只有“队友/恋人/敌人”三个静态功能
-- 是否存在长期互相塑造、互相伤害、互相利用、互相成全的关系
-- 关系线是否会反向推动主线
+Within the same genre, provide at least 2-3 anti-template constraints. For example:
+- Do not use the most common opening identity.
+- Do not use the most common cheat/power source.
+- Do not use the most common mid-term upgrade path.
+- Do not let the main relationship thread stay at a single function.
+- Do not let the endgame be just "defeating a larger enemy."
 
-### 5. 节奏维度
+## Differentiation is not Gimmickry, but Reallocating Focus
 
-- 爽点是否单一重复
-- 是否规划了不同阶段的阅读驱动力
-- 前期吸引力和中后期吸引力是否一致，还是有自然升级
+Effective differentiation usually comes from:
+- Changing what the protagonist truly cares about.
+- Changing the source of long-term conflicts.
+- Changing the pressure points of world rules.
+- Changing the function of the relationship thread in the story.
+- Changing the method of progression after the mid-term.
 
-## 常见同质化信号
+## Ask Yourself Before Outputting
 
-出现越多，越说明作品在滑向通用模板：
-
-- 最常见的主角出身设定
-- 最常见的“被看不起”起手
-- 最常见的导师/宗门/学院/豪门/案件开场
-- 最常见的反派动机
-- 最常见的阶段升级节奏
-- 最常见的“发现秘密”型钩子反复出现
-
-## 规划时必须主动给自己设限
-
-在同题材下，至少给出 2-3 条反模板约束。例如：
-
-- 不使用最常见的开局身份
-- 不使用最常见的金手指/能力来源
-- 不使用最常见的中期升级路径
-- 不让主要关系线停留在单一功能
-- 不让终局只是“打败更大的敌人”
-
-## 差异化不是猎奇，而是重新分配重心
-
-有效的差异化通常来自：
-
-- 更换主角真正关心的东西
-- 更换长期冲突的来源
-- 更换世界规则的压力点
-- 更换关系线在故事中的功能
-- 更换中期之后的推进方式
-
-## 输出前自问
-
-- 如果把角色名和设定名抹掉，这个故事还像同题材里另外十本书吗？
-- 如果只看前 10 章，读者能说出这本书“独特在哪”吗？
-- 如果写到 50 章后，作品的推进方式会不会和前 10 章完全重复？
+- If character names and setting names are wiped out, does this story still look like ten other books in the same genre?
+- If reading only the first 10 chapters, can the reader tell what makes this book "unique"?
+- If writing up to chapter 50, will the progression of the work completely repeat that of the first 10 chapters?

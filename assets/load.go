@@ -21,7 +21,7 @@ var stylesFS embed.FS
 //go:embed rules
 var rulesFS embed.FS
 
-// Prompts 表示嵌入的提示词集合。
+// Prompts represents the collection of embedded prompt templates.
 type Prompts struct {
 	Coordinator      string
 	ArchitectShort   string
@@ -34,17 +34,17 @@ type Prompts struct {
 	SimulationMerge  string
 }
 
-// Bundle 表示运行所需的静态资源集合。
+// Bundle represents the collection of static resources required for running.
 type Bundle struct {
 	References tools.References
 	Prompts    Prompts
 	Styles     map[string]string
-	// RulesFS 是 assets/rules 子树（根目录直接包含 default.md）。
-	// 调用方传给 rules.Load 作为内置规则来源。
+	// RulesFS is the assets/rules subtree (the root directly contains default.md).
+	// Passed to rules.Load by the caller as the built-in rules source.
 	RulesFS fs.FS
 }
 
-// Load 返回指定风格对应的资源集合。
+// Load returns the resource bundle corresponding to the specified style.
 func Load(style string) Bundle {
 	return Bundle{
 		References: loadReferences(style),
@@ -54,8 +54,8 @@ func Load(style string) Bundle {
 	}
 }
 
-// loadRulesFS 返回 assets/rules 的子文件系统；根目录直接包含 default.md。
-// fs.Sub 失败时（理论不应发生）返回 nil，rules.Load 据此跳过内置来源。
+// loadRulesFS returns the sub-filesystem of assets/rules; the root directly contains default.md.
+// If fs.Sub fails (which theoretically should not happen) it returns nil, causing rules.Load to skip the built-in source.
 func loadRulesFS() fs.FS {
 	sub, err := fs.Sub(rulesFS, "rules")
 	if err != nil {
@@ -112,11 +112,11 @@ func withSimulationGuidance(prompt, role string) string {
 	return prompt + "\n\n" + strings.ReplaceAll(simulationGuidance, "{{role}}", role)
 }
 
-const simulationGuidance = `## 仿写画像
+const simulationGuidance = `## Simulation Profile
 
-当 novel_context 返回 simulation_profile 时，必须把它视为当前作品的仿写方向约束。{{role}} 应读取其中的 style、lexicon、plot_design、hook_design、pacing_density、reader_engagement 和 role_guidance。
+When novel_context returns simulation_profile, it must be treated as the stylistic writing guidance for the current work. {{role}} should read style, lexicon, plot_design, hook_design, pacing_density, reader_engagement, and role_guidance from it.
 
-使用原则：借鉴结构、节奏、钩子、信息释放和吸引读者的手法；不要复制原文句子、人物、地名、专有设定或固定桥段。若 simulation_profile 与用户显式要求冲突，优先服从用户要求。`
+Usage principles: Borrow structures, pacing, hooks, information release, and reader-engagement techniques; do not copy exact sentences, characters, locations, proprietary settings, or fixed tropes from the original. If simulation_profile conflicts with explicit user instructions, prioritize the user instructions.`
 
 func loadStyles() map[string]string {
 	styles := make(map[string]string)

@@ -1,46 +1,48 @@
 ---
-# 项目内置默认规则（Phase 1 安全版）
+# Built-in Default Rules (Phase 1 Safe Version)
 #
-# 这里只放"机械可检 + 低争议"的默认约束。非机械化审美偏好（如风格倾向）
-# 当前仍由 writer.md / editor.md 承载，待 Phase 1.5（F1 手测验证
-# working_memory 约束力后）再决定是否搬入本文件。
+# Only put "mechanically checkable + low controversy" default constraints here.
+# Non-mechanical aesthetic preferences (like style tendencies) are still carried by writer.md / editor.md for now,
+# and we will decide whether to move them to this file after Phase 1.5 validation.
 #
-# 用户可在 ./.ainovel/rules/ 或 ~/.ainovel/rules/ 目录（其下任意 .md）覆盖普通字段；
-# fatigue_words 按词合并，同一词由更近来源覆盖阈值。
-# 详细字段语义参见项目根 rules.md.example。
+# Users can override normal fields in the ./.ainovel/rules/ or ~/.ainovel/rules/ directory (any .md file under them);
+# fatigue_words are merged by word, and a closer source overrides the threshold for the same word.
+# See rules.md.example at the project root for detailed field semantics.
 
-# 章节字数范围：偏差 <20% 警告；≥20% 错误。
+# Chapter word count range: deviation <20% triggers warning; ≥20% triggers error.
 chapter_words: 3000-6000
 
-# 短语黑名单：出现 ≥1 次即 error。checker 做字面子串匹配，无通配符，
-# 故只放"定长固定串"的 AI 套句（低争议）；带变量的模式（如"不是X而是Y"）
-# 字面匹配抓不到，归 anti-ai-tone.md 语义层。
-# 破折号 "——" 在对话被打断时合法，有争议，不进内置默认，留给 ./.ainovel/rules/ 自配。
+# Phrase blacklist: error if appearing ≥1 time. The checker does literal substring matching, no wildcards,
+# so only put "fixed-length literal strings" of AI clichés here (low controversy); patterns with variables
+# (like "not X but Y") cannot be caught by literal matching, and are handled in anti-ai-tone.md at the semantic layer.
+# Em-dashes "——" are legal when dialogues are interrupted (controversial), so they are not in the built-in defaults
+# and are left to ./.ainovel/rules/ for custom configuration.
 forbidden_phrases:
-  - "某种程度上"
-  - "值得注意的是"
-  - "不知为何"
-  - "五味杂陈"
+  - "to some extent"
+  - "it is worth noting"
+  - "for some reason"
+  - "mixed feelings"
 
-# 疲劳词软限制：commit_chapter 会检查每章出现次数，超过阈值报 warning。
-# 这些是网文/小说常见过度使用的词，anti-ai-tone.md 有同方向的语义提示——双源信号一致。
-# 后六条（像一/沉默了/没有说话/X息）来自 196 章长跑产物实证：传统套话已被上面的
-# 表灭绝，但模型转而把这些"节拍词"用到章均 5-7 次；阈值放宽容忍正常使用。
+# Fatigue word soft limits: commit_chapter checks occurrences in each chapter, warning if exceeding the threshold.
+# These are commonly overused words in novels, and anti-ai-tone.md has semantic prompts in the same direction—consistent dual signals.
+# The last few (like a / fell silent / did not speak / breaths) are derived from the 196-chapter long-run validation:
+# traditional clichés were wiped out by the above rules, but the model turned to using these "pacing words" 5-7 times per chapter;
+# thresholds are relaxed to tolerate normal usage.
 fatigue_words:
-  不禁: 1
-  竟然: 1
-  仿佛: 2
-  此外: 1
-  然而: 2
-  一丝: 2
-  一抹: 2
-  一缕: 2
-  宛如: 1
-  不由得: 1
-  像一: 3
-  沉默了: 2
-  没有说话: 2
-  几息: 3
-  一息: 3
-  数息: 2
+  cannot help but: 1
+  unexpectedly: 1
+  as if: 2
+  besides: 1
+  however: 2
+  a trace of: 2
+  a touch of: 2
+  a wisp of: 2
+  just like: 1
+  could not help: 1
+  like a: 3
+  fell silent: 2
+  did not speak: 2
+  a few breaths: 3
+  one breath: 3
+  several breaths: 2
 ---

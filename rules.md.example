@@ -1,91 +1,93 @@
 ---
-# ── 最简用法 ───────────────────────────────────────────────
-# 本文件展示「全部」可配项，但你不必全用。只想写偏好？
-# 删掉这整段 front matter（--- 之间的内容），直接写下面的 markdown 正文
-# （# 角色 / # 风格 …）即可，零格式、零 YAML，editor 会按语义审阅。
-# 下面的结构化字段是「可选高级层」——要「字数 / 禁词」的硬性确定检查时才用。
+# ── Minimal Usage ───────────────────────────────────────────
+# This file displays "all" configurable items, but you do not have to use them all.
+# Just want to write preferences? Delete this entire front matter block (content between ---)
+# and write the markdown body directly below (e.g. # Characters / # Style ...).
+# Zero formatting, zero YAML required; the editor will review them semantically.
+# The structured fields below are the "optional advanced layer"—only used when strict
+# deterministic checks like "word count / forbidden words" are needed.
 # ───────────────────────────────────────────────────────────
 
-# 题材标签：当前作为字符串透传到 working_memory.user_rules.structured.genre，
-# 供 LLM 在偏好语义判断时参考。题材规则库（assets/rules/genres/）暂未开放，
-# 未来真要按题材机械加载内置文件时再恢复二阶段 loader。
+# Genre tag: currently passed through as a string to working_memory.user_rules.structured.genre,
+# for LLM reference during preference semantic judgment. The genre rules database (assets/rules/genres/)
+# is not yet open; the two-stage loader will be restored in the future when built-in files need to be loaded by genre.
 genre: xianxia
 
-# 章节字数范围（min-max）。偏差 < 20% 报 warning；≥ 20% 报 error。
+# Chapter word count range (min-max). Deviations < 20% trigger warnings; ≥ 20% trigger errors.
 chapter_words: 3000-6000
 
-# 字符/符号黑名单。出现 ≥ 1 次即 error。
-# 注意：中文双破折号是两个 em-dash 字符；写 "——" 匹配双个，写 "—" 匹配单个。
+# Character/symbol blacklist. Any occurrence (≥ 1 time) triggers an error.
+# Note: The Chinese double dash is two em-dash characters; write "——" to match the double em-dash, and "—" for a single em-dash.
 forbidden_chars:
   - "——"
 
-# 短语黑名单。出现 ≥ 1 次即 error。checker 做字面子串匹配，无通配符：
-# 只填"定长固定串"；带变量的模式（如"不是X而是Y"）字面匹配抓不到，
-# 应写到下面 markdown 正文，交 editor 语义判断。
+# Phrase blacklist. Any occurrence (≥ 1 time) triggers an error. The checker performs literal substring matching without wildcards:
+# Only fill in "fixed-length literal strings"; patterns with variables (such as "not X but Y") cannot be caught via literal matching,
+# and should be written in the markdown body below for semantic judgment by the editor.
 forbidden_phrases:
-  - "某种程度上"
-  - "值得注意的是"
+  - "to some extent"
+  - "it is worth noting"
 
-# 疲劳词阈值：本章超过 N 次才 warning（不跨章累计）。
-# 同时支持 list 形式：- 不禁  - 竟然  ← 默认阈值 1
+# Fatigue word threshold: warnings are triggered only when the word appears more than N times in this chapter (does not accumulate across chapters).
+# Also supports a list format: - word1 - word2 ← default threshold is 1
 fatigue_words:
-  不禁: 1
-  竟然: 1
-  仿佛: 2
+  cannot help but: 1
+  unexpectedly: 1
+  as if: 2
 ---
 
-# 风格
+# Style
 
-- 严禁破折号代替逗号；对话被打断的情况可保留。
-- 避免分析报告式表达（"核心矛盾在于……"），改用人物动作与对白。
-- 尽量多用身体感知（胃部痉挛、指节发白）替代情绪标签（紧张、愤怒）。
+- Do not use em-dashes instead of commas; dialogues being interrupted are exceptions.
+- Avoid analytical report style expressions (e.g., "The core conflict lies in..."), use character actions and dialogues instead.
+- Use physical perceptions (e.g., stomach spasm, white knuckles) as much as possible instead of emotional labels (e.g., nervous, angry).
 
-# 角色
+# Characters
 
-- 主角"林尘"：性格冷静克制，外冷内热；不要写成傲娇也不要写成圣母。
-- 配角"师妹"：对主角有未明说的好感但克制；说话偏简短，不喋喋不休。
+- Protagonist "Lin Chen": Calm and restrained, cold outside but warm inside; do not write him as tsundere or overly saintly.
+- Supporting character "Junior Sister": Has unspoken but restrained affection for the protagonist; speaks concisely, not talkative.
 
-# 设定
+# Settings
 
-- 修炼境界：练气 → 筑基 → 金丹 → 元婴 → 化神，每境九层。
-- 灵根分五行，主角是混沌灵根（极罕见）。
+- Cultivation realms: Qi Condensation → Foundation Establishment → Golden Core → Nascent Soul → Soul Transformation, nine layers for each realm.
+- Spiritual roots are divided into five elements; the protagonist has a Chaos Spiritual Root (extremely rare).
 
-# 偏好正文的语义提示
+# Semantic Prompts for Preference Body
 
-Markdown 正文里的偏好由 editor 在审阅时语义判断，没有严格度字段：
+Preferences in the Markdown body are semantically evaluated by the editor during review, without strictness level fields:
 
-- **严禁/不准/绝不** — editor 倾向把违反者归 critical，触发 rewrite
-- **避免/不要** — editor 倾向 error/warning
-- **尽量/最好** — editor 仅作为参考偏好，不强制
+- **Strictly forbid / Not allowed / Never** — the editor tends to classify violations as critical, triggering rewrites.
+- **Avoid / Do not** — the editor tends to classify as error/warning.
+- **As much as possible / Ideally** — the editor treats these only as reference preferences, not mandatory.
 
-机械规则（front matter）由 commit_chapter 强制检查并返 rule_violations；
-自然语言规则（这段 Markdown）由 editor LLM 判断并映射到现有七维评审。
+Mechanical rules (front matter) are strictly checked by `commit_chapter` and return `rule_violations`;
+Natural language rules (this Markdown section) are judged by the editor LLM and mapped to the existing seven-dimensional review.
 
-# 使用说明
+# Instructions for Use
 
-把本文件复制进项目级规则目录 `./.ainovel/rules/` 即生效（该目录镜像全局 `~/.ainovel/rules/`，同样放任意 `.md`）：
+Copy this file into the project-level rules directory `./.ainovel/rules/` to apply (this directory mirrors the global `~/.ainovel/rules/`, and also accepts any `.md` files):
 
 ```bash
 mkdir -p .ainovel/rules
 cp rules.md.example .ainovel/rules/my-rules.md
-# 编辑 .ainovel/rules/my-rules.md 改成你的偏好
+# Edit .ainovel/rules/my-rules.md to change to your preferences
 ```
 
-加载优先级（高 → 低）三层：
+Three layers of loading priority (high → low):
 
-1. `./.ainovel/rules/` 目录下任意 `.md` — **本书规则**（绑定当前工作目录 cwd，按文件名字典序合并）
-2. `~/.ainovel/rules/` 目录下任意 `.md` — **全局偏好**（跨书复用，按文件名字典序合并）
-3. `assets/rules/default.md` — **项目内置默认**（含去 AI 味机械基线；语义基线另在内置 `assets/references/anti-ai-tone.md`）
+1. Any `.md` in the `./.ainovel/rules/` directory — **Book-specific rules** (bound to the current working directory cwd, merged alphabetically by filename)
+2. Any `.md` in the `~/.ainovel/rules/` directory — **Global preferences** (reusable across books, merged alphabetically by filename)
+3. `assets/rules/default.md` — **Built-in defaults** (contains the mechanical baseline for AI-tone removal; the semantic baseline is located in the built-in `assets/references/anti-ai-tone.md`)
 
-多来源声明同一字段且值不一致时**就近优先**生效；`fatigue_words` 按词合并，同一词在多来源声明不同阈值时按就近优先。冲突写进内部诊断信息（不进 LLM 上下文，由 CLI 启动面板按需展示），不阻断加载。
+When multiple sources declare the same field with different values, the **nearest priority** applies; `fatigue_words` are merged by word, and if the same word has different thresholds in multiple sources, the nearest priority is chosen. Conflicts are written to internal diagnostic info (not in LLM context, displayed on demand by the CLI startup panel) without blocking loading.
 
-> 去 AI 味即此机制的一例：内置基线（机械 `default.md` + 语义 `anti-ai-tone.md`）兜底，你的规则 `.md` 叠加在其上——大白话正文写语义偏好（主路径），需要硬性禁词/字数检查时再可选加 front matter，零编译生效。
+> AI-tone removal is an example of this mechanism: the built-in baseline (mechanical `default.md` + semantic `anti-ai-tone.md`) acts as a fallback, and your rule `.md` overlays on top of it—write semantic preferences in plain language in the body (main path), and optionally add a front matter section when strict forbidden words/word count checks are needed. Zero compilation required to take effect.
 
-## 多本书并行
+## Running Multiple Books in Parallel
 
-`./.ainovel/rules/` 绑定 **当前工作目录**，不绑定小说输出目录：
+`./.ainovel/rules/` is bound to the **current working directory (Cwd)**, not the novel output directory:
 
-- ✅ 推荐：每本书 cd 到独立目录启动（`cd works/xiyou && ainovel-cli` / `cd works/honglou && ainovel-cli`）— 每本书的 `./.ainovel/rules/` 独立
-- ⚠️ 边缘：从同一 cwd 用 `-o output/xiyou` / `-o output/honglou` 切换两本书 — 这两本书会共享同一份 `./.ainovel/rules/`
+- ✅ Recommended: `cd` to an independent directory for each book and run (`cd works/xiyou && ainovel-cli` / `cd works/honglou && ainovel-cli`) — this isolates `./.ainovel/rules/` for each book.
+- ⚠️ Edge case: Switching books using `-o output/xiyou` / `-o output/honglou` from the same cwd — these two books will share the same `./.ainovel/rules/`.
 
-如需"严格本书隔离"且不想换 cwd，把偏好放 `~/.ainovel/rules/` 全局目录，让所有书共享一套用户偏好。
+If you need "strict isolation per book" without changing cwd, place your preferences in the global directory `~/.ainovel/rules/` so all books share a single set of user preferences.

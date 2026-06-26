@@ -1,66 +1,66 @@
-# 内容扩充技巧
+# Content Expansion Techniques
 
-当章节内容不足时，使用以下技巧自然扩充。
+When a chapter's content is insufficient, use the following techniques to expand it naturally.
 
-## 1. 场景细节描写
+## 1. Scene Detail Description
 
-不要只说"他走进房间"，描写：
-- 房间的布局、光线、气味
-- 物品的细节和质感
-- 环境对人物的影响
-- 人物在空间中的移动
+Do not just write "He entered the room." Describe:
+- The room's layout, lighting, and smell.
+- The details and textures of items.
+- The environment's impact on characters.
+- Characters' movements through the space.
 
-## 2. 人物内心活动
+## 2. Character Internal Monologue/Psychology
 
-展示而非讲述内心世界：
-- 角色的犹豫和纠结
-- 过去记忆的闪回（1-2段）
-- 对未来的担忧和期待
-- 道德选择的内心辩论
+Show, don't tell the inner world:
+- The character's hesitation and dilemma.
+- Flashbacks to past memories (1-2 paragraphs).
+- Apprehensions and expectations about the future.
+- Internal debates on moral choices.
 
-## 3. 对话扩展
+## 3. Dialogue Expansion
 
-不要只推进剧情，让对话：
-- 展现人物性格和说话方式
-- 包含潜台词和暗示
-- 有来回交锋和试探
-- 偶尔跑题再拉回（更真实）
+Do not just advance the plot. Let dialogue:
+- Reveal character personalities and speech habits.
+- Contain subtext and hints.
+- Feature back-and-forth confrontation and testing.
+- Occasionally drift off-topic before returning (more realistic).
 
-## 4. 感官体验
+## 4. Sensory Experience
 
-调动五感描写：
-- 视觉：颜色、光影、形状
-- 听觉：声音、音乐、沉默
-- 触觉：温度、质感、疼痛
-- 嗅觉：气味、香味、腐臭
-- 味觉：食物、饮料、血腥味
+Engage the five senses:
+- Sight: Color, light and shadow, shape.
+- Hearing: Sound, music, silence.
+- Touch: Temperature, texture, pain.
+- Smell: Scent, fragrance, stench.
+- Taste: Food, drink, taste of blood.
 
-## 5. 次要情节线
+## 5. Subplot Lines
 
-在主剧情中穿插：
-- 配角的小故事
-- 暗线的发展
-- 伏笔的埋设
-- 人物关系的微妙变化
+Interweave within the main plot:
+- Minor stories of supporting characters.
+- Development of hidden threads.
+- Planting of foreshadowing.
+- Subtle changes in character relationships.
 
-## 6. 节奏放慢
+## 6. Slowing Down the Pacing
 
-关键时刻慢下来描写：
-- 动作场景的分解
-- 情感转变的过程
-- 发现真相的时刻
-- 紧张对峙的延展
+Slow down descriptions at key moments:
+- Deconstructing action scenes into beats.
+- The process of emotional transformation.
+- The moment of truth revelation.
+- Extending tense confrontations.
 
-## 7. 环境烘托
+## 7. Environmental Contrast/Setup
 
-用环境反映情绪：
-- 天气和氛围
-- 社会环境背景
-- 文化习俗细节
-- 时代特征展现
+Use the environment to reflect emotions:
+- Weather and atmosphere.
+- Social and background environment.
+- Details of cultural customs.
+- Representation of historical/era characteristics.
 
-## 扩充原则
+## Expansion Principles
 
-- **自然融入** - 扩充内容要服务于故事，不要注水
-- **保持张力** - 即使扩充场景也不能失去冲突
-- **推进主线** - 所有扩充最终都要指向核心剧情
+- **Natural Integration** - Expanded content must serve the story; do not use filler/padding.
+- **Maintain Tension** - Do not lose conflict even when expanding scenes.
+- **Advance Main Thread** - All expansions must ultimately point to the core plot.

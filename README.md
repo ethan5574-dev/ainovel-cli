@@ -60,36 +60,36 @@ Core design: **LLM-driven, Host-served**. The Coordinator independently decides 
 | **Writer** | Independently plans, writes, self-checks, and submits a chapter | `novel_context` `read_chapter` `plan_chapter` `draft_chapter` `check_consistency` `commit_chapter` |
 | **Editor** | Reads the source text and reviews both structure and style | `novel_context` `read_chapter` `save_review` `save_arc_summary` `save_volume_summary` |
 
-### 写作流程
+### Writing Process
 
 ```
-用户需求 → Architect 规划骨架 + 首弧章节 → Writer 逐章写作 → Editor 弧级评审
-                                                  ↑                   │
-                                                  ├── 重写/打磨 ◄──────┘
-                                                  │
-                                           Architect 展开下一弧/卷
-                                          （参考前文摘要+角色快照）
+User Requirements → Architect plans skeleton + first arc chapters → Writer writes chapter-by-chapter → Editor reviews at arc level
+                                                                          ↑                                │
+                                                                          ├── Rewrite/Polish ◄─────────────┘
+                                                                          │
+                                                                   Architect expands next arc/volume
+                                                                   (Refers to prior summaries + character snapshot)
 ```
 
-Writer 按固定顺序完成每章（写作内容完全自主，工具调用顺序严格）：
+The Writer completes each chapter in a fixed sequence (the writing content is fully autonomous, and the tool calling sequence is strict):
 
-1. `novel_context` — 加载上下文（前情摘要、伏笔、角色状态、风格规则、相关章节推荐）
-2. `read_chapter` — 回读前文找回语气和节奏
-3. `plan_chapter` — 构思本章目标、冲突、情绪弧线
-4. `draft_chapter` — 写入整章正文
-5. `check_consistency` — 对照状态数据检查一致性（必须在 draft 之后）
-6. `commit_chapter` — 提交终稿，返回事实字段（`arc_end_reached` / `next_chapter` 等），下一步由 Reminder 驱动
+1. `novel_context` — Load context (previous summaries, foreshadowing, character state, style rules, related chapter recommendations)
+2. `read_chapter` — Read previous chapters to regain tone and pacing
+3. `plan_chapter` — Conceive the chapter goal, conflict, and emotional arc
+4. `draft_chapter` — Write the chapter's draft text
+5. `check_consistency` — Check consistency against state data (must run after drafting)
+6. `commit_chapter` — Commit the final draft and return fact fields (`arc_end_reached` / `next_chapter` etc.); the next step is driven by the Reminder
 
-### 状态迁移规则
+### State Transition Rules
 
-系统内部把运行状态拆成两层：
+The system internally splits the execution state into two layers:
 
-- **Phase** — 大阶段，表示作品目前处于设定期、写作期还是已完成
-- **Flow** — 当前活跃流程，表示系统此刻是在正常写作、审阅、重写、打磨还是处理用户干预
+- **Phase** — Major phase, indicating whether the novel is currently in the setup, outlining, writing, or completed phase.
+- **Flow** — Current active flow, indicating whether the system is currently writing, reviewing, rewriting, polishing, or processing user steering.
 
 #### Phase
 
-`Phase` 采用“只前进不回退”的规则：
+`Phase` transitions follow a "forward-only, no-regression" rule:
 
 ```text
 init -> premise -> outline -> writing -> complete
@@ -97,23 +97,23 @@ init -> premise -> outline -> writing -> complete
   \--------------> writing
 ```
 
-含义：
+Meanings:
 
-- `init` — 任务已创建，尚未形成稳定设定
-- `premise` — 已保存故事前提
-- `outline` — 已保存大纲，可以进入正式写作
-- `writing` — 已进入章节创作期
-- `complete` — 全书流程结束
+- `init` — Task created, stable configuration not yet formed.
+- `premise` — Story premise saved.
+- `outline` — Outline saved, ready to enter formal writing.
+- `writing` — Chapter writing phase entered.
+- `complete` — Book process finished.
 
-规则说明：
+Rules:
 
-- 允许同态更新，例如 `writing -> writing`
-- 允许前进，例如 `outline -> writing`
-- 不允许回退，例如 `writing -> premise`、`complete -> writing`
+- Self-transitions are allowed, e.g., `writing -> writing`.
+- Forward transitions are allowed, e.g., `outline -> writing`.
+- Backward transitions are not allowed, e.g., `writing -> premise`, `complete -> writing`.
 
 #### Flow
 
-`Flow` 只描述写作期内的活跃流程，允许在几个工作流之间切换：
+`Flow` only describes active workflows during the writing phase, allowing transitions between several workflows:
 
 ```text
 writing   -> reviewing / rewriting / polishing / steering / writing
@@ -123,99 +123,99 @@ polishing -> writing / steering / polishing
 steering  -> writing / reviewing / rewriting / polishing / steering
 ```
 
-含义：
+Meanings:
 
-- `writing` — 正常推进下一章
-- `reviewing` — Editor 正在评审
-- `rewriting` — 处理必须重写的章节
-- `polishing` — 处理只需打磨的章节
-- `steering` — 正在评估并处理用户干预
+- `writing` — Advancing the next chapter normally.
+- `reviewing` — Editor is reviewing.
+- `rewriting` — Processing chapters that must be rewritten.
+- `polishing` — Processing chapters that only need polishing.
+- `steering` — Evaluating and processing user steering.
 
-规则说明：
+Rules:
 
-- 允许 `writing -> reviewing`，例如章节提交后触发评审
-- 允许 `reviewing -> rewriting/polishing/writing`，由评审结果决定
-- 允许 `steering -> writing/reviewing/rewriting/polishing`，由干预影响范围决定
-- 不允许明显反常的跳转，例如 `rewriting -> reviewing`
+- Allows `writing -> reviewing`, e.g., triggered after chapter submission.
+- Allows `reviewing -> rewriting/polishing/writing`, determined by review results.
+- Allows `steering -> writing/reviewing/rewriting/polishing`, determined by the steering impact scope.
+- Does not allow abnormal jumps, e.g., `rewriting -> reviewing`.
 
-这些规则现在由代码中的轻量校验统一约束，避免状态回退或跳到不合理的流程分支。
+These rules are now uniformly enforced by lightweight checks in the codebase, preventing state regression or transitions to invalid process branches.
 
-### 长篇滚动规划
+### Long-form Rolling Planning
 
-传统方案一次规划所有章节，300+ 章时大纲空洞、节奏像赶进度。本系统采用**指南针 + 视野滚动规划**，模拟网文作者的真实创作流程：
-
-```
-初始规划                     弧结束时                      卷结束时
-┌────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
-│ 终局方向（指南针）    │    │ Editor 弧级评审      │    │ Editor 卷级评审       │
-│ 起步 2 卷，后续按需   │    │ 弧摘要 + 角色快照     │    │ 卷摘要               │
-│ 第1弧详细章节        │ →  │ Architect 展开下一弧  │ →  │ Architect 自主创建   │
-│ 角色 + 世界观        │    │ Writer 继续写作      │    │ 下一卷 + 更新指南针    │
-└────────────────────┘    └─────────────────────┘    └─────────────────────┘
-```
-
-- **指南针（Compass）** — 终局方向 + 活跃长线 + 规模估计，每次卷边界由 Architect 更新，故事方向可随创作演化
-- **按需生成** — 当前卷写完后，Architect 根据已写内容自主创建下一卷。初始规划生成 2 卷作为起步，后续卷按需生成
-- **骨架弧** — 只有 goal + 预估章数，到达时再展开详细章节
-- **渐进细化** — 每次展开都参考前文摘要、角色快照、风格规则，越往后写越精确
-- **通用节奏模板** — 成长突破弧 / 竞技对抗弧 / 探索发现弧 / 恩怨冲突弧 / 日常过渡弧，每种弧型有参考密度和适用题材映射
-
-### 长篇上下文管理
-
-500+ 章小说采用三级摘要 + 四级压缩管线 + 智能推荐：
+Traditional solutions plan all chapters at once, which makes the outline hollow and the pacing feel rushed when reaching 300+ chapters. This system uses a **Compass + Rolling Horizon planning** approach, simulating the actual creation process of web novel authors:
 
 ```
-卷（Volume）→ 卷摘要
-└── 弧（Arc）→ 弧摘要 + 角色快照 + 风格规则
-    └── 章（Chapter）→ 章摘要（滑窗最近3章）
+Initial Planning              At Arc End                    At Volume End
+┌────────────────────────┐    ┌────────────────────────┐    ┌────────────────────────┐
+│ Endgame (Compass)      │    │ Editor Arc Review      │    │ Editor Vol Review      │
+│ Start 2 Vols, more     │    │ Arc Summary + Snapshot │    │ Vol Summary            │
+│ detailed 1st arc       │ →  │ Architect expands arc  │ →  │ Architect creates next │
+│ Characters + Worldview │    │ Writer writes chapter  │    │ volume, updates compass│
+└────────────────────────┘    └────────────────────────┘    └────────────────────────┘
 ```
 
-- **分层摘要** — 近处用章摘要，中距离用弧摘要，远处用卷摘要，层层压缩不丢信息
-- **相关章节推荐** — 每章写作时从伏笔、角色出场、状态变化、关系四个维度反查历史章节，推荐 Writer 按需回读
-- **下一章预告** — 加载下一章大纲，帮 Writer 设计章末钩子和伏笔衔接
-- **弧边界检测** — 自动识别弧/卷结束，触发评审、摘要生成和下一弧/卷展开
+- **Compass** — Endgame direction + active plotlines + size estimation, updated by the Architect at each volume boundary; the story direction can evolve as writing progresses.
+- **On-demand Generation** — Once the current volume is finished, the Architect autonomously creates the next volume based on what has been written. The initial plan generates 2 volumes as a start, and subsequent volumes are generated on demand.
+- **Skeleton Arc** — Contains only a goal + estimated chapter count, expanded into detailed chapters only when reached.
+- **Progressive Refinement** — Each expansion refers to prior summaries, character snapshots, and style rules; the further we write, the more precise it becomes.
+- **Common Pacing Templates** — Growth & Breakthrough Arc / Competition & Confrontation Arc / Exploration & Discovery Arc / Conflict & Feud Arc / Daily Transition Arc; each arc type has a reference density and genre mapping.
 
-#### 上下文压缩管线
+### Long-form Context Management
 
-当对话超出模型上下文窗口时，按代价从低到高逐级压缩：
+A 500+ chapter novel uses a 3-level summary + 4-level compression pipeline + smart recommendation system:
+
+```
+Volume → Volume Summary
+└── Arc → Arc Summary + Character Snapshot + Style Rules
+    └── Chapter → Chapter Summary (sliding window of the latest 3 chapters)
+```
+
+- **Layered Summaries** — Chapter summaries for short range, arc summaries for medium range, and volume summaries for long range. Layered compression ensures no information loss.
+- **Related Chapter Recommendation** — During writing, the system checks historical chapters across four dimensions (foreshadowing, character appearance, state change, relations) and recommends chapters to the Writer for reading as needed.
+- **Next Chapter Preview** — Loads the outline of the next chapter, helping the Writer design end-of-chapter hooks and coordinate foreshadowing.
+- **Arc Boundary Detection** — Automatically detects the end of an arc/volume, triggering reviews, summary generation, and next arc/volume expansion.
+
+#### Context Compression Pipeline
+
+When the dialogue history exceeds the model's context window, it is compressed step-by-step from lowest to highest cost:
 
 ```
 ToolResultMicrocompact → LightTrim → StoreSummaryCompact → FullSummary
-     清理旧工具结果        截断长文本      store 零 LLM 压缩      LLM 摘要兜底
+   Clean old tools       Truncate text   Zero-LLM compression   LLM summary fallback
 ```
 
-- **StoreSummaryCompact** — Writer 专用，用 store 中已有的章节摘要、角色快照、伏笔台账直接替换旧消息，零 LLM 开销
-- **FullSummary 小说定制** — Writer 使用面向叙事连续性的摘要提示词，明确要求保留角色状态、伏笔线索、审稿待修项、风格锚点
-- **压缩后恢复包** — FullSummary 后自动注入当前章节计划、大纲和角色快照，防止 Writer 压缩后"失忆"
-- **熔断器** — 压缩连续失败时自动跳过并显式告警，采用半开模式，下轮自动重试
-- **CJK Token 估算** — 中文 `runes × 1.5`，不会因为 `bytes/4` 低估而导致压缩触发滞后
-- **TUI 健康度渐变** — 上下文占用绿(<70%)→黄(70-85%)→红(>85%)实时展示
+- **StoreSummaryCompact** — Exclusive to the Writer; directly replaces old messages using existing chapter summaries, character snapshots, and foreshadowing ledgers in the store, incurring zero LLM overhead.
+- **Narrative-focused FullSummary** — Writer uses a summary prompt oriented towards narrative continuity, explicitly asking to preserve character states, foreshadowing clues, pending review fixes, and style anchors.
+- **Post-compression Recovery Pack** — Automatically injects the current chapter plan, outline, and character snapshots after a FullSummary, preventing the Writer from having 'amnesia' after compression.
+- **Circuit Breaker** — Automatically skips compression and raises an explicit alert after consecutive failures, using a half-open mode to retry in the next turn.
+- **CJK Token Estimation** — Estimates Chinese tokens as `runes × 1.5`, avoiding delayed compression triggers caused by `bytes/4` underestimation.
+- **TUI Health Indicator** — Context usage is displayed in real-time with color gradients: Green (<70%), Yellow (70-85%), and Red (>85%).
 
-## 快速开始
+## Quick Start
 
 ```bash
-# 一键安装（macOS / Linux，无需 Go）
+# One-click installation (macOS / Linux, no Go required)
 curl -fsSL https://raw.githubusercontent.com/voocel/ainovel-cli/main/scripts/install.sh | sh
 
-# 安装指定版本
+# Install a specific version
 curl -fsSL https://raw.githubusercontent.com/voocel/ainovel-cli/main/scripts/install.sh | sh -s -- v1.2.3
 
-# 或通过 Go 安装
+# Or install via Go
 go install github.com/voocel/ainovel-cli/cmd/ainovel-cli@latest
 
-# 查看版本 / 更新到最新版本
+# View version / Update to latest version
 ainovel-cli --version
 ainovel-cli update
 
-# 首次运行，自动进入引导流程（选择 Provider → 输入 API Key → Base URL → 模型名）
+# First run, automatically enters setup wizard (Select Provider → Enter API Key → Base URL → Model Name)
 ainovel-cli
 ```
 
-> Windows 或手动安装：前往 [Releases](https://github.com/voocel/ainovel-cli/releases/latest) 下载对应平台的包。
+> Windows or manual installation: Go to [Releases](https://github.com/voocel/ainovel-cli/releases/latest) to download the package for your platform.
 
 ### Docker
 
-Docker 镜像适合在服务器/NAS 上运行 headless 长任务，也可以用 `-it` 进入 TUI。配置和作品目录建议挂载到宿主机：
+Docker images are suitable for running headless long tasks on servers/NAS, or you can use `-it` to enter the TUI. We recommend mounting the configuration and workspace directories to the host:
 
 ```bash
 mkdir -p config workspace
@@ -231,32 +231,32 @@ docker run --rm \
   -v "$PWD/config:/root/.ainovel" \
   -v "$PWD/workspace:/workspace" \
   ghcr.io/voocel/ainovel-cli:latest \
-  --headless --prompt "写一本东方玄幻长篇，主角从边陲小城起步"
+  --headless --prompt "Write a long Eastern Fantasy novel where the protagonist starts from a remote border town"
 ```
 
-也可以用 Compose：
+Or use Compose:
 
 ```bash
 docker compose run --rm ainovel
-docker compose run --rm ainovel --headless --prompt "写一本悬疑短篇"
+docker compose run --rm ainovel --headless --prompt "Write a short mystery novel"
 ```
 
-进入 TUI 后，启动阶段支持两种前置交互：
+After entering the TUI, two initial interaction modes are supported at startup:
 
-- `快速开始`：一句话直接进入创作
-- `共创规划`：与 AI 多轮对话澄清需求，**右侧实时同步整理出的创作指令草稿**；AI 每轮主动提供 1-3 条引导建议，按数字键一键填入输入框，按 `Ctrl+S` 进入正式创作
+- `Quick Start`: Start writing immediately with a single prompt.
+- `Co-creation`: Clarify requirements through multi-turn dialogue with AI. The **draft writing instructions are synchronized in real-time on the right side**. The AI proactively suggests 1-3 guides in each turn, which can be quickly filled by pressing number keys. Press `Ctrl+S` to start formal writing.
 
-两种模式最终都会收敛为同一份创作指令，再进入同一套创作引擎。
+Both modes will eventually converge into the same set of writing instructions, which are then passed to the same writing engine.
 
-### 管理多本小说
+### Managing Multiple Novels
 
-每本小说绑定到启动目录，产物落在 `{cwd}/output/novel/`。换目录启动 = 换一本，`cd` 回去启动 = 自动从最近 checkpoint 恢复。配置 `~/.ainovel/config.json` 全局共享，无需复制。
+Each novel is bound to the directory where the command is launched, and output artifacts are stored in `{cwd}/output/novel/`. Starting in a different directory = starting a new novel; returning (`cd`) and starting again = automatically resuming from the last checkpoint. Configuration in `~/.ainovel/config.json` is shared globally and does not need to be copied.
 
-### 配置文件
+### Configuration File
 
-首次运行时自动引导生成配置文件 `~/.ainovel/config.json`，后续可直接编辑该文件调整设置。删除配置文件后重新运行会再次进入引导流程。
+A configuration file `~/.ainovel/config.json` is automatically generated on the first run. You can edit this file directly to adjust settings later. If you delete the configuration file, running the command will trigger the setup wizard again.
 
-也可以手动创建配置文件，参考 `~/.ainovel/config.example.jsonc`（引导时自动生成）。
+You can also create the configuration file manually, referencing `~/.ainovel/config.example.jsonc` (automatically generated during setup).
 
 ```jsonc
 {
@@ -298,81 +298,81 @@ docker compose run --rm ainovel --headless --prompt "写一本悬疑短篇"
 
 `providers.<name>.extra` 为 provider 级配置，会传给底层 HTTP 客户端，适合配置 `user_agent`、`headers`、`anthropic_beta` 等代理识别字段；`providers.<name>.extra_body` 才是请求体扩展参数，两者不要混用。
 
-## 诊断报告
+## Diagnostics Report
 
-在 TUI 中输入 `/diag` 可对当前小说的 output 产物进行诊断分析，产出可执行的发现和改进建议。
+Type `/diag` in the TUI to run diagnostic analysis on the output artifacts of the current novel, producing actionable findings and improvement suggestions.
 
-诊断覆盖四个维度：
+Diagnostics cover four dimensions:
 
-- **流程** — 改写循环卡顿、未消费的转向指令、阶段/流程状态异常、章节跳号
-- **质量** — 评审维度持续低分、合同履约率、改写率、章节字数异常
-- **规划** — 伏笔停滞、指南针过时、大纲耗尽、摘要缺失
-- **上下文** — 角色消失、时间线缺口、关系数据停滞
+- **Process** — Rewrite loops/stalls, unconsumed steering instructions, abnormal Phase/Flow states, and skipped chapter numbers.
+- **Quality** — Persistent low review scores across dimensions, contract compliance rate, rewrite rate, and anomalous chapter word counts.
+- **Planning** — Stagnant foreshadowing, outdated compass, exhausted outline, and missing summaries.
+- **Context** — Missing characters, timeline gaps, and stagnant relationship data.
 
-每条发现包含：问题描述、数据证据、改进建议（指向具体的 prompt/flow/config）。
+Each finding includes: problem description, data evidence, and improvement suggestions (pointing to specific prompts/flows/configs).
 
-`/diag` 同时会写出一份**已脱敏**的 `meta/diag-export.md`（移除小说正文，仅保留工具调用、错误串、重复次数等行为骨架）。遇到死循环 / 中断类问题，把它贴到 GitHub issue 即可，方便维护者在拿不到本地数据的情况下定位。
+`/diag` also writes a **desensitized** `meta/diag-export.md` file (stripping the actual novel text while preserving tool calls, error strings, retry counts, and other behavioral skeletons). If you encounter infinite loops or interruption issues, paste it into a GitHub issue to help maintainers debug without needing your local data.
 
-## 仿写画像
+## Imitation Profiling
 
-把参考文章放到当前启动目录的 `simulate/` 文件夹中，然后在 TUI 输入 `/simulate`。系统会递归读取 `.txt`、`.md`、`.markdown` 文件，用 architect 模型分析语料，并写入：
+Put the reference articles into the `simulate/` folder of the current launch directory, then enter `/simulate` in the TUI. The system recursively reads `.txt`, `.md`, and `.markdown` files, analyzes the corpus using the architect model, and writes to:
 
 ```text
 output/novel/meta/simulation_profile.json
 ```
 
-再次运行 `/simulate` 时，会按 `relative_path + sha256` 跳过未变化文件；如果没有新增或变更内容，会提示“画像已是最新”并且不会调用 LLM。若已有画像且 `simulate/` 中出现新增或修改文章，系统会在原画像基础上继续合成。
+Running `/simulate` again will skip unchanged files based on `relative_path + sha256`. If there are no additions or modifications, it will prompt "Profile is already up-to-date" and will not call the LLM. If there is an existing profile and new or modified articles appear in `simulate/`, the system will synthesize them on top of the original profile.
 
-也可以导入之前生成的画像，避免重复分析同一批文章：
+You can also import previously generated profiles to avoid re-analyzing the same set of articles:
 
 ```text
 /simulate
 /importsim ./profile.json
 ```
 
-`/importsim` 只接受本功能生成的 `simulation_profile.v1` JSON，并按语料指纹合并，重复来源会跳过。只导入可信来源的画像文件；导入内容会成为后续 Agent 的上下文参考。画像会以 compact 形式注入 `novel_context`，Coordinator、Architect、Writer、Editor 都能读取；各 Agent 只借鉴结构、节奏、钩子和吸引读者手法，不复制原文表达或专有设定。
+`/importsim` only accepts the `simulation_profile.v1` JSON format generated by this tool, merging by corpus fingerprint and skipping duplicate sources. Only import profile files from trusted sources; the imported content serves as a contextual reference for subsequent Agents. The profile is injected in a compact format into the `novel_context`, readable by Coordinator, Architect, Writer, and Editor. Agents only learn structure, pacing, hooks, and reader-attraction techniques, without copying the original phrasing or specific settings.
 
-## 导入
+## Import
 
-在 TUI 中输入 `/import <文件路径>` 可把一本已有的小说反推导入：先按章切分，再用 LLM 反推出前提 / 角色 / 世界观 / 分层大纲 / 指南针，逐章落盘。原文作为第一卷落成可续写的连载，导入完成后会**自动接力续写**——Coordinator 在第一卷末做评审/摘要、追加新卷，从下一章继续。
+Type `/import <file_path>` in the TUI to reverse-import an existing novel: it splits the text by chapter, uses the LLM to reverse-engineer the premise, characters, worldview, hierarchical outline, and compass, and writes each chapter to disk. The original text forms the first volume of a serializable project. Once imported, it **automatically transitions to continuation writing**—the Coordinator reviews and summarizes the end of Volume 1, appends a new volume, and continues writing from the next chapter.
 
 ```
-/import ~/我的小说.txt              # 从头导入并反推 foundation
-/import ~/我的小说.txt from=50      # 从第 50 章接着导入（跳过反推）
+/import ~/my_novel.txt             # Import from scratch and reverse-engineer foundation
+/import ~/my_novel.txt from=50     # Continue importing from chapter 50 (skips foundation reverse-engineering)
 ```
 
-**章节切分规则**：自动识别这些标题格式（行首，可带 `#`/`##` Markdown 前缀、`【】`/`〖〗` 包裹、全角空格，兼容 GBK/BOM 编码）：
+**Chapter Splitting Rules**: Automatically recognizes the following title formats (at the start of a line, optionally with `#`/`##` Markdown prefixes, enclosed in brackets like `【】`/`〖〗`, full-width spaces, and compatible with GBK/BOM encoding):
 
-- 中文编号：`第一章` `第3回` `第十话` `第二卷` `第五节` `第二幕`、独立 `卷一`，数字支持大写（`第壹章`），可带副标题（`第三章：决战`）
-- 中文特殊单元：`序章` `楔子` `引子` `前言` `尾声` `终章` `后记` `番外` `外传`
-- 英文：`Chapter 1` `Chapter II`、`Prologue` `Epilogue`，可带副标题（`Chapter 1: The Beginning`）
+- Chinese numbering: `第一章` (Chapter 1), `第3回` (Round 3), `第十话` (Episode 10), `第二卷` (Volume 2), `第五节` (Section 5), `第二幕` (Act 2), independent `卷一` (Volume 1); numbers can be in uppercase (`第壹章`), and can include subtitles (`第三章：决战`)
+- Chinese special units: `序章` (Prologue), `楔子` (Wedge/Intro), `引子` (Introduction), `前言` (Foreword), `尾声` (Epilogue), `终章` (Final Chapter), `后记` (Afterword), `番外` (Side Story), `外传` (Spin-off)
+- English: `Chapter 1`, `Chapter II`, `Prologue`, `Epilogue`, with optional subtitles (e.g., `Chapter 1: The Beginning`)
 
-若提示**"未识别到任何章节"**，请确认文件确为分章小说文本（章节标题独占一行、位于行首）。
+If prompted with **"No chapters recognized"**, verify that the file is indeed a formatted novel text (with chapter titles occupying their own line at the beginning of the line).
 
-> 导入是确定性回放，不经过 Coordinator；原文会逐字落盘为已完成章节，因此适合"续写同一本书"。如果只想借鉴设定做全新创作，请用普通方式起一本新书、在需求里描述想要的风格设定。
+> Import is a deterministic replay and does not go through the Coordinator; the original text is saved verbatim as completed chapters, making it ideal for "continuing the same book". If you only want to borrow the setup for a new creation, start a new book in the normal way and describe the style and settings in the requirements.
 
-## 导出
+## Export
 
-在 TUI 中输入 `/export` 可把已完成的章节合并导出，默认 TXT，写到 `{novelDir}/{NovelName}.txt`。导出是只读操作，写作中途也可以随时拿"现阶段成品"，不影响 Coordinator 运行。
+Enter `/export` in the TUI to merge and export completed chapters. The default format is TXT, written to `{novelDir}/{NovelName}.txt`. Export is a read-only operation; you can export the current draft at any time during writing without affecting the Coordinator's run.
 
-格式由**输出路径后缀**决定（`.txt` / `.epub`）：
+The format is determined by the **output file extension** (`.txt` / `.epub`):
 
 ```text
-/export                            # 默认 TXT，{novelDir}/{NovelName}.txt
-/export ~/光斑.txt                  # 后缀 .txt → TXT
-/export ~/光斑.epub                 # 后缀 .epub → EPUB（Apple Books / 微信读书 / Kindle 转换器可读）
-/export from=10 to=30 --overwrite  # 章节区间 + 覆盖
+/export                            # Default TXT, {novelDir}/{NovelName}.txt
+/export ~/my_novel.txt             # Extension .txt → TXT
+/export ~/my_novel.epub            # Extension .epub → EPUB (readable by Apple Books, WeChat Read, Kindle converter, etc.)
+/export from=10 to=30 --overwrite  # Chapter range + overwrite
 /export from=10 ~/x.epub --overwrite
 ```
 
-- **TXT** — `《书名》` → 卷分隔 → 章节正文（长篇分层模式自动加卷分隔）。两类内部数据**不进导出**：premise（创作蓝图，含目标读者 / 写作禁区等后台信息，写给作者与引擎看的）、弧分隔（读者视角下弧是过细的内部结构）。导出器统一生成"第 N 章 标题"，正文里 writer 自带的重复标题（`# 第N章…` 或 `# 章节名`）会被剥掉。
-- **EPUB** — EPUB 3 标准容器，含封面页、目录、按章拆分的 XHTML，标识符基于内容稳定派生（重导出同一本书阅读器识别为更新版本）。不带封面图。
+- **TXT** — `《Book Title》` → Volume dividers → Chapter text (hierarchical mode automatically adds volume dividers). Two kinds of internal data **will not be exported**: the premise (creative blueprint containing target readers/writing taboos, meant only for the author and the engine) and arc dividers (since arcs are too granular for the reader's view). The exporter uniformly generates "Chapter N Title" and strips duplicate headers (e.g. `# Chapter N...` or `# Chapter Title`) produced by the writer in the body text.
+- **EPUB** — EPUB 3 standard container, including cover page, TOC, and XHTML files split by chapter. The identifier is stably derived from the content (re-exporting the same book will be recognized as an update by reader apps). Cover image is not included by default.
 
-范围内未完成的章节会跳过并显示在结果里，不算错误。
+Unfinished chapters within the range will be skipped and listed in the results, which is not treated as an error.
 
-#### 按角色使用不同模型
+#### Assigning Different Models to Roles
 
-通过 `roles` 字段为不同智能体分配不同的模型，未配置的角色使用默认模型：
+Assign different models to different agents using the `roles` field. Roles not configured will fallback to the default model:
 
 ```jsonc
 {
@@ -389,11 +389,11 @@ output/novel/meta/simulation_profile.json
 }
 ```
 
-可配置的角色：`coordinator` / `architect` / `writer` / `editor`
+Configurable roles: `coordinator` / `architect` / `writer` / `editor`
 
-#### 自定义代理
+#### Custom Proxy
 
-选择任意 Provider 后填写代理地址即可，或使用 Custom Proxy 并指定 API 协议类型。自定义代理的 `api_key` 可选；如果你的代理不需要认证，可以省略：
+Select any Provider and fill in the proxy address, or use Custom Proxy and specify the API protocol type. The `api_key` for custom proxies is optional; if your proxy does not require authentication, it can be omitted:
 
 ```jsonc
 {
@@ -412,9 +412,9 @@ output/novel/meta/simulation_profile.json
 }
 ```
 
-支持的 Provider：`openrouter` / `anthropic` / `gemini` / `openai` / `deepseek` / `qwen` / `glm` / `grok` / `ollama` / `bedrock` 及任意自定义代理。
+Supported Providers: `openrouter` / `anthropic` / `gemini` / `openai` / `deepseek` / `qwen` / `glm` / `grok` / `ollama` / `bedrock`, and any custom proxy.
 
-如果代理是 Anthropic 协议，并要求客户端识别字段，`type` 应设为 `anthropic`，`anthropic_beta` 放在 `extra` 顶层，Stainless 等 HTTP 头放在 `extra.headers` 中：
+If the proxy uses the Anthropic protocol and requires client identification fields, `type` should be set to `anthropic`, `anthropic_beta` should be placed at the top level of `extra`, and HTTP headers like Stainless should be placed under `extra.headers`:
 
 ```jsonc
 {
@@ -439,13 +439,13 @@ output/novel/meta/simulation_profile.json
 }
 ```
 
-关于 `api_key`：
+About `api_key`:
 
-- `openrouter` / `anthropic` / `gemini` / `openai` / `deepseek` / `qwen` / `glm` / `grok` 这类托管接口通常需要填写 `api_key`
-- `ollama` 和 `bedrock` 允许不填 `api_key`
-- 显式指定了 `type` 的自定义代理允许不填 `api_key`
+- Managed services like `openrouter` / `anthropic` / `gemini` / `openai` / `deepseek` / `qwen` / `glm` / `grok` typically require an `api_key`.
+- `ollama` and `bedrock` allow omitting the `api_key`.
+- Custom proxies with an explicitly specified `type` allow omitting the `api_key`.
 
-例如本地 `ollama` 配置：
+For example, local `ollama` configuration:
 
 ```jsonc
 {
@@ -459,63 +459,121 @@ output/novel/meta/simulation_profile.json
 }
 ```
 
-### 写作风格
+### Writing Styles
 
-通过配置文件的 `style` 字段切换：
+Switch writing styles using the `style` field in the configuration file:
 
-- `default` — 通用风格
-- `suspense` — 悬疑推理
-- `fantasy` — 奇幻仙侠
-- `romance` — 言情
+- `default` — General style
+- `suspense` — Mystery/Suspense
+- `fantasy` — Fantasy/Xianxia
+- `romance` — Romance
 
-### 去 AI 味与自定义规则
+### AI-Tone Removal & Custom Rules
 
-内置一份去 AI 味基线（`assets/` 下，出厂默认）：机械黑名单 `rules/default.md`（套句 / 疲劳词，commit 时确定性检查）+ 语义判据 `references/anti-ai-tone.md`（注入 writer / editor 规避与举证）。
+A built-in AI-tone removal baseline is provided (under `assets/`, default out-of-the-box): a mechanical blacklist in `rules/default.md` (clichés / fatigue words, deterministically checked during commit) + semantic criteria in `references/anti-ai-tone.md` (injected into writer / editor for avoidance## Crash Recovery
 
-想叠加自己的偏好**无需改源码**：在 `~/.ainovel/rules/` 目录（全局，放任意 `.md`，按文件名字典序合并）或 `./.ainovel/rules/` 目录（本书，同样放任意 `.md`，与全局同形态）里，**用大白话写偏好即可**（如「主角别写成圣母」「多用身体感知」），editor 会按语义审阅——零格式、零 YAML。想要「字数 / 禁词」这类硬性确定检查，再**可选地**在文件顶部加一段 front matter。就近覆盖、与内置基线叠加生效；完整字段见 [`rules.md.example`](rules.md.example)。
+Writing a long-form novel can take hours or even days. Intermittent crashes, network disconnections, or `Ctrl+C` are common. The system **automatically resumes when run again in the same directory**, without requiring manual action.
 
-## 输出结构
+### Recovery Scenarios
 
-所有创作数据（章节、大纲、角色、进度等）保存在output目录中。中断后重新运行会自动从上次进度续写。删除output目录将重新开始创作。
-
-```
-output/{novel_name}/
-├── chapters/           # 终稿（Markdown）
-│   ├── 01.md
-│   └── ...
-├── summaries/          # 章节摘要（JSON）
-├── drafts/             # 章节草稿
-├── reviews/            # 评审报告
-├── meta/
-│   ├── premise.md      # 故事前提
-│   ├── outline.json    # 扁平章节大纲（仅含已展开的章节）
-│   ├── layered_outline.json # 分层大纲（当前卷 + 预览卷，长篇模式）
-│   ├── compass.json   # 终局方向指南针（长篇模式）
-│   ├── characters.json # 角色档案
-│   ├── world_rules.json# 世界规则
-│   ├── progress.json   # 进度状态
-│   ├── timeline.json   # 时间线
-│   ├── foreshadow.json # 伏笔台账
-│   ├── state_changes.json # 角色状态变化记录
-│   ├── style_rules.json# 写作风格规则（弧边界时提炼）
-│   ├── snapshots/      # 角色状态快照（长篇）
-│   ├── checkpoints.jsonl # Step 级 checkpoint（每个工具成功后追加）
-│   ├── characters.md   # 角色档案（可读版）
-│   └── world_rules.md  # 世界规则（可读版）
-```
-
-## 断点恢复
-
-写一部长篇小说可能需要数小时甚至数天，中途崩溃、断网、Ctrl+C 都是常见情况。系统在**同一目录再次运行时自动恢复**，无需手动操作。
-
-### 恢复场景
-
-| 中断时机 | 恢复行为 |
+| Interruption Scenario | Recovery Behavior |
 |---|---|
-| 规划阶段（正在构建世界观/大纲） | 检查已保存的设定，自动补全缺失项 |
-| 某章正在写作（有草稿未提交） | 从该章续写，读取已有草稿继续 |
-| 审阅进行中 | 重新触发 Editor 评审 |
-| 重写/打磨队列未清空 | 继续处理待重写的章节 |
+| Planning Phase (building worldview/outline) | Checks saved settings and automatically completes missing items |
+| Chapter Writing In-Progress (draft not yet committed) | Resumes from that chapter, reading the existing draft to continue |
+| Review In-Progress | Re-triggers the Editor review |
+| Rewrite/Polish Queue Not Cleared | Continues processing the chapters waiting to be rewritten/polished |
+| Arc/Volume Expansion Interrupted (review done but next arc not expanded) | Automatically detects the skeleton arc/volume and triggers the Architect to expand it |
+| User Steering Incomplete | Re-injects the last steering instruction |
+| Normal Writing Interrupted | Continues from the next chapter |
+
+### How It Works
+
+All creative outputs are persisted in the `output/` directory. Each tool execution, upon success, writes a checkpoint to `meta/checkpoints.jsonl`. Upon restart:
+
+1. Reads `progress.json` + the latest checkpoint + pending signals.
+2. Generates a recovery instruction down to the exact step level (e.g., "Chapter 7 draft is written, please proceed to check_consistency").
+3. Fires a single `Prompt` to start the Coordinator, entering the long loop to continue writing.
+
+> File writes use atomic `temp + fsync + rename` operations, ensuring existing data remains undamaged even during sudden power losses.
+
+## Real-time Steering (Steer)
+
+During writing, you can inject steering feedback at any time via the input box **without pausing or restarting**.
+
+### TUI Mode
+
+Once writing starts, the bottom input box automatically switches to steering mode:
+
+```
+❯ Bring the romance plotline forward to Chapter 4, increase interactions between the male and female leads
+```
+
+After inputting and pressing Enter, the system automatically:
+1. Records the steering instruction to `run.json` (for crash recovery).
+2. Injects it into the running Coordinator.
+3. The Coordinator evaluates the impact scope, deciding whether to modify settings, rewrite existing chapters, or adjust future chapters.
+
+### Steering Examples
+
+| Steering Instruction | Potential System Response |
+|---|---|
+| "Change the protagonist to female" | Modifies character settings, evaluates if written chapters need rewrites |
+| "Bring the romance forward to Chapter 4" | Adjusts the outline, potentially rewrites Chapter 4 and subsequent ones |
+| "Add a villain character" | Updates character profiles and world rules, introducing them in subsequent chapters |
+| "The pacing is too slow, speed it up" | Adjusts outline density for future chapters |
+
+## Design Philosophy
+
+> **Shift complexity from code to the model.** Less code means fewer points of failure. Leave the decision-making to the roles best suited for it.
+
+### LLM-Driven, Simpler is More Stable
+
+- **LLM-controlled decision-making** — All process decisions are autonomously determined by the Coordinator; the Host does not intervene. When tools fail, they return structured errors, and the LLM decides whether to retry or adjust its strategy.
+- **Fact-only tools** — Atomic IO + checkpoint writes; tools return structured facts in JSON (e.g., `final_verdict` / `pending_rewrites` / `arc_end_reached`), never carrying instruction strings.
+- **Reminder-driven turns** — The Host reads the fact layer before each LLM call, running a pure generator function to inject a `<system-reminder>`. Instructions do not enter persistent history and are re-evaluated from facts each turn.
+- **StopGuard physical gatekeeper** — When `Phase ≠ Complete`, the Coordinator is physically blocked from executing `end_turn`; consecutive blocked attempts will escalate to an execution termination.
+- **No complex orchestration** — No task queues, schedulers, or policy engines. The Coordinator's run is the sole control loop.
+- **Performance scales with model strength** — The architecture locks decision-making within prompt and tool semantics; model upgrades immediately yield benefits without modifying a single line of Host code.
+
+### Fully Automated Closed Loop
+
+Single-line input, complete novel output:
+
+```
+"Write a mystery novel" → Build Worldview → Design Characters → Plan Outline
+                      → Write Chapter-by-Chapter → Quality Review → Auto-Rewrite
+                      → Arc-level Summary → Character Snapshots → Complete Book
+```
+
+- **Coordinator autonomous scheduling** — Decides the next step in a long loop by reading the fact layer + Reminder, without Host intervention.
+- **Writer autonomous creation** — Completes the full plan → draft → check → commit closed loop independently for each chapter.
+- **Editor autonomous review** — Analyzes structural issues across chapters and outputs verdicts and impact scopes.
+- **Architect autonomous building** — Derives the full setup from a single-line request, expanding subsequent planning at arc/volume boundaries.
+- **Automated foreshadowing management** — Planting, developing, and resolving foreshadowing is tracked entirely by the agents.
+- **Automated pacing control** — Tracks narrative lines and hook history to avoid repetitive chapter structures.
+
+### Decoupled Facts and Instructions
+
+Tools return only facts; instructions are recomputed each turn by the Reminder from the fact layer:
+
+- `commit_chapter` / `save_review` return structured facts (`final_verdict` / `pending_rewrites` / `arc_end_reached` / `next_chapter`), without carrying any `[System]` strings.
+- Pure generator functions under `internal/host/reminder/` read `Progress` + `Outline`, generating a `<system-reminder>` pre-turn: `flow` (what to do now / end-of-arc braking), `queue_guard` (new chapters blocked if rewrite queues are not cleared), and `book_complete` (ends turn only when the book is finished). Physical safety is handled by `StopGuard` rejecting `end_turn` when `phase ≠ Complete`.
+- Reminder lasts only one turn, does not enter the chat history, and is excluded from compression. Rules have unit tests to catch regressions.
+
+This prevents instructions from being swallowed by chained calls or drifting in tool outputs. Fixing a bug is as simple as adding a generator rule and a test.
+
+## Technology Stack
+
+- **Go 1.25** — Main language
+- **[agentcore](https://github.com/voocel/agentcore)** — Minimal agent kernel (tool-calling + streaming)
+- **[litellm](https://github.com/voocel/litellm)** — Unified LLM interface adapter
+- **[Bubble Tea](https://github.com/charmbracelet/bubbletea)** — Terminal TUI framework
+
+## License
+
+MIT
+
+This project actively participates in and endorses the [linux.do community](https://linux.do/).�磨队列未清空 | 继续处理待重写的章节 |
 | 弧/卷展开中断（评审完但下一弧未展开） | 自动检测骨架弧/卷，触发 Architect 展开 |
 | 用户干预未完成 | 重新注入上次的干预指令 |
 | 正常写作中断 | 从下一章继续 |

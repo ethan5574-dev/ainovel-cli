@@ -1,25 +1,25 @@
-# 奇幻风格补充参考
+# Fantasy Style Supplementary Reference
 
-## 世界构建
+## World Building
 
-- 魔法体系必须有明确代价，不能出现"无限能量"
-- 种族特征要在行动中自然展示，禁止百科式灌输
-- 新设定首次出现时通过角色互动引出，不用旁白解释
+- The magic system must have clear costs; there must be no "infinite energy."
+- Racial traits should be demonstrated naturally through actions; encyclopedic infodumps are forbidden.
+- New settings should be introduced through character interactions when they first appear, rather than explained via narrator voice-over/exposition.
 
-## 常见陷阱
+## Common Pitfalls
 
-- 龙傲天：主角能力攀升要有合理代价和挫折
-- 设定膨胀：每章最多引入一个新设定概念
-- 语言穿越：避免现代网络用语出现在古典背景中
+- Mary Sue / overpowered protagonist: The scaling of the protagonist's abilities must have reasonable costs and setbacks.
+- Setting bloat: Introduce at most one new setting concept per chapter.
+- Linguistic anachronisms: Avoid using modern internet slang in classical or medieval backgrounds.
 
-## 战斗与能力描写
+## Combat and Ability Descriptions
 
-- 战斗重点是策略和代价，不是招式名称堆砌
-- 能力上限在 world_rules 中已约定，严禁突破
-- 受伤要有持续影响，不能"下一场景就好了"
+- The focus of combat is strategy and cost, not piling up fancy names of moves/skills.
+- The upper limit of abilities is bound by `world_rules`; breaking through them is strictly prohibited.
+- Injuries must have persistent effects; they cannot just "heal in the next scene."
 
-## 氛围营造
+## Atmosphere Building
 
-- 通过五感描写建立异世界沉浸感
-- 日常生活细节（货币、食物、交通）体现世界观
-- 避免所有角色都说现代普通话，适当使用世界观内的表达方式
+- Build immersion in the fantasy world through descriptions of the five senses.
+- Details of daily life (currency, food, transportation) should reflect the worldview.
+- Avoid having all characters speak standard modern slang; use expressions suitable for the worldview instead.

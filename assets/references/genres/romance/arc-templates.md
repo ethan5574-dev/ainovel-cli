@@ -1,39 +1,39 @@
-## 言情/情感 弧型参考
+## Romance/Relationship Arc Templates
 
-以下弧型适用于言情、情感、青春、都市爱情类长篇。根据具体设定自由组合，不必全部使用。
+The following arc templates are suitable for romance, emotional, youth, and urban love story novels. Combine them freely based on the specific settings; not all of them must be used.
 
-### 初遇/重逢弧（8-12 章）
-2-3 章各自日常（建立人物独立性） → 3-5 章关键相遇+被迫接触（制造摩擦和第一印象） → 2-3 章初步了解+微妙转变
-- 第一印象最好不是一见钟情，而是误解或冲突
-- 被迫接触的设定要自然（合作、邻居、同事），不是刻意巧合
-- 弧末建立"这个人跟我想的不一样"的认知转变
+### First Meeting / Reunion Arc (8-12 chapters)
+2-3 chapters of individual daily lives (establishing character independence) → 3-5 chapters of critical meeting + forced contact (generating friction and first impressions) → 2-3 chapters of initial understanding + subtle shift
+- The first impression should ideally not be love at first sight, but misunderstanding or conflict.
+- The setup for forced contact should be natural (cooperation, neighbors, colleagues), not a contrived coincidence.
+- Establish a cognitive shift of "this person is different from what I thought" by the end of the arc.
 
-### 暧昧升温弧（10-15 章）
-3-4 章日常互动加深（共同经历、互相帮助） → 3-5 章关键事件催化（危机、误会、第三方刺激） → 2-3 章暧昧高峰（差点表白/亲密时刻/被打断）→ 1-2 章关系确认或退缩
-- 这是最需要细节的弧，微表情、小动作、不经意的关注比大段心理独白有效
-- 升温不是线性的，中间要有退缩和试探
-- 第三方角色（前任、追求者、误解制造者）的介入要有独立动机
+### Slow-burn / Escalating Chemistry Arc (10-15 chapters)
+3-4 chapters of deepening daily interactions (shared experiences, helping each other) → 3-5 chapters of critical catalyst events (crisis, misunderstanding, third-party stimulation) → 2-3 chapters of chemistry peak (near-confession/intimate moment/interrupted moment) → 1-2 chapters of relationship confirmation or withdrawal
+- This is the arc that requires the most detail; micro-expressions, small gestures, and casual concern are far more effective than long psychological monologues.
+- Escalating chemistry is not linear; there must be retreats and testing of boundaries.
+- The intervention of third-party characters (exes, suitors, misunderstanding makers) must have independent motivations.
 
-### 误会冲突弧（8-12 章）
-2-3 章矛盾种子（价值观差异/秘密/外部压力） → 2-3 章冲突爆发（不是"说开就好"的误解） → 2-3 章各自消化+外部事件推动 → 1-2 章和解契机（但不完全恢复原状）
-- 冲突必须触及核心价值观差异，不是"你为什么不接我电话"这种
-- 和解不是一方完全认错，而是双方都有成长和让步
-- 冲突后关系进入新阶段，不是简单回到冲突前
+### Misunderstanding / Conflict Arc (8-12 chapters)
+2-3 chapters of conflict seeds (value differences/secrets/external pressures) → 2-3 chapters of conflict outbreak (not a misunderstanding that can be "cleared up by a simple talk") → 2-3 chapters of individual processing + external events driving the plot → 1-2 chapters of reconciliation opportunity (but not fully returning to the status quo)
+- Conflicts must touch upon core value differences, not trivialities like "why didn't you pick up my call."
+- Reconciliation is not one party fully admitting fault, but both parties growing and making concessions.
+- Post-conflict, the relationship enters a new stage, rather than simply returning to how it was before.
 
-### 分离/考验弧（10-15 章）
-2-3 章被迫分离的原因（异地、家庭反对、事业选择） → 5-8 章各自面对挑战（独立成长线+思念线交替） → 2-3 章重新相遇+关系重新定义
-- 分离期间双方都要有独立的成长线，不能只是"想念对方"
-- 思念的表达要克制，通过具体行为（保留习惯、对比新旧关系）而非心理独白
-- 重逢不是回到过去，而是两个成长了的人重新选择
+### Separation / Trial Arc (10-15 chapters)
+2-3 chapters of reasons for forced separation (long distance, family opposition, career choices) → 5-8 chapters of facing challenges individually (alternating between independent growth threads and longing threads) → 2-3 chapters of reunion + redefining the relationship
+- Both parties must have independent growth threads during separation; they cannot just "miss each other."
+- The expression of longing should be restrained, shown through concrete actions (retaining habits, contrasting new relationships with the old) rather than psychological monologues.
+- Reunion is not returning to the past, but two grown people choosing each other again.
 
-### 危机共渡弧（8-12 章）
-2-3 章外部危机降临（家庭变故、事业危机、健康问题） → 3-5 章共同面对（展示关系的深度和韧性） → 2-3 章危机解决+关系升华
-- 危机要真实且有重量，不是为了制造狗血
-- 共同面对的过程中暴露彼此更真实的一面
-- 适合放在关系中期，用外部压力检验内部连接
+### Crisis-Solving Arc (8-12 chapters)
+2-3 chapters of external crisis falling upon them (family changes, career crises, health issues) → 3-5 chapters of facing it together (showing the depth and resilience of the relationship) → 2-3 chapters of crisis resolution + relationship sublimation
+- The crisis should be realistic and heavy, not just cheap melodrama/soap opera tropes.
+- Facing it together exposes the most authentic sides of each other.
+- Suitable for the mid-term of the relationship, using external pressure to test the internal connection.
 
-### 日常/甜蜜弧（5-8 章）
-日常相处/朋友圈互动/小事件小惊喜/伏笔布局
-- 甜蜜不是无冲突，而是冲突的体量小、解决快
-- 用日常细节巩固读者对这段关系的投入
-- 为下一个大冲突弧蓄势——越甜蜜，后面的撕裂越痛
+### Daily / Sweetness Arc (5-8 chapters)
+Daily interactions / social circle dynamics / small surprises / setups and foreshadowing
+- Sweetness is not conflict-free, but conflicts are minor and resolved quickly.
+- Use daily details to solidify the reader's investment in the relationship.
+- Build momentum for the next major conflict arc—the sweeter it is, the more painful the subsequent rift will be.

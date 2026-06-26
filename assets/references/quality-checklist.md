@@ -1,262 +1,257 @@
-# 质量检查清单
+# Quality Review Checklist
 
-交付章节前使用此清单确保质量。
+Use this checklist before delivering chapters to ensure high quality.
 
-## 整体检查
+## General Checks
 
-### 基础要素
+### Core Elements
 
-- [ ] **章节有明确标题**
-  - 标题与内容相关
-  - 吸引人但不过度透露
+- [ ] **Descriptive Chapter Title**
+  - The title is relevant to the content.
+  - Engaging but does not spoil key twists.
 
-- [ ] **字数符合预期**
-  - 短章节：800-1500 字
-  - 标准章节：1500-3000 字
-  - 长章节：3000-6000 字
+- [ ] **Word Count Matches Target**
+  - Short chapters: 800 - 1,500 words.
+  - Standard chapters: 1,500 - 3,000 words.
+  - Long chapters: 3,000 - 6,000 words.
 
-- [ ] **章节完整性**
-  - 有开头、发展、高潮
-  - 不是片段，是完整叙事单元
+- [ ] **Chapter Integrity**
+  - Includes a clear beginning, middle, and climax.
+  - Functions as a complete narrative unit rather than a detached snippet.
 
-- [ ] **时间地点清晰**
-  - 读者知道何时何地
-  - 转换时有明确标记
-
----
-
-## 开头检查
-
-- [ ] **前 3 段内抓住读者**
-  - 有行动/冲突/悬念
-  - 不是天气或日常流程
-
-- [ ] **与上一章有连接**
-  - 回应上一章结尾
-  - 或明确时间/地点跳跃
-
-- [ ] **背景信息不过量**
-  - 没有大段信息倾倒
-  - 信息自然融入动作
+- [ ] **Clear Setting (Time & Space)**
+  - The reader knows exactly when and where events are taking place.
+  - Spatial transitions are marked clearly.
 
 ---
 
-## 内容检查
+## Opening Checks
 
-### 情节推进
+- [ ] **First 3 Paragraphs Hook the Reader**
+  - Features immediate action, conflict, or suspense.
+  - Avoids weather descriptions or mundane daily routines.
 
-- [ ] **本章有核心事件**
-  - 发生了不可删除的事
-  - 不是"什么都没发生"的过渡章
+- [ ] **Connection to the Previous Chapter**
+  - Responds directly to the previous chapter's ending hook.
+  - Or establishes a clear jump in time/space.
 
-- [ ] **推动主线剧情**
-  - 揭示新信息
-  - 或改变人物关系
-  - 或升级冲突
-
-- [ ] **逻辑自洽**
-  - 事件因果关系合理
-  - 没有巧合驱动剧情
-  - 人物行为符合动机
-
-### 冲突与张力
-
-- [ ] **有明确冲突**
-  - 人与人、人与环境、人与自己
-  - 冲突推动本章事件
-
-- [ ] **张力有变化**
-  - 不是平铺直叙
-  - 有紧张和缓解的交替
-
-- [ ] **有转折或新信息**
-  - 不是线性可预测
-  - 有意外或新发现
+- [ ] **No Information Dumps**
+  - Avoids block paragraphs of background exposition.
+  - Naturally weaves settings/history into actions.
 
 ---
 
-## 人物检查
+## Content Checks
 
-- [ ] **人物行为一致**
-  - 符合已建立的性格
-  - 如不一致，有解释
+### Plot Progression
 
-- [ ] **人物有反应**
-  - 对事件有情绪/行动
-  - 不是被动道具
+- [ ] **Indispensable Core Event**
+  - Something occurs that cannot be removed.
+  - Avoids filler transitional chapters where "nothing really happens."
 
-- [ ] **人物有声音**
-  - 对话能区分角色
-  - 每人说话方式不同
+- [ ] **Main Plot Progression**
+  - Reveals new information.
+  - Or evolves character relationships.
+  - Or escalates conflict.
 
-- [ ] **人物展示而非讲述**
-  - 通过行动/对话表现性格
-  - 不是直接陈述"他很勇敢"
+- [ ] **Logical Consistency**
+  - Causes and effects are reasonable.
+  - Plots are not driven by pure coincidence.
+  - Character actions match their motivations.
 
----
+### Conflict and Tension
 
-## 对话检查
+- [ ] **Clear Conflict**
+  - Character vs. character, character vs. environment, or character vs. self.
+  - The conflict directly drives the chapter's events.
 
-- [ ] **每句对话有目的**
-  - 推动情节/揭示人物/制造冲突
-  - 没有"你好""吃了吗"等无意义对话
+- [ ] **Dynamic Tension**
+  - The pacing is not flat.
+  - Alternates between high tension and moments of relief/digest.
 
-- [ ] **对话简洁自然**
-  - 删除冗余词语
-  - 符合真实说话方式
-
-- [ ] **有潜台词**
-  - 不是所有话都直说
-  - 有言外之意
-
-- [ ] **标签使用正确**
-  - 能辨识时省略标签
-  - 不过度使用副词
+- [ ] **Twists or New Insights**
+  - The narrative is not completely linear or predictable.
+  - Features surprise elements or discoveries.
 
 ---
 
-## 悬念检查
+## Character Checks
 
-- [ ] **结尾有钩子**
-  - 使用至少一种悬念技巧
-  - 让读者想看下一章
+- [ ] **Consistent Behavior**
+  - Conforms to established personalities.
+  - If a character acts "out of character," there is a clear narrative explanation.
 
-- [ ] **悬念强度适当**
-  - 与故事位置匹配
-  - 高潮章节悬念更强
+- [ ] **Character Reactivity**
+  - Characters react emotionally or actively to events.
+  - They are active agents, not passive plot props.
 
-- [ ] **不是虚假悬念**
-  - 不是机械误会
-  - 不是无意义的"突然"
+- [ ] **Distinct Voices**
+  - Dialogues clearly distinguish who is speaking.
+  - Each character has stable speech habits.
 
-- [ ] **为下一章铺垫**
-  - 设置下一章的冲突
-  - 埋下伏笔
+- [ ] **Showing Over Telling**
+  - Demonstrates traits through actions/choices.
+  - Avoids flat declarations like "He was brave."
 
 ---
 
-## 展示而非讲述检查
+## Dialogue Checks
 
-### 常见"讲述"标记
+- [ ] **Purposeful Dialogue**
+  - Drives the plot, reveals characters, or creates conflict.
+  - Avoids meaningless small talk (e.g., "Hello," "Have you eaten?").
 
-检查并修正以下模式：
+- [ ] **Concise and Natural**
+  - Removes redundant phrases.
+  - Matches realistic speech patterns.
 
-| 讲述（避免） | 展示（使用） |
+- [ ] **Subtext**
+  - Characters do not state everything directly.
+  - There are implications and unspoken meanings.
+
+- [ ] **Correct Tags**
+  - Omitted when the speaker is clear.
+  - Avoids overusing descriptive adverbs.
+
+---
+
+## Suspense Checks
+
+- [ ] **Ending Hook**
+  - Employs at least one classic suspense technique.
+  - Compels readers to continue to the next chapter.
+
+- [ ] **Appropriate Intensity**
+  - Matches the chapter's position (e.g., stronger hooks for climax chapters).
+
+- [ ] **Genuine Suspense**
+  - Not based on cheap/mechanical misunderstandings.
+  - Not arbitrary or unearned.
+
+- [ ] **Setup for the Next Chapter**
+  - Plants seeds or outlines conflicts for the next chapter.
+
+---
+
+## Showing vs. Telling Checks
+
+### Common "Telling" Patterns to Avoid
+
+Check and revise the following styles:
+
+| Telling (Avoid) | Showing (Use) |
 |-------------|-------------|
-| 他很愤怒 | 他握紧拳头，指节发白 |
-| 她很美丽 | 他凝视着她，忘记说话 |
-| 他很紧张 | 他反复调整领带 |
-| 房间很乱 | 衣服扔在沙发上，外卖盒堆在桌上 |
-| 他很富有 | 他从口袋里掏出一叠现金 |
+| He was furious. | He clenched his fists, knuckles turning white. |
+| She was beautiful. | He stared at her, forgetting to reply. |
+| He was nervous. | He repeatedly adjusted his tie. |
+| The room was messy. | Clothes were strewn over the sofa; takeout boxes piled on the table. |
+| He was wealthy. | He pulled out a thick stack of cash from his pocket. |
 
-### 自查问题
+### Self-Check Questions
 
-- [ ] 是否直接陈述情绪？（改为身体反应）
-- [ ] 是否用形容词总结？（改为具体描写）
-- [ ] 是否跳过了关键场景？（补充展示）
-
----
-
-## 节奏检查
-
-- [ ] **句子长度有变化**
-  - 没有连续 3 句长度相同
-  - 长短交错
-
-- [ ] **段落长度适当**
-  - 避免大段文字墙
-  - 动作场景用短段落
-
-- [ ] **信息密度有变化**
-  - 高密度（动作/对话）
-  - 低密度（描写/内心）
+- [ ] Are emotions stated directly? (Change to physical/external reactions.)
+- [ ] Are traits summarized with adjectives? (Change to concrete details.)
+- [ ] Were key scenes skipped/summarized? (Write out the scene with action.)
 
 ---
 
-## 语言检查
+## Pacing Checks
 
-- [ ] **没有 AI 写作痕迹**
-  - 避免"此外""然而""强调"等 AI 词汇
-  - 避免四字成语堆砌
-  - 句式多样化
+- [ ] **Varied Sentence Lengths**
+  - Avoids three consecutive sentences of identical length.
+  - Mixes short, punchy sentences with longer clauses.
 
-- [ ] **"的"字不密集**
-  - 没有连续多个"的"
-  - 简化修饰结构
+- [ ] **Paragraph Breathing Room**
+  - Avoids walls of text.
+  - Uses shorter paragraphs for fast-paced action scenes.
 
-- [ ] **用词精确**
-  - 避免模糊词（"一些""某种"）
-  - 使用具体词汇
+- [ ] **Varying Information Density**
+  - Alternates high-density (action/dialogue) with low-density (description/reflection) sequences.
 
 ---
 
-## 连贯性检查
+## Language & Style Checks
 
-- [ ] **与前文连贯**
-  - 上一章的悬念有回应
-  - 已知信息一致
+- [ ] **No AI Writing Artifacts**
+  - Avoids AI-like transitions (e.g., "Moreover," "However," "It is worth noting").
+  - Avoids stacking clichés or idioms.
+  - Uses diverse grammatical structures.
 
-- [ ] **伏笔有呼应**
-  - 早期埋下的线索有进展
-  - 或即将揭示
+- [ ] **Clean Sentence Structure**
+  - Avoids excessive modifiers or wordy phrases.
+  - Simplifies description layers.
 
-- [ ] **时间线一致**
-  - 时间流逝合理
-  - 事件顺序正确
-
----
-
-## 类型特定检查
-
-### 悬疑类
-
-- [ ] 有线索揭示
-- [ ] 有新谜题提出
-- [ ] 逻辑无漏洞
-
-### 言情类
-
-- [ ] 关系有进展
-- [ ] 有情感张力
-- [ ] 读者在意配对
-
-### 奇幻/科幻类
-
-- [ ] 世界观一致
-- [ ] 规则设定不破坏
-- [ ] 解释不过度
-
-### 动作类
-
-- [ ] 动作场面清晰
-- [ ] 节奏快速
-- [ ] 地理空间明确
+- [ ] **Precise Word Choice**
+  - Avoids vague words (e.g., "some sort of," "somewhat").
+  - Uses specific, concrete vocabulary.
 
 ---
 
-## 交付前最终检查
+## Continuity Checks
 
-- [ ] 通读全文，无错别字
-- [ ] 标点符号正确
-- [ ] 对话标签正确
-- [ ] 段落划分清晰
-- [ ] 格式一致
-- [ ] 如果是续章，确认与前文的连贯性
+- [ ] **Context Alignment**
+  - The previous chapter's ending hook is addressed.
+  - Existing facts match previously established lore.
+
+- [ ] **Foreshadowing Callbacks**
+  - Clues planted earlier are advanced or revealed.
+
+- [ ] **Timeline Consistency**
+  - Time flows logically.
+  - Event sequences are chronologically sound.
 
 ---
 
-## 质量评分
+## Genre-Specific Checks
 
-交付前给自己打分（每项 1-10 分）：
+### Mystery/Suspense
 
-| 维度 | 评分 | 说明 |
+- [ ] Clues are revealed or advanced.
+- [ ] New questions are proposed.
+- [ ] The plot is logically airtight.
+
+### Romance
+
+- [ ] The relationship advances or shifts.
+- [ ] Romantic/emotional tension is felt.
+- [ ] Readers care about the pairing.
+
+### Fantasy/Sci-Fi
+
+- [ ] The world rules are consistent.
+- [ ] The power/magic system constraints are not violated.
+- [ ] Explanations are integrated and not overdone.
+
+### Action/Thriller
+
+- [ ] Action choreography is clear and readable.
+- [ ] Pacing is rapid and urgent.
+- [ ] Spatial positions are clear.
+
+---
+
+## Final Pre-Delivery Check
+
+- [ ] Proofread the entire chapter for typos.
+- [ ] Verify proper punctuation.
+- [ ] Confirm dialogue tags are formatted correctly.
+- [ ] Ensure consistent formatting throughout.
+- [ ] Check continuity with prior chapters.
+
+---
+
+## Quality Scorecard
+
+Grade your chapter before submission (1-10 points per dimension):
+
+| Dimension | Score | Guideline |
 |-----|------|-----|
-| 开头吸引力 | /10 | 前 3 段抓住读者？ |
-| 情节推进 | /10 | 本章推进主线？ |
-| 人物塑造 | /10 | 人物行为一致且有深度？ |
-| 对话质量 | /10 | 对话自然且推动情节？ |
-| 悬念设置 | /10 | 结尾钩子让读者想看下一章？ |
-| 节奏控制 | /10 | 张弛有度？ |
-| 展示而非讲述 | /10 | 用行动/对话而非陈述？ |
-| 语言质量 | /10 | 无 AI 痕迹，用词精确？ |
-| **总分** | **/80** | **>60 可交付，>70 优秀** |
+| Opening Hook | /10 | Did the first 3 paragraphs grip the reader? |
+| Plot Progression | /10 | Did this chapter advance the main storyline? |
+| Characterization | /10 | Are characters consistent, active, and deep? |
+| Dialogue Quality | /10 | Is dialogue natural and purposeful? |
+| Suspense Setting | /10 | Does the ending hook make the reader want to continue? |
+| Pacing Control | /10 | Does the tension rise and fall dynamically? |
+| Show, Don't Tell | /10 | Are actions/details used instead of flat statements? |
+| Style & Polish | /10 | Is the prose precise, clean, and free of AI tone? |
+| **Total Score** | **/80** | **Score > 60: Ready for Delivery | Score > 70: Excellent** |

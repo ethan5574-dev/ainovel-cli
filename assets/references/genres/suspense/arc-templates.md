@@ -1,39 +1,39 @@
-## 悬疑/推理 弧型参考
+## Suspense/Mystery Arc Templates
 
-以下弧型适用于悬疑、推理、刑侦、惊悚类长篇。根据具体设定自由组合，不必全部使用。
+The following arc templates are suitable for long-form suspense, mystery, detective, and thriller novels. Combine them freely based on the specific settings; not all of them must be used.
 
-### 案件调查弧（10-15 章）
-2-3 章案件发生/现场勘查 → 3-5 章多方排查（每条线索打开新疑问） → 2-3 章关键突破 → 1-2 章真相揭示+后续影响
-- 线索必须公平呈现，揭示时读者能回溯到伏笔
-- 每条排查线不能只是"排除嫌疑人"，要揭示新的背景信息
-- 真相揭示后的情感冲击比逻辑推理本身更重要
+### Case Investigation Arc (10-15 chapters)
+2-3 chapters of case occurrence/crime scene investigation → 3-5 chapters of multi-threaded screening/interrogations (each clue opens up new questions) → 2-3 chapters of key breakthrough → 1-2 chapters of truth reveal + aftermath/consequences
+- Clues must be presented fairly; readers should be able to trace back to foreshadowing upon the reveal.
+- Each investigative thread should not just be "eliminating a suspect"; it must reveal new background information.
+- The emotional impact of the truth reveal is more important than the logical deduction itself.
 
-### 真相逼近弧（8-12 章）
-2-3 章旧案重现/新线索浮现 → 3-5 章追踪深入（主角逐步接近核心） → 2-3 章危险升级+被迫选择
-- 适用于连续剧式的长线悬念（贯穿多弧的主线谜团）
-- 每次接近真相都付出代价（信任破裂、人身危险、道德困境）
-- 在揭示部分真相的同时制造更大的疑问
+### Approaching Truth Arc (8-12 chapters)
+2-3 chapters of old case recurrence / new clues emerging → 3-5 chapters of deep tracking (protagonist gradually approaches the core) → 2-3 chapters of danger escalation + forced choices
+- Suitable for serial-style long-term suspense (the main mystery running through multiple arcs).
+- Every step closer to the truth comes with a cost (broken trust, physical danger, moral dilemma).
+- Reveal part of the truth while creating even larger questions.
 
-### 追凶/潜入弧（12-18 章）
-2-3 章目标锁定/计划制定 → 6-10 章执行过程（多次危机和临场应变） → 2-3 章最终对峙+意外翻转
-- 执行过程中不断出现计划外状况，展示角色的应变能力
-- 潜入类弧需要环境细节和紧张感营造
-- 对峙不应只是武力，要有心理博弈和信息战
+### Manhunt / Infiltration Arc (12-18 chapters)
+2-3 chapters of target locking / planning → 6-10 chapters of execution process (multiple crises and on-the-spot adaptations) → 2-3 chapters of final confrontation + unexpected twist
+- Unplanned situations constantly arise during execution, demonstrating the character's adaptability.
+- Infiltration arcs require environmental details and tension building.
+- Confrontations should not be pure physical violence; they must feature psychological mind-games and information warfare.
 
-### 审判/揭示弧（8-12 章）
-2-3 章证据整理/庭前博弈 → 3-5 章正式交锋（控辩/审讯/公开对峙） → 1-2 章意外证据+最终裁定
-- 适用于故事的阶段性收束（结案、定罪、真相公开）
-- 交锋过程中双方轮流占上风，不是一边倒
-- 最终裁定不一定是正义获胜，可以是妥协或更大的阴谋
+### Trial / Revelation Arc (8-12 chapters)
+2-3 chapters of evidence organization / pre-trial chess play → 3-5 chapters of formal clash (prosecution-defense/interrogation/public confrontation) → 1-2 chapters of unexpected evidence + final verdict
+- Suitable for the stage-level closure of a story (closing the case, sentencing, truth publication).
+- Both sides take turns gaining the upper hand during the clash; it is not one-sided.
+- The final verdict does not have to be justice winning; it can be a compromise or a larger conspiracy.
 
-### 连环案串联弧（15-20 章）
-2-3 章看似独立的案件 → 5-8 章发现关联/模式 → 3-5 章追踪幕后主使 → 2-3 章最终对决+真相
-- 前期案件各有特色，每个都能独立成立
-- 关联发现是重大转折点，改变主角对整个局面的认知
-- 幕后主使的动机必须在前文有伏笔支撑
+### Serial Case Chain Arc (15-20 chapters)
+2-3 chapters of seemingly independent cases → 5-8 chapters of discovering connections/patterns → 3-5 chapters of tracking the mastermind → 2-3 chapters of final confrontation + truth
+- Early cases should have distinct features, and each can stand alone.
+- The discovery of connection is a major turning point, changing the protagonist's perception of the entire situation.
+- The mastermind's motivation must be supported by earlier foreshadowing.
 
-### 日常/过渡弧（4-6 章）
-角色关系修复/新线索酝酿/心理恢复/暗线推进
-- 高压弧之后需要呼吸空间，但不能完全放松
-- 暗线推进：读者能感觉到"某件事要发生了"
-- 角色在经历大案后的心理变化要有体现
+### Daily / Transition Arc (4-6 chapters)
+Character relationship repair / new clue brewing / psychological recovery / hidden thread progression
+- Breathing space is needed after high-pressure arcs, but do not relax completely.
+- Hidden thread progression: The reader should feel that "something is about to happen."
+- Reflect the character's psychological changes after experiencing major cases.

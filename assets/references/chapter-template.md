@@ -1,19 +1,19 @@
-# 第[X]章：[章节标题]
+# Chapter [X]: [Chapter Title]
 
-## 本章概要
-- **核心事件**：[一句话概括本章发生的事]
-- **承接上章**：[回应上一章的悬念]
-- **悬念钩子**：[本章结尾的钩子]
-
----
-
-## 正文
-
-[章节正文内容 3000-6000 字，最低不低于 2500 字]
+## Chapter Summary
+- **Core Event**: [Summarize the event of this chapter in one sentence]
+- **Connection**: [Respond to the hook/suspense of the previous chapter]
+- **Suspense Hook**: [The hook at the end of this chapter]
 
 ---
 
-## 章节备注
-- 本章悬念：[简述结尾钩子]
-- 下章预告：[可选，1-2句话]
-- 伏笔标记：[如果埋下伏笔，在此记录]
+## Body
+
+[Chapter body text 3000-6000 words, minimum no less than 2500 words]
+
+---
+
+## Chapter Notes
+- Chapter Hook: [Briefly describe the ending hook]
+- Next Chapter Preview: [Optional, 1-2 sentences]
+- Foreshadowing Mark: [Record here if a foreshadowing is planted]

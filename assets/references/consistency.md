@@ -1,40 +1,40 @@
-# 连贯性保证机制
+# Continuity Guarantee Mechanism
 
-为确保长时间创作的故事连贯性：
+To ensure the continuity of the story during long-term writing:
 
-## 写前必读
+## Must-Read Before Writing
 
-每次开始写新章节前：
-1. 阅读 `00-大纲.md` 中所有已完成章节的摘要
-2. 读取上一章文件，了解当前悬念
-3. 检查人物状态（位置、情绪、关系）
+Before starting each new chapter:
+1. Read the summaries of all completed chapters in the outline.
+2. Read the previous chapter's file to understand the current hook/suspense.
+3. Check character states (location, emotions, relationships).
 
-## 穿针引线
+## Weaving Threads
 
-在新章节中：
-- 呼应前文埋下的伏笔和线索
-- 提及之前发生的事件（自然融入）
-- 让人物行为与之前保持一致
+In the new chapter:
+- Call back to foreshadowing and clues planted earlier.
+- Mention previously occurred events (integrating naturally).
+- Keep character behaviors consistent with their past actions.
 
-## 人物状态跟踪
+## Character State Tracking
 
-注意人物在各章节中的变化和成长：
-- 位置变化（人在哪里）
-- 情绪状态（当前心情）
-- 关系变化（与其他角色关系）
-- 能力变化（获得新技能/信息）
+Pay attention to character changes and growth across chapters:
+- Location changes (where is the character).
+- Emotional states (current mood).
+- Relationship changes (relations with other characters).
+- Ability changes (obtaining new skills/information).
 
-## 悬念线延续
+## Suspense Thread Continuity
 
-确保主线悬念逐步推进：
-- 每章至少回应一个旧悬念
-- 提出新悬念或升级现有悬念
-- 不要遗忘任何未解的悬念
+Ensure the main suspense threads advance step-by-step:
+- Resolve or address at least one old suspense thread in each chapter.
+- Introduce a new suspense thread or escalate an existing one.
+- Do not ignore any unresolved suspense.
 
-## 一致性检查清单
+## Consistency Checklist
 
-- [ ] 人物行为符合其性格设定
-- [ ] 前后伏笔有呼应，逻辑闭环
-- [ ] 高潮低谷分布合理，节奏恰当
-- [ ] 时间线连贯（没有时间跳跃错误）
-- [ ] 场景转换自然（没有凭空出现）
+- [ ] Character behaviors conform to their personality settings.
+- [ ] Foreshadowing is recalled and addressed, forming a logical closed loop.
+- [ ] Climax and downtime are reasonably distributed, with appropriate pacing.
+- [ ] The timeline is coherent (no time-skipping errors).
+- [ ] Scene transitions are natural (no characters or items appearing out of nowhere).

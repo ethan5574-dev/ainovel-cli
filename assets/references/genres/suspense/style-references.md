@@ -1,25 +1,25 @@
-# 悬疑风格补充参考
+# Suspense Style Supplementary Reference
 
-## 线索布局
+## Clue Layout
 
-- 每章至少埋设一条线索（实线索或红鲱鱼）
-- 关键线索必须在揭晓前至少出现两次
-- 线索首次出现要自然融入场景，不能刻意强调
+- Plant at least one clue (real clue or red herring) per chapter.
+- Key clues must appear at least twice before the final reveal.
+- Clues should naturally blend into the scene when they first appear, without being conspicuously emphasized.
 
-## 误导技法
+## Misdirection Techniques
 
-- 红鲱鱼要有独立的合理性，不能事后看完全无意义
-- 叙述性诡计需要严格遵守"不说谎但可以省略"原则
-- 嫌疑人转移要有动机支撑，不能为了误导而误导
+- Red herrings must have independent plausibility, and not look completely meaningless in retrospect.
+- Narrative tricks must strictly adhere to the principle of "do not lie, but omissions are allowed."
+- Shifting suspicion to different characters must be supported by motivation, not just for the sake of misdirection.
 
-## 节奏控制
+## Pacing Control
 
-- 紧张→舒缓→更紧张的波浪式节奏
-- 信息释放要节制，每次只给读者"刚好不够"的信息量
-- 章末必须有悬念钩子，禁止"平静收尾"
+- Maintain a wave-like pacing of "tension → relief → higher tension."
+- Control the release of information; always give the reader "just barely not enough" information at a time.
+- The end of a chapter must have a suspense hook; "peaceful endings" are prohibited.
 
-## 逻辑严密性
+## Logical Tightness
 
-- 时间线必须可回溯验证
-- 不在场证明、动机、手法三要素缺一不可
-- 揭晓时读者应该能用已知线索自行推导出结论
+- The timeline must be verifiable in retrospect.
+- The three elements of alibi, motivation, and method are all indispensable.
+- Upon the reveal, readers should be able to deduce the conclusion themselves using the already known clues.

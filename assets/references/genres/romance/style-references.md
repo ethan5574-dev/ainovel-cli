@@ -1,25 +1,25 @@
-# 言情风格补充参考
+# Romance Style Supplementary Reference
 
-## 情感递进
+## Emotional Progression
 
-- 感情发展遵循"排斥→好奇→动摇→确认→考验→稳固"曲线
-- 每章推进一个情感阶段，禁止跳跃式发展
-- 心动瞬间要通过具体细节呈现，不用"心跳加速"等抽象描写
+- The development of feelings follows the curve of "repulsion → curiosity → hesitation/wavering → confirmation → trial → stability."
+- Advance one emotional stage per chapter; leapfrog-style development is prohibited.
+- Heart-fluttering moments should be presented through specific details, not abstract descriptions like "heart beat faster."
 
-## 关系张力
+## Relationship Tension
 
-- 核心CP之间必须有持续的阻力源（性格、身份、误会、外部）
-- 阻力要合理且难以轻易解决，不能为虐而虐
-- 配角感情线不能抢主线篇幅，每章配角互动不超过 20%
+- There must be a continuous source of resistance between the main couple (personality, identity, misunderstanding, external factors).
+- The resistance must be reasonable and hard to resolve easily; do not create tragedy/conflict for the sake of drama itself.
+- Supporting romance plots must not steal space from the main line; supporting character interactions should not exceed 20% of any chapter.
 
-## 对话质量
+## Dialogue Quality
 
-- 暧昧期对话要有潜台词，角色说的和想的应该不一样
-- 吵架/冲突场景双方都要有道理，不能一方全错
-- 甜蜜场景要有克制，过度撒糖会降低读者感受
+- Dialogue during the slow-burn/flirting phase must have subtext; what the character says and what they think should differ.
+- In argument/conflict scenes, both sides must have their own reasons; one side cannot be entirely in the wrong.
+- Sweet scenes should be restrained; excessive sugar-coating/fluff reduces the reader's emotional payoff.
 
-## 常见陷阱
+## Common Pitfalls
 
-- 降智推剧情：不让角色为了制造误会而突然变笨
-- 工具人配角：每个配角都应有自己的动机
-- 人设崩塌：感情中的行为必须符合角色已建立的性格特征
+- Dumb plot progression: Do not let characters suddenly become foolish just to manufacture misunderstandings.
+- Prop-like supporting characters: Each supporting character should have their own motivations.
+- OOC (Out of Character): Actions in a relationship must conform to the established personality traits of the characters.
