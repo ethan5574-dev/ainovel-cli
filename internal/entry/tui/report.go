@@ -15,7 +15,8 @@ import (
 type reportState struct {
 	reqID      int
 	report     *diag.Report
-	exportPath string // Redacted diagnostic file path, shown at the top for filing issues
+	exportPath string // 脱敏诊断文件路径，渲染在报告顶部供贴 issue
+	exportErr  error
 	loading    bool
 	renderW    int
 	startedAt  time.Time
@@ -37,10 +38,11 @@ func newReportState(width, height int, reqID int, startedAt time.Time) *reportSt
 	return state
 }
 
-func (s *reportState) load(report diag.Report, contentW int, exportPath string, finishedAt time.Time) {
+func (s *reportState) load(report diag.Report, contentW int, exportPath string, exportErr error, finishedAt time.Time) {
 	s.loading = false
 	s.report = &report
 	s.exportPath = exportPath
+	s.exportErr = exportErr
 	s.finishedAt = finishedAt
 	s.setContent(contentW)
 }
@@ -51,9 +53,9 @@ func (s *reportState) setContent(contentW int) {
 	case s.loading:
 		s.viewport.SetContent(renderReportLoadingText(contentW, s.startedAt))
 	case s.report != nil:
-		s.viewport.SetContent(renderReportText(*s.report, contentW, s.exportPath, s.startedAt, s.finishedAt))
+		s.viewport.SetContent(renderReportText(*s.report, contentW, s.exportPath, s.exportErr, s.startedAt, s.finishedAt))
 	default:
-		s.viewport.SetContent("Diagnostic report unavailable")
+		s.viewport.SetContent("诊断报告不可用")
 	}
 }
 
@@ -72,43 +74,46 @@ func reportModalSize(termW, termH int) (int, int) {
 	return w, h
 }
 
-func renderReportText(report diag.Report, width int, exportPath string, startedAt, finishedAt time.Time) string {
+func renderReportText(report diag.Report, width int, exportPath string, exportErr error, startedAt, finishedAt time.Time) string {
 	var b strings.Builder
 	st := report.Stats
 
-	// Overview
+	// 概览
 	titleStyle := lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
 	dimStyle := lipgloss.NewStyle().Foreground(colorDim)
 	mutedStyle := lipgloss.NewStyle().Foreground(colorMuted)
 
-	// Redacted diagnostics exported -> guide the user to file an issue
+	// 脱敏诊断已导出 → 引导用户贴 issue
 	if exportPath != "" {
 		exportStyle := lipgloss.NewStyle().Foreground(colorAccent2)
-		b.WriteString(exportStyle.Render("Redacted diagnostics exported (attach this to a GitHub issue)"))
+		b.WriteString(exportStyle.Render("已导出脱敏诊断（可贴到 GitHub issue）"))
 		b.WriteString("\n")
 		b.WriteString(dimStyle.Render(wrapText(exportPath, width)))
 		b.WriteString("\n\n")
+	} else if exportErr != nil {
+		b.WriteString(lipgloss.NewStyle().Foreground(colorError).Render("脱敏诊断导出失败：" + exportErr.Error()))
+		b.WriteString("\n\n")
 	}
 
-	b.WriteString(titleStyle.Render("Overview"))
+	b.WriteString(titleStyle.Render("概览"))
 	b.WriteString("\n\n")
-	b.WriteString(dimStyle.Render("Start "))
+	b.WriteString(dimStyle.Render("开始 "))
 	b.WriteString(formatReportTime(startedAt))
 	if !finishedAt.IsZero() {
-		b.WriteString(dimStyle.Render("  Finish "))
+		b.WriteString(dimStyle.Render("  完成 "))
 		b.WriteString(formatReportTime(finishedAt))
 	}
 	b.WriteString("\n\n")
 
-	// First line: chapters + words
-	b.WriteString(mutedStyle.Render("Chapters "))
+	// 第一行：章节 + 字数
+	b.WriteString(mutedStyle.Render("章节 "))
 	b.WriteString(fmt.Sprintf("%d/%d", st.CompletedChapters, st.TotalChapters))
-	b.WriteString(mutedStyle.Render("  Words "))
+	b.WriteString(mutedStyle.Render("  字数 "))
 	b.WriteString(fmt.Sprintf("%d", st.TotalWords))
 	if st.AvgWordsPerCh > 0 {
 		b.WriteString(dimStyle.Render(fmt.Sprintf(" (%d/ch)", st.AvgWordsPerCh)))
 	}
-	b.WriteString(mutedStyle.Render("  Phase "))
+	b.WriteString(mutedStyle.Render("  阶段 "))
 	b.WriteString(st.Phase)
 	if st.Flow != "" && st.Flow != "writing" {
 		b.WriteString(mutedStyle.Render("/"))
@@ -116,45 +121,45 @@ func renderReportText(report diag.Report, width int, exportPath string, startedA
 	}
 	b.WriteString("\n")
 
-	// Second line: reviews + rewrites + average
-	b.WriteString(mutedStyle.Render("Reviews "))
-	b.WriteString(fmt.Sprintf("%d reviews", st.ReviewCount))
+	// 第二行：评审 + 改写 + 均分
+	b.WriteString(mutedStyle.Render("评审 "))
+	b.WriteString(fmt.Sprintf("%d次", st.ReviewCount))
 	if st.RewriteCount > 0 {
-		b.WriteString(mutedStyle.Render("  Rewrites "))
-		b.WriteString(fmt.Sprintf("%d rewrites", st.RewriteCount))
+		b.WriteString(mutedStyle.Render("  改写 "))
+		b.WriteString(fmt.Sprintf("%d次", st.RewriteCount))
 	}
 	if st.AvgReviewScore > 0 {
-		b.WriteString(mutedStyle.Render("  Avg "))
+		b.WriteString(mutedStyle.Render("  均分 "))
 		b.WriteString(fmt.Sprintf("%.1f", st.AvgReviewScore))
 	}
 	b.WriteString("\n")
 
-	// Third line: foreshadowing + planning
+	// 第三行：伏笔 + 规划
 	if st.ForeshadowOpen > 0 || st.ForeshadowStale > 0 {
-		b.WriteString(mutedStyle.Render("Foreshadowing "))
-		b.WriteString(fmt.Sprintf("open%d", st.ForeshadowOpen))
+		b.WriteString(mutedStyle.Render("伏笔 "))
+		b.WriteString(fmt.Sprintf("打开%d", st.ForeshadowOpen))
 		if st.ForeshadowStale > 0 {
-			b.WriteString(lipgloss.NewStyle().Foreground(colorReview).Render(fmt.Sprintf(" stalled%d", st.ForeshadowStale)))
+			b.WriteString(lipgloss.NewStyle().Foreground(colorReview).Render(fmt.Sprintf(" 停滞%d", st.ForeshadowStale)))
 		}
 		b.WriteString("\n")
 	}
 	if st.PlanningTier != "" {
-		b.WriteString(mutedStyle.Render("Planning "))
+		b.WriteString(mutedStyle.Render("规划 "))
 		b.WriteString(st.PlanningTier)
 		b.WriteString("\n")
 	}
 
-	// Findings
+	// 发现
 	b.WriteString("\n")
 	findings := report.Findings
 	if len(findings) == 0 {
-		b.WriteString(lipgloss.NewStyle().Foreground(colorSuccess).Render("No issues found"))
+		b.WriteString(lipgloss.NewStyle().Foreground(colorSuccess).Render("未发现问题"))
 		b.WriteString("\n")
 		return b.String()
 	}
 
 	criticals, warnings, infos := countSeverities(findings)
-	b.WriteString(titleStyle.Render("Findings"))
+	b.WriteString(titleStyle.Render("发现"))
 	b.WriteString(" ")
 	b.WriteString(dimStyle.Render(formatSeverityCounts(criticals, warnings, infos)))
 	b.WriteString("\n")
@@ -166,7 +171,7 @@ func renderReportText(report diag.Report, width int, exportPath string, startedA
 
 	if len(report.Actions) > 0 {
 		b.WriteString("\n")
-		b.WriteString(titleStyle.Render("Actions"))
+		b.WriteString(titleStyle.Render("可执行动作"))
 		b.WriteString(" ")
 		b.WriteString(dimStyle.Render(fmt.Sprintf("(%d)", len(report.Actions))))
 		b.WriteString("\n")
@@ -194,13 +199,13 @@ func renderReportLoadingText(width int, startedAt time.Time) string {
 	hintStyle := lipgloss.NewStyle().Foreground(colorDim)
 
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("Generating diagnostic report"))
+	b.WriteString(titleStyle.Render("正在生成诊断报告"))
 	b.WriteString("\n\n")
-	b.WriteString(hintStyle.Render("Started " + formatReportTime(startedAt)))
+	b.WriteString(hintStyle.Render("开始时间 " + formatReportTime(startedAt)))
 	b.WriteString("\n\n")
-	b.WriteString(bodyStyle.Render(wrapText("Reading the current novel output and analyzing flow, quality, planning, and context issues. Large projects may take a few seconds.", width)))
+	b.WriteString(bodyStyle.Render(wrapText("正在读取当前小说 output 产物并分析流程、质量、规划和上下文问题。项目较大时可能需要几秒。", width)))
 	b.WriteString("\n\n")
-	b.WriteString(hintStyle.Render("Esc closes the panel for now; reopening will regenerate after analysis completes."))
+	b.WriteString(hintStyle.Render("Esc 可先关闭面板，后台分析完成后下次打开会重新生成。"))
 	return b.String()
 }
 
@@ -294,7 +299,7 @@ func formatSeverityCounts(c, w, i int) string {
 	return "(" + strings.Join(parts, " / ") + ")"
 }
 
-// wrapText inserts simple line breaks into long text.
+// wrapText 对长文本做简单换行。
 func wrapText(s string, maxWidth int) string {
 	if maxWidth <= 0 || lipgloss.Width(s) <= maxWidth {
 		return s
@@ -302,6 +307,13 @@ func wrapText(s string, maxWidth int) string {
 	var b strings.Builder
 	lineW := 0
 	for _, r := range s {
+		// 原有换行处必须重置行宽：'\n' 宽度为 0，不重置会把多行消息的累计宽度
+		// 误判为超宽，从首个被换行的行起给其后每一行都插入伪换行+缩进（整体打散）。
+		if r == '\n' {
+			b.WriteRune(r)
+			lineW = 0
+			continue
+		}
 		w := lipgloss.Width(string(r))
 		if lineW+w > maxWidth && lineW > 0 {
 			b.WriteRune('\n')
@@ -323,7 +335,7 @@ func renderReportModal(width, height int, state *reportState) string {
 
 	contentW := paddedModalContentWidth(boxW)
 
-	// Update viewport if the size changed
+	// 如果 viewport 尺寸变化了，更新
 	if state.viewport.Width != contentW {
 		state.viewport.Width = contentW
 		state.viewport.Height = boxH - 4
@@ -338,8 +350,8 @@ func renderReportModal(width, height int, state *reportState) string {
 	modal := renderPaddedModalFrame(
 		boxW,
 		boxH,
-		"Diagnostic Report",
-		"  ↑↓ scroll · Esc close",
+		"诊断报告",
+		"  ↑↓ 滚动 · Esc 关闭",
 		strings.Split(state.viewport.View(), "\n"),
 	)
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)

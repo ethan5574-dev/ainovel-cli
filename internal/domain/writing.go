@@ -28,6 +28,7 @@ type ChapterContract struct {
 // ChapterSummary represents chapter summary used by the context window of subsequent chapters.
 type ChapterSummary struct {
 	Chapter    int      `json:"chapter"`
+	Title      string   `json:"title"`
 	Summary    string   `json:"summary"`
 	Characters []string `json:"characters"`
 	KeyEvents  []string `json:"key_events"`

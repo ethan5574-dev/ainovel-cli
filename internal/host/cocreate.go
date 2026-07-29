@@ -3,6 +3,7 @@ package host
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -88,8 +89,6 @@ func coCreateStream(ctx context.Context, models *bootstrap.ModelSet, sessions *s
 	}
 
 	model := models.ForRole("thinking")
-	ctx, cancel := context.WithTimeout(ctx, 180*time.Second)
-	defer cancel()
 
 	msgs := []agentcore.Message{agentcore.SystemMsg(sysPrompt)}
 	for _, item := range history {
@@ -114,7 +113,7 @@ func coCreateStream(ctx context.Context, models *bootstrap.ModelSet, sessions *s
 		if sessions == nil {
 			return
 		}
-		_ = sessions.LogCoCreate(coCreateLogEntry{
+		if logErr := sessions.LogCoCreate(coCreateLogEntry{
 			Time:         time.Now(),
 			DurationMS:   time.Since(start).Milliseconds(),
 			InputHistory: history,
@@ -126,7 +125,9 @@ func coCreateStream(ctx context.Context, models *bootstrap.ModelSet, sessions *s
 			ParsedReady:  reply.Ready,
 			ParsedSugs:   reply.Suggestions,
 			Error:        errString(err),
-		})
+		}); logErr != nil {
+			slog.Warn("共创会话日志落盘失败", "module", "cocreate", "err", logErr)
+		}
 	}()
 
 	streamCh, err := model.GenerateStream(ctx, msgs, nil, agentcore.WithMaxTokens(2048))

@@ -13,15 +13,15 @@ import (
 	"github.com/voocel/ainovel-cli/internal/store"
 )
 
-// EditChapterTool performs targeted string replacement on chapter drafts, suitable for polishing scenarios.
-// Compared to rewriting the entire chapter with draft_chapter, token savings are 10x+.
+// EditChapterTool 对章节草稿做定点字符串替换，适用于打磨场景。
+// 相比 draft_chapter 整章重写，token 节省 10x+。
 //
-// Write contract: only modify drafts/{ch:02d}.draft.md, direct modification of chapters/ is forbidden (final draft is owned exclusively by commit_chapter).
-// Seed semantics: if drafts does not exist but chapters does -> automatically copy chapters to drafts as the starting point.
-// Ownership check: when the chapter is completed, it must be in the PendingRewrites queue, otherwise rejected.
+// 落盘契约：只改 drafts/{ch:02d}.draft.md，禁止直接改 chapters/（终稿由 commit_chapter 独占）。
+// Seed 语义：drafts 不存在但 chapters 有 → 自动把 chapters 复制到 drafts 作为起点。
+// 归属检查：章节已完成时必须在 PendingRewrites 队列中，否则拒绝。
 //
-// This tool is a thin wrapper around agentcore.EditTool; search-and-replace logic (multi-level fault-tolerant matching, diff output, line ending/BOM preservation)
-// are all reused from the upstream implementation.
+// 本工具是 agentcore.EditTool 的薄封装，找-换逻辑（多级容错匹配、diff 输出、行尾/BOM 保留）
+// 全部复用上游实现。
 type EditChapterTool struct {
 	store *store.Store
 	edit  *agentcoretools.EditTool
@@ -35,31 +35,34 @@ func NewEditChapterTool(s *store.Store) *EditChapterTool {
 }
 
 func (t *EditChapterTool) Name() string  { return "edit_chapter" }
-func (t *EditChapterTool) Label() string { return "Edit Chapter" }
+func (t *EditChapterTool) Label() string { return "编辑章节" }
 
-// ReadOnly explicitly declares write tool (cooperates with ConcurrencySafeTool to prevent concurrent scheduling).
+// ReadOnly 明确声明写工具（配合 ConcurrencySafeTool 防止被并发调度）。
 func (t *EditChapterTool) ReadOnly(_ json.RawMessage) bool { return false }
 
-// ConcurrencySafe explicitly forbids concurrency: parallel edit_chapter on the same chapter causes read-modify-write race condition,
-// and parallel executions across different chapters would interleave checkpoint order. Unified serialization is most stable.
+// ConcurrencySafe 显式禁止并发：同章节多次 edit_chapter 并行会读-改-写竞态，
+// 即使不同章节并行也会穿插 checkpoint 顺序。统一串行最稳。
 func (t *EditChapterTool) ConcurrencySafe(_ json.RawMessage) bool { return false }
 
-// ActivityDescription supplies current tool activity description for UI/logging.
-func (t *EditChapterTool) ActivityDescription(_ json.RawMessage) string { return "Editing chapter draft" }
+// ActivityDescription 供 UI/日志展示当前工具的活动描述。
+func (t *EditChapterTool) ActivityDescription(_ json.RawMessage) string { return "编辑章节草稿" }
 
 func (t *EditChapterTool) Description() string {
-	return "Performs targeted string replacement on chapter drafts (preferred for polishing, saves tokens compared to draft_chapter rewriting the entire chapter)." +
-		"Finds old_string and replaces it with new_string, requiring an exact and unique match (replace_all=true required for multiple matches)." +
-		"Writes to drafts/{ch}.draft.md; automatically seeds from chapters when drafts does not exist." +
-		"Rejected when the chapter is completed and not in the PendingRewrites queue. Each call only changes one place; call multiple times for multiple modifications."
+	return "对章节草稿做定点字符串替换（打磨场景首选，比 draft_chapter 整章重写省 token）。" +
+		"找到 old_string 并替换为 new_string，要求精确匹配且唯一（多处匹配需 replace_all=true）。" +
+		"old_string 必须从最近一次 read_chapter(source=\"draft\") 的返回中逐字复制，禁止凭记忆重构原文；" +
+		"注意返回值是 JSON 字符串，\\n 须还原为真实换行。draft_chapter 改写过草稿后必须先重新 read_chapter 再编辑。" +
+		"匹配失败的报错会附上草稿中最接近的候选片段，请从候选逐字复制后重试。" +
+		"写入 drafts/{ch}.draft.md；drafts 不存在时自动从 chapters 播种。" +
+		"章节已完成且不在 PendingRewrites 队列中时拒绝执行。每次调用只改一处，多处修改请多次调用。"
 }
 
 func (t *EditChapterTool) Schema() map[string]any {
 	return schema.Object(
-		schema.Property("chapter", schema.Int("Chapter number")).Required(),
-		schema.Property("old_string", schema.String("Exact fragment of original text to be replaced, multi-line must include newlines; must appear uniquely in draft when replace_all is not set")).Required(),
-		schema.Property("new_string", schema.String("New text after replacement")).Required(),
-		schema.Property("replace_all", schema.Bool("Replace all matches (default false)")),
+		schema.Property("chapter", schema.Int("章节号")).Required(),
+		schema.Property("old_string", schema.String("要替换的原文精确片段，多行需包含换行；不加 replace_all 时必须在草稿中唯一出现")).Required(),
+		schema.Property("new_string", schema.String("替换后的新文本")).Required(),
+		schema.Property("replace_all", schema.Bool("替换所有匹配（默认 false）")),
 	)
 }
 
@@ -77,26 +80,39 @@ func (t *EditChapterTool) Execute(ctx context.Context, args json.RawMessage) (js
 		return nil, fmt.Errorf("chapter must be > 0: %w", errs.ErrToolArgs)
 	}
 	if a.OldString == "" {
-		return nil, fmt.Errorf("old_string cannot be empty: %w", errs.ErrToolArgs)
+		return nil, fmt.Errorf("old_string 不能为空: %w", errs.ErrToolArgs)
 	}
 	if a.OldString == a.NewString {
-		return nil, fmt.Errorf("old_string is identical to new_string, no changes needed: %w", errs.ErrToolArgs)
+		return nil, fmt.Errorf("old_string 与 new_string 相同，无需修改: %w", errs.ErrToolArgs)
+	}
+	if err := t.store.Progress.ValidateChapterWork(a.Chapter); err != nil {
+		return nil, err
+	}
+	if err := EnsureChapterExpanded(t.store, a.Chapter); err != nil {
+		return nil, err
 	}
 
-	// Ownership check: completed chapters must be in the rewrite queue to avoid contaminating final drafts
-	if t.store.Progress.IsChapterCompleted(a.Chapter) {
-		progress, _ := t.store.Progress.Load()
+	// 归属检查：已完成章节必须在重写队列中，避免污染终稿
+	completed, err := t.store.Progress.IsChapterCompleted(a.Chapter)
+	if err != nil {
+		return nil, fmt.Errorf("load progress: %w: %w", errs.ErrStoreRead, err)
+	}
+	if completed {
+		progress, err := t.store.Progress.Load()
+		if err != nil {
+			return nil, fmt.Errorf("load progress: %w: %w", errs.ErrStoreRead, err)
+		}
 		if progress == nil || !slices.Contains(progress.PendingRewrites, a.Chapter) {
-			return nil, fmt.Errorf("chapter %d is completed and not in PendingRewrites queue, cannot edit; to modify, please have the editor review and trigger rewrite/polish first: %w", a.Chapter, errs.ErrToolPrecondition)
+			return nil, fmt.Errorf("第 %d 章已完成且不在 PendingRewrites 队列中，不能编辑；需修改请先由 editor 评审触发重写/打磨: %w", a.Chapter, errs.ErrToolPrecondition)
 		}
 	}
 
-	// Seed: copy from chapters as starting point when drafts does not exist
+	// Seed：drafts 不存在时从 chapters 复制一份作为起点
 	if err := t.ensureDraft(a.Chapter); err != nil {
 		return nil, err
 	}
 
-	// Delegate search-and-replace to agentcore.EditTool
+	// 委托 agentcore.EditTool 完成找-换
 	subArgs, _ := json.Marshal(map[string]any{
 		"path":        fmt.Sprintf("drafts/%02d.draft.md", a.Chapter),
 		"file_path":   fmt.Sprintf("drafts/%02d.draft.md", a.Chapter),
@@ -118,20 +134,20 @@ func (t *EditChapterTool) Execute(ctx context.Context, args json.RawMessage) (js
 		return nil, fmt.Errorf("checkpoint edit: %w: %w", errs.ErrStoreWrite, err)
 	}
 
-	// Additional guidance: let the writer know the next steps, avoiding missing check_consistency / commit_chapter
+	// 附加指引：让 writer 知道后续步骤，避免遗漏 check_consistency / commit_chapter
 	var passthrough map[string]any
 	if err := json.Unmarshal(result, &passthrough); err != nil {
 		return result, nil
 	}
 	passthrough["chapter"] = a.Chapter
-	passthrough["next_step"] = "edit has been saved. You can call edit_chapter again if there are still issues; otherwise call commit_chapter after check_consistency"
+	passthrough["next_step"] = "edit 已落盘。仍有硬伤可再次 edit_chapter；否则 check_consistency 后 commit_chapter"
 	return json.Marshal(passthrough)
 }
 
-// ensureDraft ensures drafts/{ch}.draft.md exists:
-//   - Existing draft -> return directly
-//   - No draft but final draft exists -> copy final draft to drafts as modification starting point (common in polishing scenarios)
-//   - Neither exists -> return error, prompting to use draft_chapter first to create initial draft
+// ensureDraft 保证 drafts/{ch}.draft.md 存在：
+//   - 已有草稿 → 直接返回
+//   - 无草稿但有终稿 → 把终稿复制到 drafts 作为修改起点（常见于打磨场景）
+//   - 都没有 → 报错，提示先用 draft_chapter 创建初稿
 func (t *EditChapterTool) ensureDraft(chapter int) error {
 	draft, err := t.store.Drafts.LoadDraft(chapter)
 	if err != nil {
@@ -145,7 +161,7 @@ func (t *EditChapterTool) ensureDraft(chapter int) error {
 		return fmt.Errorf("load chapter: %w: %w", errs.ErrStoreRead, err)
 	}
 	if text == "" {
-		return fmt.Errorf("chapter %d has neither draft nor final draft, please call draft_chapter(mode=write, chapter=%d) first to create initial draft: %w", chapter, chapter, errs.ErrToolPrecondition)
+		return fmt.Errorf("第 %d 章无草稿也无终稿，请先调 draft_chapter(mode=write, chapter=%d) 创建初稿: %w", chapter, chapter, errs.ErrToolPrecondition)
 	}
 	if err := t.store.Drafts.SaveDraft(chapter, text); err != nil {
 		return fmt.Errorf("seed draft from chapter: %w: %w", errs.ErrStoreWrite, err)

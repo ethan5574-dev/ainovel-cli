@@ -12,7 +12,7 @@ import (
 	"github.com/voocel/ainovel-cli/internal/store"
 )
 
-// newTestStore constructs a minimal store on top of t.TempDir(), with completed chapters 1..n and progress written.
+// newTestStore 构造一个 t.TempDir() 之上的最小 store，已写入 1..n 章终稿与 progress。
 func newTestStore(t *testing.T, novelName string, completed []int) (*store.Store, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -22,6 +22,9 @@ func newTestStore(t *testing.T, novelName string, completed []int) (*store.Store
 	}
 	if err := s.Progress.Init(novelName, len(completed)); err != nil {
 		t.Fatalf("init progress: %v", err)
+	}
+	if err := s.Progress.UpdatePhase(domain.PhaseWriting); err != nil {
+		t.Fatalf("phase writing: %v", err)
 	}
 	for _, ch := range completed {
 		if err := s.Drafts.SaveFinalChapter(ch, fmt.Sprintf("正文 ch %d。", ch)); err != nil {
@@ -65,18 +68,43 @@ func TestRun_HappyPath_DefaultsToNovelDir(t *testing.T) {
 		t.Fatalf("read output: %v", err)
 	}
 	text := string(data)
-	for _, want := range []string{"《光斑》", "Chapter 1  雨夜归人", "Chapter 3  余烬"} {
+	for _, want := range []string{"《光斑》", "第 1 章  雨夜归人", "第 3 章  余烬"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("output missing %q\nfull:\n%s", want, text)
 		}
 	}
-	// premise is not exported (creation blueprint, not for reader)
+	// premise 不进导出（创作蓝图，非读者内容）
 	if strings.Contains(text, "光与影的故事。") {
 		t.Errorf("premise must not appear in export:\n%s", text)
 	}
 }
 
-// TestRun_PremiseNotExported end-to-end lock: premise.md exists but is not exported, book title is kept (issue #27).
+func TestRun_UsesCommittedTitleForCompletedChapter(t *testing.T) {
+	s, _ := newTestStore(t, "光斑", []int{1})
+	if err := s.Outline.SaveOutline([]domain.OutlineEntry{{Chapter: 1, Title: "计划标题"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Summaries.SaveSummary(domain.ChapterSummary{
+		Chapter: 1, Title: "终稿标题", Summary: "摘要",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Run(context.Background(), Deps{Store: s}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(res.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "第 1 章  终稿标题") || strings.Contains(text, "计划标题") {
+		t.Fatalf("export title projection is wrong:\n%s", text)
+	}
+}
+
+// TestRun_PremiseNotExported 端到端钉死：premise.md 存在也不进导出，书名保留（issue #27）。
 func TestRun_PremiseNotExported(t *testing.T) {
 	s, _ := newTestStore(t, "光斑", []int{1})
 	if err := s.Outline.SavePremise("# 光斑\n## 目标读者\n不该出现的创作蓝图。"); err != nil {
@@ -117,11 +145,11 @@ func TestRun_ExistingFile_NoOverwrite(t *testing.T) {
 	if err == nil {
 		t.Fatal("expect error when target exists and !Overwrite")
 	}
-	if !strings.Contains(err.Error(), "already exists") {
+	if !strings.Contains(err.Error(), "已存在") {
 		t.Errorf("unexpected error: %v", err)
 	}
 
-	// Overwrite should succeed
+	// 加 Overwrite 应成功
 	res, err := Run(context.Background(), Deps{Store: s}, Options{OutPath: target, Overwrite: true})
 	if err != nil {
 		t.Fatalf("Overwrite Run: %v", err)
@@ -256,7 +284,7 @@ func TestRun_UnknownExtension(t *testing.T) {
 	if err == nil {
 		t.Fatal("expect error for unknown extension")
 	}
-	if !strings.Contains(err.Error(), "extension") {
+	if !strings.Contains(err.Error(), "扩展名") {
 		t.Errorf("error should mention extension: %v", err)
 	}
 }

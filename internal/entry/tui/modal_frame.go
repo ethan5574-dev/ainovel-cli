@@ -4,10 +4,18 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func paddedModalContentWidth(boxW int) int {
 	return max(0, boxW-4)
+}
+
+func truncateStyledWidth(s string, maxW int) string {
+	if maxW <= 0 {
+		return ""
+	}
+	return ansi.Truncate(s, maxW, "")
 }
 
 func renderPaddedModalFrame(boxW, boxH int, title, hint string, bodyLines []string) string {
@@ -17,6 +25,10 @@ func renderPaddedModalFrame(boxW, boxH int, title, hint string, bodyLines []stri
 
 	innerW := max(0, boxW-2)
 	contentW := paddedModalContentWidth(boxW)
+	// hint 落在下边框内，过长会把边框顶出框宽——截断到内宽，保证上下边框对齐。
+	if lipgloss.Width(hint) > innerW {
+		hint = truncateWidth(hint, innerW)
+	}
 	titleView := titleStyle.Render(title)
 	hintView := hintStyle.Render(hint)
 
@@ -33,6 +45,7 @@ func renderPaddedModalFrame(boxW, boxH int, title, hint string, bodyLines []stri
 
 	body := make([]string, 0, max(len(bodyLines), boxH-2))
 	for _, line := range bodyLines {
+		line = truncateStyledWidth(line, contentW)
 		padding := contentW - lipgloss.Width(line)
 		if padding < 0 {
 			padding = 0

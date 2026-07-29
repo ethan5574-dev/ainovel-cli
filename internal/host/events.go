@@ -1,65 +1,70 @@
 package host
 
 import (
-	"strings"
 	"time"
 
 	"github.com/voocel/ainovel-cli/internal/domain"
 )
 
-// Event is a structured event consumed by the TUI.
+// Event 是 TUI 消费的结构化事件。
 //
-// For TOOL and DISPATCH invocation events, the start and end of the same call share an ID:
-// When starting, an event with a zero FinishedAt value is emitted (TUI renders it in an "in-progress" style);
-// When ending, another event with the same ID is emitted, populating FinishedAt + Duration (+ Failed).
-// The TUI locates the original line by ID and updates it in place to avoid "start a line, complete another line" redundancy.
+// 对于 TOOL / DISPATCH / DECISION 三类调用事件，同一次调用的开始与结束共用一个 ID：
+// 开始时先发 FinishedAt 为零值的事件（TUI 渲染为"进行中"样式）；
+// 结束时再发一条同 ID 的事件，填入 FinishedAt + Duration（+ Failed），
+// TUI 按 ID 定位原行原地更新，避免"开始一行、完成又一行"的冗余。
 //
-// Non-invocation events like SYSTEM / ERROR / CONTEXT have empty IDs, and each is appended independently.
+// SYSTEM / ERROR / CONTEXT 等非调用类事件 ID 为空，每条独立追加。
 type Event struct {
-	ID         string    // Shared by the start/end of the same call; empty for non-call events
-	Time       time.Time // First emitted time (start time)
-	FinishedAt time.Time // Zero value = in progress; non-zero = completed
-	Failed     bool      // Completed but failed (only meaningful in completion state)
-	Category   string    // DISPATCH / TOOL / SYSTEM / REVIEW / CHECK / ERROR / CONTEXT
-	Agent      string    // The agent that generated the event
+	ID         string    // 同一次调用的开始/结束共用；非调用事件为空
+	Time       time.Time // 首次发出时间（开始时刻）
+	FinishedAt time.Time // 零值 = 进行中；非零 = 已完成
+	Failed     bool      // 已完成但失败（仅完成态有意义）
+	Category   string    // DISPATCH / TOOL / DECISION / SYSTEM / REVIEW / CHECK / ERROR / CONTEXT
+	Agent      string    // 产生事件的 agent
 	Summary    string
-	Detail     string        // Full text, logged without truncation for troubleshooting; falls back to Summary if empty. UI reads only Summary
-	Kind       string        // Error category (e.g. stream_idle), output with logs for filtering/alarms; omitted if empty
+	Detail     string        // 完整文案，写入日志不截断供排查；为空回退 Summary。UI 只读 Summary
+	Kind       string        // 错误分类（如 stream_idle），随日志输出供过滤/告警；为空不输出
 	Level      string        // info / warn / error / success
-	Depth      int           // 0 = coordinator layer, 1 = sub-agent layer
-	Duration   time.Duration // Execution duration when completed
+	Depth      int           // 0 = Engine 层, 1 = Worker 层
+	Duration   time.Duration // 完成时的执行耗时
+	RetryAt    time.Time     // 重试类事件：下次重试的截止时刻；UI 据此逐秒倒计时，到点即清（请求已在途）
 }
 
-// Running returns whether the event is in progress.
-// Only invocation events (TOOL / DISPATCH with an ID) can be in progress; other types always return false.
+// Running 返回事件是否处于进行中。
+// 仅调用类事件（有 ID 的 TOOL / DISPATCH / DECISION）可能进行中；其它类型总是返回 false。
 func (e Event) Running() bool {
 	return e.ID != "" && e.FinishedAt.IsZero()
 }
 
-// UISnapshot is a snapshot of aggregated state required for TUI rendering.
+// UISnapshot 是 TUI 渲染所需的聚合状态快照。
 type UISnapshot struct {
-	Provider           string
-	NovelName          string
-	ModelName          string
-	ModelContextWindow int // Context window of the current default model (dynamically resolved as /model switches)
-	Style              string
-	RuntimeState       string // idle / running / pausing / paused / completed
-	StatusLabel        string
-	Phase              string
-	Flow               string
-	CurrentChapter     int
-	TotalChapters      int
-	CompletedCount     int
-	TotalWordCount     int
-	InProgressChapter  int
-	PendingRewrites    []int
-	RewriteReason      string
-	PendingSteer       string
-	RecoveryLabel      string
-	IsRunning          bool
-	Agents             []AgentSnapshot
+	Provider             string
+	NovelName            string
+	ModelName            string
+	ModelContextWindow   int // 当前默认模型的上下文窗口（随 /model 切换实时解析）
+	ThinkingLevel        string
+	Style                string
+	RuntimeState         string // idle / running / pausing / paused / completed
+	StatusLabel          string
+	Phase                string
+	Flow                 string
+	CurrentChapter       int
+	TotalChapters        int
+	CompletedCount       int
+	TotalWordCount       int
+	InProgressChapter    int
+	PendingRewrites      []int
+	RewriteReason        string
+	PendingSteer         string
+	AdvanceMode          string
+	AdvancePermitChapter int
+	HasAdvanceHold       bool
+	AdvanceHoldReason    string
+	RecoveryLabel        string
+	IsRunning            bool
+	Agents               []AgentSnapshot
 
-	// Context
+	// 上下文
 	ContextTokens         int
 	ContextWindow         int
 	ContextPercent        float64
@@ -70,57 +75,59 @@ type UISnapshot struct {
 	ContextCompactedCount int
 	ContextKeptCount      int
 
-	// Cumulative usage (entire session, across all agents and model switches)
+	// 累计用量（整个会话，跨所有 agent 与模型切换）
 	TotalInputTokens      int
 	TotalOutputTokens     int
 	TotalCacheReadTokens  int
 	TotalCacheWriteTokens int
 	TotalCostUSD          float64
-	TotalSavedUSD         float64 // USD saved due to CacheRead hits (relative to pricing all input as non-cached)
-	BudgetLimitUSD        float64 // Budget limit (config budget.book_usd); 0 = disabled
+	TotalSavedUSD         float64 // 因 CacheRead 命中省下的美元（相对全按非缓存输入价计费）
+	BudgetLimitUSD        float64 // 预算上限（config budget.book_usd）；0 = 未启用
 
-	// Cache Diagnostics
-	OverallCacheCapable    bool // At least one role has run a model supporting prompt cache (distinguishing "disabled" from "0% hit")
-	OverallRecentCacheRead int  // Sum of cacheRead in the sliding window's last N calls
-	OverallRecentInput     int  // Sum of input in the sliding window's last N calls
-	OverallRecentSamples   int  // Number of samples in the sliding window (<= recentSampleCap)
+	// 缓存诊断
+	OverallCacheCapable    bool // 至少一个 role 跑过支持 prompt cache 的模型（区分"未启用"和"0% 命中"）
+	OverallRecentCacheRead int  // 滑动窗最近 N 次的 cacheRead 总和
+	OverallRecentInput     int  // 滑动窗最近 N 次的 input 总和
+	OverallRecentSamples   int  // 滑动窗内的样本数（≤ recentSampleCap）
+	TotalCacheBreaks       int  // live 检测到的缓存链断裂次数（前缀未缩短而命中骤降），详见 usage.go noteCacheBreak
 
-	// MissingAssistantUsage > 0 usually means the upstream streaming failed to send the final usage chunk according to the OpenAI
-	// stream_options.include_usage protocol (common with custom proxies), causing UsageTracker to receive no cumulative data.
-	// The UI uses this to prompt the user to check the backend, preventing them from assuming the cache module itself is broken.
+	// MissingAssistantUsage > 0 通常意味着上游 streaming 没按 OpenAI
+	// stream_options.include_usage 协议发 final usage chunk（自建 proxy 常见），
+	// 导致 UsageTracker 收不到任何累计数据。UI 据此明示用户排查 backend，
+	// 不要让用户误以为是缓存模块本身坏了。
 	MissingAssistantUsage int
 
-	// Cache per-role dimension, sorted by CacheRead descending, filtering roles that have not consumed tokens
+	// 缓存 per-role 维度，按 CacheRead 降序，已过滤未消费 token 的 role
 	CachePerAgent []AgentCacheStat
 	CachePerModel []AgentCacheStat
 
-	// Basic settings
+	// 基础设定
 	Premise          string
 	Outline          []OutlineSnapshot
 	Characters       []string
-	SupportingCount  int      // Total number of supporting characters in the cast ledger
-	RecentSupporting []string // Recently active supporting characters (up to 5, descending by LastSeenChapter)
+	SupportingCount  int      // 配角名册中的次要角色总数
+	RecentSupporting []string // 最近活跃的次要角色（最多 5 个，按 LastSeenChapter 倒序）
 	Layered          bool
 	CurrentVolumeArc string
 	NextVolumeTitle  string
 	CompassDirection string
 	CompassScale     string
 
-	// Details
+	// 详情
 	LastCommitSummary  string
 	LastReviewSummary  string
 	LastCheckpointName string
 	RecentSummaries    []string
 }
 
-// OutlineSnapshot is a display summary of an outline entry.
+// OutlineSnapshot 是大纲条目的展示摘要。
 type OutlineSnapshot struct {
 	Chapter   int
 	Title     string
 	CoreEvent string
 }
 
-// AgentSnapshot is a display projection of an Agent's state.
+// AgentSnapshot 是 Agent 状态的展示投影。
 type AgentSnapshot struct {
 	Name      string
 	State     string
@@ -133,14 +140,14 @@ type AgentSnapshot struct {
 	UpdatedAt time.Time
 }
 
-// AgentCacheStat is the accumulated cache hit statistics for a single agent (projected to the left bar).
-// HitRate = CacheRead / Input; Input is unified to the "includes CacheRead" semantics in the litellm layer.
+// AgentCacheStat 是单个 agent 的缓存命中累计（投影到左栏）。
+// HitRate = CacheRead / Input；Input 在 litellm 层已统一为"含 CacheRead"语义。
 //
-// CacheCapable distinguishes between two types of 0% hits:
-//   - true  -> Model supports prompt cache; 0% implies poor prompt design or unstable prefix, requiring optimization.
-//   - false -> Model/provider does not support prompt cache; 0% is expected, no need to troubleshoot.
+// CacheCapable 用来区分两种 0% 命中：
+//   - true  → 模型支持 prompt cache，0% 是 prompt 设计差或前缀不稳定，需要优化
+//   - false → 模型/provider 不支持 prompt cache，0% 是预期，不必排查
 //
-// Recent* represents the hit data in the sliding window (the last N calls). Comparing to cumulative data helps identify "initial drag" vs "steady-state low hit rate".
+// Recent* 是滑动窗（最近 N 次调用）的命中数据，对比累计可识别"前期拖累"vs"稳态低命中"。
 type AgentCacheStat struct {
 	Role            string
 	Model           string
@@ -156,7 +163,7 @@ type AgentCacheStat struct {
 	RecentSamples   int
 }
 
-// AgentContextSnapshot is the agent context usage status.
+// AgentContextSnapshot 是 Agent 上下文使用情况。
 type AgentContextSnapshot struct {
 	Tokens          int
 	ContextWindow   int
@@ -169,16 +176,16 @@ type AgentContextSnapshot struct {
 	KeptCount       int
 }
 
-// CoCreateMessage represents a co-creation conversation message.
+// CoCreateMessage 是共创对话的消息。
 type CoCreateMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
-// CoCreateReply is the LLM reply in the co-creation conversation. Raw retains the complete four sections of the model's raw text,
-// used to write back to history so the model in the next round sees its own [DRAFT] from the previous round, thereby truly achieving
-// cumulative updates on the existing draft (only Message without [DRAFT] causes the model to re-summarize based on conversation in each round).
-// Suggestions are AI-generated suggestions of "what you might want to say next", which the user can populate with a single key when stuck.
+// CoCreateReply 是共创对话的 LLM 回复。Raw 保留模型完整四段原文，
+// 用于写回 history 让下一轮模型看到自己上一轮的 [DRAFT]，从而真正在
+// 已有草稿上累积更新（仅 Message 不含 [DRAFT]，会导致模型每轮凭对话重新归纳）。
+// Suggestions 是 AI 主动给的"接下来你可能想说"，用户卡壳时按数字键一键填入输入框。
 type CoCreateReply struct {
 	Message     string
 	Prompt      string
@@ -187,7 +194,7 @@ type CoCreateReply struct {
 	Raw         string
 }
 
-// ReplayDeltaText extracts replayable streaming text from a runtime queue item.
+// ReplayDeltaText 从运行时队列项中提取可回放的流式文本。
 func ReplayDeltaText(item domain.RuntimeQueueItem) string {
 	if payload, ok := item.Payload.(map[string]any); ok {
 		if text, ok := payload["delta"].(string); ok {
@@ -195,12 +202,4 @@ func ReplayDeltaText(item domain.RuntimeQueueItem) string {
 		}
 	}
 	return ""
-}
-
-// BuildStartPrompt wraps user requirements as the Coordinator's start prompt.
-func BuildStartPrompt(prompt string) string {
-	prompt = strings.TrimSpace(prompt)
-	return "Please start writing a novel based on the following requirements. Once in planning, the first line of Premise must output '# Novel Title'. The number of chapters is up to you based on story needs; if the genre and conflict naturally suit a long series, please prioritize planning a layered long structure instead of compressing into a short story outline.\n\n[Writing Requirements]\n" +
-		prompt +
-		"\n\nIf certain details are not specified, please complete them yourself without violating the user's direction."
 }

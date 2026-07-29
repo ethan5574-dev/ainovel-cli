@@ -206,6 +206,7 @@ func sourceHashForPath(t *testing.T, profile *domain.SimulationProfile, rel stri
 
 func validSourceReportJSON(summary string) string {
 	return fmt.Sprintf(`{
+  "title": null,
   "summary": %q,
   "style_observations": ["close perspective", "sensory verbs"],
   "common_words": ["door", "shadow"],
@@ -213,7 +214,8 @@ func validSourceReportJSON(summary string) string {
   "hook_patterns": ["end with an unanswered choice"],
   "pacing_notes": ["short setup, fast complication"],
   "reader_appeal": ["curiosity gap", "clear stakes"],
-  "reusable_techniques": ["plant a concrete object before the reveal"]
+  "reusable_techniques": ["plant a concrete object before the reveal"],
+  "warnings": []
 }`, summary)
 }
 
@@ -259,7 +261,6 @@ func validSynthesisJSON(note string) string {
     "anti_patterns": ["flat exposition"]
   },
   "role_guidance": {
-    "coordinator": ["keep later tasks aligned with the simulation profile"],
     "architect": ["design arcs with repeated cost escalation"],
     "writer": ["borrow techniques, never copy text"],
     "editor": ["check imitation stays structural rather than plagiaristic"]

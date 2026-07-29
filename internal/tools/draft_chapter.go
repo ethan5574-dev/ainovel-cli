@@ -13,8 +13,8 @@ import (
 	"github.com/voocel/ainovel-cli/internal/store"
 )
 
-// DraftChapterTool writes the whole chapter draft, replacing the old write_scene + polish_chapter pipeline.
-// Agent decides independently whether to write all at once or in batches.
+// DraftChapterTool 写入整章草稿，替代旧的 write_scene + polish_chapter 流水线。
+// Agent 自主决定一次写完还是分批续写。
 type DraftChapterTool struct {
 	store *store.Store
 }
@@ -25,30 +25,30 @@ func NewDraftChapterTool(store *store.Store) *DraftChapterTool {
 
 func (t *DraftChapterTool) Name() string { return "draft_chapter" }
 func (t *DraftChapterTool) Description() string {
-	return "Writes chapter content. mode=write overwrites the whole chapter, mode=append appends to the existing draft (continuation/modification)"
+	return "写入章节正文。mode=write 覆盖写入整章，mode=append 追加到现有草稿（续写/修改）"
 }
-func (t *DraftChapterTool) Label() string { return "Write Chapter" }
+func (t *DraftChapterTool) Label() string { return "写入章节" }
 
-// Write tool, concurrent execution forbidden (read-modify-write race condition).
+// 写工具，禁止并发（读-改-写竞态）。
 func (t *DraftChapterTool) ReadOnly(_ json.RawMessage) bool        { return false }
 func (t *DraftChapterTool) ConcurrencySafe(_ json.RawMessage) bool { return false }
 
 func (t *DraftChapterTool) Schema() map[string]any {
-	// mode marked required is to be compatible with OpenAI strict tool calling — strict mode
-	// requires all properties to be in the required list. The original "omit mode defaults to write"
-	// behavior now requires the model to explicitly pass mode="write", while the Execute default branch remains unchanged.
+	// mode 标 required 是为了兼容 OpenAI strict tool calling——strict 模式
+	// 要求所有 properties 都在 required 列表中。原来的"省略 mode 走 write
+	// 默认"行为现在需要模型显式传 mode="write"，Execute 的 default 分支不变。
 	return schema.Object(
-		schema.Property("chapter", schema.Int("Chapter number")).Required(),
-		schema.Property("content", schema.String("Chapter content")).Required(),
-		schema.Property("mode", schema.Enum("Write mode", "write", "append")).Required(),
+		schema.Property("chapter", schema.Int("章节号")).Required(),
+		schema.Property("content", schema.String("章节正文")).Required(),
+		schema.Property("mode", schema.Enum("写入模式", "write", "append")).Required(),
 	)
 }
 
-// StrictSchema enables OpenAI's strict tool calling, forcing the model to strictly follow
-// the schema: all required fields must be populated, and arguments cannot contain empty objects like "early EOT".
-// litellm passes through the strict field; supported backends like OpenAI / xAI will enforce it, while other
-// backends ignore unknown fields per HTTP/JSON convention. Anthropic/Gemini/Bedrock go through their own conversion
-// paths and will not see this field.
+// StrictSchema 启用 OpenAI 的 strict tool calling，让模型必须严格遵守
+// schema：所有 required 字段必填，arguments 不能"提前 EOT"出现空对象。
+// litellm 透传 strict 字段；OpenAI / xAI 等支持的后端会强制执行，其他后端
+// 按 HTTP/JSON 惯例忽略未知字段。Anthropic/Gemini/Bedrock 走各自的转换链路
+// 自然不会看到这个字段。
 func (t *DraftChapterTool) StrictSchema() bool { return true }
 
 func (t *DraftChapterTool) Execute(_ context.Context, args json.RawMessage) (json.RawMessage, error) {
@@ -69,16 +69,26 @@ func (t *DraftChapterTool) Execute(_ context.Context, args json.RawMessage) (jso
 	if err := t.store.Progress.ValidateChapterWork(a.Chapter); err != nil {
 		return nil, err
 	}
-	if t.store.Progress.IsChapterCompleted(a.Chapter) {
-		// Polish/rewrite path: chapter is completed but still in pending_rewrites, allowed to overwrite draft
-		progress, _ := t.store.Progress.Load()
+	if err := EnsureChapterExpanded(t.store, a.Chapter); err != nil {
+		return nil, err
+	}
+	completed, err := t.store.Progress.IsChapterCompleted(a.Chapter)
+	if err != nil {
+		return nil, fmt.Errorf("load progress: %w: %w", errs.ErrStoreRead, err)
+	}
+	if completed {
+		// 打磨/重写路径：章节虽已完成，但仍在 pending_rewrites 中，允许覆盖草稿
+		progress, err := t.store.Progress.Load()
+		if err != nil {
+			return nil, fmt.Errorf("load progress: %w: %w", errs.ErrStoreRead, err)
+		}
 		inRewriteQueue := progress != nil && slices.Contains(progress.PendingRewrites, a.Chapter)
 		if !inRewriteQueue {
 			return json.Marshal(map[string]any{
 				"chapter":   a.Chapter,
 				"skipped":   true,
 				"completed": true,
-				"reason":    fmt.Sprintf("chapter %d is already committed and completed, cannot overwrite", a.Chapter),
+				"reason":    fmt.Sprintf("第 %d 章已提交完成，不能覆盖", a.Chapter),
 			})
 		}
 	}
@@ -106,7 +116,7 @@ func (t *DraftChapterTool) Execute(_ context.Context, args json.RawMessage) (jso
 			"chapter":    a.Chapter,
 			"mode":       "append",
 			"word_count": utf8.RuneCountInString(full),
-			"next_step":  "first read_chapter(source=draft) to read back the draft, then call check_consistency, and finally commit_chapter",
+			"next_step":  "先 read_chapter(source=draft) 回读草稿，再调用 check_consistency，最后 commit_chapter",
 		})
 	default: // write
 		if err := t.store.Drafts.SaveDraft(a.Chapter, a.Content); err != nil {
@@ -123,7 +133,7 @@ func (t *DraftChapterTool) Execute(_ context.Context, args json.RawMessage) (jso
 			"chapter":    a.Chapter,
 			"mode":       "write",
 			"word_count": utf8.RuneCountInString(a.Content),
-			"next_step":  "first read_chapter(source=draft) to read back the draft, then call check_consistency, and finally commit_chapter",
+			"next_step":  "先 read_chapter(source=draft) 回读草稿，再调用 check_consistency，最后 commit_chapter",
 		})
 	}
 }

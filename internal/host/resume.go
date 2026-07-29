@@ -3,112 +3,106 @@ package host
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/voocel/ainovel-cli/internal/domain"
 	storepkg "github.com/voocel/ainovel-cli/internal/store"
 )
 
-// buildResumePrompt generates a short prompt and UI label for Resume based on facts.
-//
-// Refactoring note (2026-04-20): All decisions about "what specifically to do next" have been moved down to the Host Flow Router.
-// This function no longer plans actions for the Coordinator; it only does three things:
-//  1. Determines if resume is needed (Phase=Complete or no Progress -> returns empty label indicating a new start)
-//  2. Generates a label suitable for display in the UI (like "Resume: Arc-end review pending (V2 A3)")
-//  3. Explicitly passes the PendingSteer left by the user during downtime to the Coordinator
-//
-// Returns (prompt, label, error). An empty label indicates no resumable state (should start new).
-func buildResumePrompt(store *storepkg.Store) (string, string, error) {
+// resumeLabel 基于事实生成 Resume 的 UI 标签。
+// label 为空表示无可恢复状态（应走新建）。恢复本身不需要任何 prompt——
+// Engine 只恢复事实：从 store 重算路由续跑（docs/engine-rfc.md §6）。
+func resumeLabel(store *storepkg.Store) (string, error) {
 	progress, err := store.Progress.Load()
 	if err != nil && !os.IsNotExist(err) {
-		return "", "", err
+		return "", err
 	}
 	if progress == nil || progress.Phase == domain.PhaseComplete {
-		return "", "", nil
+		return "", nil
 	}
-
-	label := describeResume(store, progress)
-
-	var b strings.Builder
-	title := progress.NovelName
-	if title == "" {
-		title = "Current Novel"
-	}
-	b.WriteString(fmt.Sprintf("[Resume] This book: \"%s\"", title))
-	if n := len(progress.CompletedChapters); n > 0 {
-		b.WriteString(fmt.Sprintf(" Completed %d chapters", n))
-		if progress.TotalChapters > 0 {
-			b.WriteString(fmt.Sprintf(" (out of %d)", progress.TotalChapters))
-		}
-		b.WriteString(fmt.Sprintf(", total %d words", progress.TotalWordCount))
-	}
-	b.WriteString(".\n")
-	b.WriteString("The Host will issue the next command using a `[Host command]` message based on current facts. Execute it immediately upon receipt; do not run novel_context reasoning first.\n")
-
-	if meta, _ := store.RunMeta.Load(); meta != nil && meta.PendingSteer != "" {
-		b.WriteString("\nThe user left an intervention message during downtime:\n\"")
-		b.WriteString(meta.PendingSteer)
-		b.WriteString("\"\nPlease evaluate and handle this first according to the user intervention rules in coordinator.md.")
-	}
-
-	return b.String(), label, nil
+	return describeResume(store, progress)
 }
 
-// describeResume generates a human-readable resume label; it does not affect the Coordinator's behavior.
-// All execution routes are derived from facts by the Flow Router; this is only for UI display as "Resume: xxx".
-func describeResume(store *storepkg.Store, progress *domain.Progress) string {
+// describeResume 生成人类可读的恢复标签；不影响 Engine 路由。
+// 所有执行路由由 Flow Router 按事实推导；这里仅面向 UI 的 "恢复：xxx"。
+func describeResume(store *storepkg.Store, progress *domain.Progress) (string, error) {
 	switch progress.Phase {
 	case domain.PhasePremise, domain.PhaseOutline:
-		return fmt.Sprintf("Resume: Planning stage (%s)", progress.Phase)
+		return fmt.Sprintf("恢复：规划阶段（%s）", progress.Phase), nil
 	case domain.PhaseWriting:
-		// Align priority with Router's decision priority to keep the label consistent with the command to be dispatched.
-		if pending, _ := store.Signals.LoadPendingCommit(); pending != nil {
-			return fmt.Sprintf("Resume: Chapter %d commit interrupted", pending.Chapter)
+		// 优先级与 Router 的决策优先级对齐，让 label 与即将派发的指令一致。
+		pending, err := store.Signals.LoadPendingCommit()
+		if err != nil {
+			return "", fmt.Errorf("读取待恢复提交: %w", err)
+		}
+		if pending != nil {
+			return fmt.Sprintf("恢复：第 %d 章提交中断", pending.Chapter), nil
 		}
 		if len(progress.PendingRewrites) > 0 {
-			verb := "Rewrite"
+			verb := "重写"
 			if progress.Flow == domain.FlowPolishing {
-				verb = "Polish"
+				verb = "打磨"
 			}
-			return fmt.Sprintf("%s Resume: %d chapters pending", verb, len(progress.PendingRewrites))
+			return fmt.Sprintf("%s恢复：%d 章待处理", verb, len(progress.PendingRewrites)), nil
 		}
 		if progress.Flow == domain.FlowReviewing {
-			return "Resume: Review interrupted"
+			return "恢复：审阅中断", nil
 		}
 		if progress.InProgressChapter > 0 {
-			return fmt.Sprintf("Resume: Chapter %d in progress", progress.InProgressChapter)
+			return fmt.Sprintf("恢复：第 %d 章进行中", progress.InProgressChapter), nil
 		}
-		if label := describeArcEndLabel(store, progress); label != "" {
-			return label
+		label, err := describeArcEndLabel(store, progress)
+		if err != nil {
+			return "", err
 		}
-		return fmt.Sprintf("Resume: Continue from Chapter %d", progress.NextChapter())
+		if label != "" {
+			return label, nil
+		}
+		return fmt.Sprintf("恢复：从第 %d 章继续", progress.NextChapter()), nil
 	}
-	return "Resume"
+	return "恢复", nil
 }
 
-// describeArcEndLabel generates a UI-friendly label for various intermediate states at arc-end or volume-end.
-// Keeps the same order as the arc-end branch in flow.Route to ensure the label aligns with the Router's first command.
-func describeArcEndLabel(store *storepkg.Store, progress *domain.Progress) string {
+// describeArcEndLabel 为弧末/卷末的多种中间状态生成贴合 UI 的标签。
+// 与 flow.Route 的弧末分支保持同序，保证 label 与 Router 首条指令对齐。
+func describeArcEndLabel(store *storepkg.Store, progress *domain.Progress) (string, error) {
 	if !progress.Layered || len(progress.CompletedChapters) == 0 {
-		return ""
+		return "", nil
 	}
 	lastCh := progress.CompletedChapters[len(progress.CompletedChapters)-1]
 	boundary, err := store.Outline.CheckArcBoundary(lastCh)
-	if err != nil || boundary == nil || !boundary.IsArcEnd {
-		return ""
+	if err != nil {
+		return "", fmt.Errorf("检查弧边界: %w", err)
+	}
+	if boundary == nil || !boundary.IsArcEnd {
+		return "", nil
 	}
 	vol, arc := boundary.Volume, boundary.Arc
-	switch {
-	case !store.World.HasArcReview(lastCh):
-		return fmt.Sprintf("Resume: Arc-end review pending (V%d A%d)", vol, arc)
-	case !store.Summaries.HasArcSummary(vol, arc):
-		return fmt.Sprintf("Resume: Arc summary pending (V%d A%d)", vol, arc)
-	case boundary.IsVolumeEnd && !store.Summaries.HasVolumeSummary(vol):
-		return fmt.Sprintf("Resume: Volume summary pending (V%d)", vol)
-	case boundary.NeedsExpansion && boundary.NextArc > 0:
-		return fmt.Sprintf("Resume: Expand next arc pending (V%d A%d)", boundary.NextVolume, boundary.NextArc)
-	case boundary.NeedsNewVolume:
-		return fmt.Sprintf("Resume: Decide next volume pending (End of V%d)", vol)
+	hasArcReview, err := store.World.HasArcReview(lastCh)
+	if err != nil {
+		return "", fmt.Errorf("读取弧评审: %w", err)
 	}
-	return ""
+	hasArcSummary, err := store.Summaries.HasArcSummary(vol, arc)
+	if err != nil {
+		return "", fmt.Errorf("读取弧摘要: %w", err)
+	}
+	hasVolumeSummary := false
+	if boundary.IsVolumeEnd {
+		hasVolumeSummary, err = store.Summaries.HasVolumeSummary(vol)
+		if err != nil {
+			return "", fmt.Errorf("读取卷摘要: %w", err)
+		}
+	}
+	switch {
+	case !hasArcReview:
+		return fmt.Sprintf("恢复：弧末评审待处理（V%d A%d）", vol, arc), nil
+	case !hasArcSummary:
+		return fmt.Sprintf("恢复：弧摘要待生成（V%d A%d）", vol, arc), nil
+	case boundary.IsVolumeEnd && !hasVolumeSummary:
+		return fmt.Sprintf("恢复：卷摘要待生成（V%d）", vol), nil
+	case boundary.NeedsExpansion && boundary.NextArc > 0:
+		return fmt.Sprintf("恢复：待展开下一弧（V%d A%d）", boundary.NextVolume, boundary.NextArc), nil
+	case boundary.NeedsNewVolume:
+		return fmt.Sprintf("恢复：待决策下一卷（V%d 末）", vol), nil
+	}
+	return "", nil
 }

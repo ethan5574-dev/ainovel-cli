@@ -7,22 +7,22 @@ import (
 	"github.com/voocel/ainovel-cli/internal/domain"
 )
 
-// SummaryStore manages chapter, arc, and volume summaries.
+// SummaryStore 管理章节、弧、卷摘要。
 type SummaryStore struct {
 	io      *IO
-	outline *OutlineStore // Read-only dependency, used to obtain arc/volume counts
+	outline *OutlineStore // 只读依赖，用于获取弧/卷数量
 }
 
 func NewSummaryStore(io *IO, outline *OutlineStore) *SummaryStore {
 	return &SummaryStore{io: io, outline: outline}
 }
 
-// SaveSummary saves a chapter summary to summaries/{ch}.json.
+// SaveSummary 保存章节摘要到 summaries/{ch}.json。
 func (s *SummaryStore) SaveSummary(sum domain.ChapterSummary) error {
 	return s.io.WriteJSON(fmt.Sprintf("summaries/%02d.json", sum.Chapter), sum)
 }
 
-// LoadSummary reads the summary of a specific chapter.
+// LoadSummary 读取指定章节的摘要。
 func (s *SummaryStore) LoadSummary(chapter int) (*domain.ChapterSummary, error) {
 	var sum domain.ChapterSummary
 	if err := s.io.ReadJSON(fmt.Sprintf("summaries/%02d.json", chapter), &sum); err != nil {
@@ -34,7 +34,7 @@ func (s *SummaryStore) LoadSummary(chapter int) (*domain.ChapterSummary, error) 
 	return &sum, nil
 }
 
-// LoadRecentSummaries loads the summaries of the most recent count chapters before the current chapter.
+// LoadRecentSummaries 加载 current 章之前最近 count 章的摘要。
 func (s *SummaryStore) LoadRecentSummaries(current, count int) ([]domain.ChapterSummary, error) {
 	var result []domain.ChapterSummary
 	start := max(current-count, 1)
@@ -50,24 +50,30 @@ func (s *SummaryStore) LoadRecentSummaries(current, count int) ([]domain.Chapter
 	return result, nil
 }
 
-// SaveArcSummary saves an arc-level summary.
+// SaveArcSummary 保存弧级摘要。
 func (s *SummaryStore) SaveArcSummary(sum domain.ArcSummary) error {
 	return s.io.WriteJSON(fmt.Sprintf("summaries/arc-v%02da%02d.json", sum.Volume, sum.Arc), sum)
 }
 
-// HasArcSummary checks if the summary for a specified arc has been saved. Reading failures are treated as "not saved".
-func (s *SummaryStore) HasArcSummary(volume, arc int) bool {
+// HasArcSummary 检查指定弧是否已保存摘要。
+func (s *SummaryStore) HasArcSummary(volume, arc int) (bool, error) {
 	sum, err := s.LoadArcSummary(volume, arc)
-	return err == nil && sum != nil
+	if err != nil {
+		return false, err
+	}
+	return sum != nil, nil
 }
 
-// HasVolumeSummary checks if the summary for a specified volume has been saved. Reading failures are treated as "not saved".
-func (s *SummaryStore) HasVolumeSummary(volume int) bool {
+// HasVolumeSummary 检查指定卷是否已保存摘要。
+func (s *SummaryStore) HasVolumeSummary(volume int) (bool, error) {
 	sum, err := s.LoadVolumeSummary(volume)
-	return err == nil && sum != nil
+	if err != nil {
+		return false, err
+	}
+	return sum != nil, nil
 }
 
-// LoadArcSummary reads the summary of a specific arc.
+// LoadArcSummary 读取指定弧的摘要。
 func (s *SummaryStore) LoadArcSummary(volume, arc int) (*domain.ArcSummary, error) {
 	var sum domain.ArcSummary
 	if err := s.io.ReadJSON(fmt.Sprintf("summaries/arc-v%02da%02d.json", volume, arc), &sum); err != nil {
@@ -79,7 +85,7 @@ func (s *SummaryStore) LoadArcSummary(volume, arc int) (*domain.ArcSummary, erro
 	return &sum, nil
 }
 
-// LoadArcSummaries loads all existing arc summaries within a volume.
+// LoadArcSummaries 加载一卷内所有已有弧摘要。
 func (s *SummaryStore) LoadArcSummaries(volume int) ([]domain.ArcSummary, error) {
 	maxArc := s.arcCountForVolume(volume)
 	var result []domain.ArcSummary
@@ -95,12 +101,12 @@ func (s *SummaryStore) LoadArcSummaries(volume int) ([]domain.ArcSummary, error)
 	return result, nil
 }
 
-// SaveVolumeSummary saves a volume-level summary.
+// SaveVolumeSummary 保存卷级摘要。
 func (s *SummaryStore) SaveVolumeSummary(sum domain.VolumeSummary) error {
 	return s.io.WriteJSON(fmt.Sprintf("summaries/vol-v%02d.json", sum.Volume), sum)
 }
 
-// LoadVolumeSummary reads the summary of a specific volume.
+// LoadVolumeSummary 读取指定卷的摘要。
 func (s *SummaryStore) LoadVolumeSummary(volume int) (*domain.VolumeSummary, error) {
 	var sum domain.VolumeSummary
 	if err := s.io.ReadJSON(fmt.Sprintf("summaries/vol-v%02d.json", volume), &sum); err != nil {
@@ -112,7 +118,7 @@ func (s *SummaryStore) LoadVolumeSummary(volume int) (*domain.VolumeSummary, err
 	return &sum, nil
 }
 
-// LoadAllVolumeSummaries loads all existing volume summaries.
+// LoadAllVolumeSummaries 加载所有已有卷摘要。
 func (s *SummaryStore) LoadAllVolumeSummaries() ([]domain.VolumeSummary, error) {
 	maxVol := s.volumeCount()
 	var result []domain.VolumeSummary
@@ -128,7 +134,7 @@ func (s *SummaryStore) LoadAllVolumeSummaries() ([]domain.VolumeSummary, error) 
 	return result, nil
 }
 
-// FindCharacterAppearances searches in batch for the last appearance chapter number of multiple characters.
+// FindCharacterAppearances 批量查找多个角色的最后出场章节号。
 func (s *SummaryStore) FindCharacterAppearances(names []string, endChapter, recentWindow int) map[string]int {
 	result := make(map[string]int, len(names))
 	remaining := make(map[string]struct{}, len(names))

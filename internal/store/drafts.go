@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -10,17 +11,17 @@ import (
 	"github.com/voocel/ainovel-cli/internal/domain"
 )
 
-// DraftStore manages chapter plans, drafts, and final chapters.
+// DraftStore 管理章节构思、草稿和终稿。
 type DraftStore struct{ io *IO }
 
 func NewDraftStore(io *IO) *DraftStore { return &DraftStore{io: io} }
 
-// SaveChapterPlan saves chapter plan to drafts/{ch}.plan.json.
+// SaveChapterPlan 保存章节构思到 drafts/{ch}.plan.json。
 func (s *DraftStore) SaveChapterPlan(plan domain.ChapterPlan) error {
 	return s.io.WriteJSON(fmt.Sprintf("drafts/%02d.plan.json", plan.Chapter), plan)
 }
 
-// LoadChapterPlan reads chapter plan.
+// LoadChapterPlan 读取章节构思。
 func (s *DraftStore) LoadChapterPlan(chapter int) (*domain.ChapterPlan, error) {
 	var plan domain.ChapterPlan
 	if err := s.io.ReadJSON(fmt.Sprintf("drafts/%02d.plan.json", chapter), &plan); err != nil {
@@ -32,12 +33,12 @@ func (s *DraftStore) LoadChapterPlan(chapter int) (*domain.ChapterPlan, error) {
 	return &plan, nil
 }
 
-// SaveDraft saves the full chapter draft to drafts/{ch}.draft.md.
+// SaveDraft 保存整章草稿到 drafts/{ch}.draft.md。
 func (s *DraftStore) SaveDraft(chapter int, content string) error {
 	return s.io.WriteMarkdown(fmt.Sprintf("drafts/%02d.draft.md", chapter), content)
 }
 
-// AppendDraft appends content to an existing draft (continuation mode).
+// AppendDraft 追加内容到现有草稿（续写模式）。
 func (s *DraftStore) AppendDraft(chapter int, content string) error {
 	rel := fmt.Sprintf("drafts/%02d.draft.md", chapter)
 	return s.io.WithWriteLock(func() error {
@@ -55,7 +56,7 @@ func (s *DraftStore) AppendDraft(chapter int, content string) error {
 	})
 }
 
-// LoadDraft reads the full chapter draft.
+// LoadDraft 读取整章草稿。
 func (s *DraftStore) LoadDraft(chapter int) (string, error) {
 	data, err := s.io.ReadFile(fmt.Sprintf("drafts/%02d.draft.md", chapter))
 	if os.IsNotExist(err) {
@@ -67,7 +68,7 @@ func (s *DraftStore) LoadDraft(chapter int) (string, error) {
 	return string(data), nil
 }
 
-// LoadChapterContent loads chapter draft text and word count.
+// LoadChapterContent 加载章节草稿正文及字数。
 func (s *DraftStore) LoadChapterContent(chapter int) (string, int, error) {
 	draft, err := s.LoadDraft(chapter)
 	if err != nil {
@@ -79,12 +80,12 @@ func (s *DraftStore) LoadChapterContent(chapter int) (string, int, error) {
 	return "", 0, nil
 }
 
-// SaveFinalChapter saves the final chapter text to chapters/{ch}.md.
+// SaveFinalChapter 保存最终章节正文到 chapters/{ch}.md。
 func (s *DraftStore) SaveFinalChapter(chapter int, content string) error {
 	return s.io.WriteMarkdown(fmt.Sprintf("chapters/%02d.md", chapter), content)
 }
 
-// LoadChapterText reads committed final chapter text.
+// LoadChapterText 读取已提交的终稿原文。
 func (s *DraftStore) LoadChapterText(chapter int) (string, error) {
 	data, err := s.io.ReadFile(fmt.Sprintf("chapters/%02d.md", chapter))
 	if os.IsNotExist(err) {
@@ -96,7 +97,7 @@ func (s *DraftStore) LoadChapterText(chapter int) (string, error) {
 	return string(data), nil
 }
 
-// LoadChapterRange reads final chapter text fragments for the specified range.
+// LoadChapterRange 读取指定范围的终稿原文片段。
 func (s *DraftStore) LoadChapterRange(from, to, maxRunes int) (map[int]string, error) {
 	result := make(map[int]string)
 	for ch := from; ch <= to; ch++ {
@@ -120,18 +121,23 @@ func (s *DraftStore) LoadChapterRange(from, to, maxRunes int) (map[int]string, e
 
 var dialogueRe = regexp.MustCompile(`"[^"]*"`)
 
-// ExtractDialogue extracts dialogue samples of a specified character from committed chapters.
-// maxCompletedChapter is passed by caller to avoid cross-domain dependency.
-func (s *DraftStore) ExtractDialogue(characterName string, aliases []string, maxSamples, maxCompletedChapter int) []string {
+// ExtractDialogue 从已提交章节中提取指定角色的对话片段。
+// maxCompletedChapter 由调用方传入，避免跨域依赖。
+func (s *DraftStore) ExtractDialogue(characterName string, aliases []string, maxSamples, maxCompletedChapter int) ([]string, error) {
 	if maxSamples <= 0 {
 		maxSamples = 5
 	}
 	names := append([]string{characterName}, aliases...)
 
 	var samples []string
+	var readErrs []error
 	for ch := maxCompletedChapter; ch >= 1 && len(samples) < maxSamples; ch-- {
 		text, err := s.LoadChapterText(ch)
-		if err != nil || text == "" {
+		if err != nil {
+			readErrs = append(readErrs, fmt.Errorf("chapter %d: %w", ch, err))
+			continue
+		}
+		if text == "" {
 			continue
 		}
 		paragraphs := strings.Split(text, "\n")
@@ -160,20 +166,25 @@ func (s *DraftStore) ExtractDialogue(characterName string, aliases []string, max
 			}
 		}
 	}
-	return samples
+	return samples, errors.Join(readErrs...)
 }
 
-// ExtractStyleAnchors extracts representative paragraphs from committed chapters as style anchors.
-// maxCompletedChapter is passed by caller to avoid cross-domain dependency.
-func (s *DraftStore) ExtractStyleAnchors(maxAnchors, maxCompletedChapter int) []string {
+// ExtractStyleAnchors 从已提交章节中提取代表性段落作为风格锚点。
+// maxCompletedChapter 由调用方传入，避免跨域依赖。
+func (s *DraftStore) ExtractStyleAnchors(maxAnchors, maxCompletedChapter int) ([]string, error) {
 	if maxAnchors <= 0 {
 		maxAnchors = 5
 	}
 
 	var anchors []string
+	var readErrs []error
 	for ch := 1; ch <= maxCompletedChapter && len(anchors) < maxAnchors; ch++ {
 		text, err := s.LoadChapterText(ch)
-		if err != nil || text == "" {
+		if err != nil {
+			readErrs = append(readErrs, fmt.Errorf("chapter %d: %w", ch, err))
+			continue
+		}
+		if text == "" {
 			continue
 		}
 		paragraphs := strings.Split(text, "\n\n")
@@ -192,5 +203,5 @@ func (s *DraftStore) ExtractStyleAnchors(maxAnchors, maxCompletedChapter int) []
 			anchors = append(anchors, para)
 		}
 	}
-	return anchors
+	return anchors, errors.Join(readErrs...)
 }

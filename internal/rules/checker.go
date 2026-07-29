@@ -1,40 +1,33 @@
 package rules
 
 import (
-	"fmt"
 	"strings"
-	"unicode/utf8"
 )
 
-// Check performs a mechanical check on the chapter text based on structured rules, returning a list of violations.
+// Check 对章节正文按结构化规则进行机械检查，返回违规事实列表。
 //
-// Design Contract:
-//   - Only return facts, do not issue commands (Iron Rule #1)
-//   - Do not block any caller flow
-//   - severity maps fixedly by rule type (see the comment table in types.go)
+// 设计契约：
+//   - 仅返事实，不下指令（铁律一）
+//   - 不阻断任何调用方流程
+//   - severity 按规则类型固定映射（参见 types.go 注释表）
 //
-// Parameters:
-//   - text: chapter text (can be final draft or draft)
-//   - wordCount: chapter word count (rune count). If < 0, computed by checker itself to avoid repetitive O(n) scans by the caller.
-//   - s: merged structured rules; returns nil immediately if IsEmpty.
-func Check(text string, wordCount int, s Structured) []Violation {
+// 参数：
+//   - text：章节正文（终稿或草稿都可）
+//   - s：合并后的结构化规则；IsEmpty 时直接返回 nil。
+func Check(text string, s Structured) []Violation {
 	if s.IsEmpty() {
 		return nil
-	}
-	if wordCount < 0 {
-		wordCount = utf8.RuneCountInString(text)
 	}
 
 	var violations []Violation
 	violations = appendForbiddenChars(violations, text, s.ForbiddenChars)
 	violations = appendForbiddenPhrases(violations, text, s.ForbiddenPhrases)
 	violations = appendFatigueWords(violations, text, s.FatigueWords)
-	violations = appendChapterWords(violations, wordCount, s.ChapterWords)
 	return violations
 }
 
-// forbidden_chars: error if appears >= 1 time.
-// A single rule produces only one violation, and actual is the occurrence count.
+// forbidden_chars：出现 ≥1 次即 error。
+// 同一条规则只产生一条 violation，actual 是出现次数。
 func appendForbiddenChars(vs []Violation, text string, list []string) []Violation {
 	for _, ch := range list {
 		if ch == "" {
@@ -54,7 +47,7 @@ func appendForbiddenChars(vs []Violation, text string, list []string) []Violatio
 	return vs
 }
 
-// forbidden_phrases: error if appears >= 1 time; behavior is identical to forbidden_chars, only differentiated by rule name.
+// forbidden_phrases：出现 ≥1 次即 error；行为与 forbidden_chars 一致，仅 rule 名区分。
 func appendForbiddenPhrases(vs []Violation, text string, list []string) []Violation {
 	for _, ph := range list {
 		if ph == "" {
@@ -74,8 +67,8 @@ func appendForbiddenPhrases(vs []Violation, text string, list []string) []Violat
 	return vs
 }
 
-// fatigue_words: violation occurs only when occurrences in this chapter exceed the threshold, warning level.
-// No cross-chapter accumulation - cross-chapter issues are delegated to diagnostics later.
+// fatigue_words：本章出现次数超过阈值才违规，warning 级。
+// 不跨章累计——跨章问题后续交诊断。
 func appendFatigueWords(vs []Violation, text string, m map[string]int) []Violation {
 	for word, limit := range m {
 		if word == "" || limit <= 0 {
@@ -93,42 +86,5 @@ func appendFatigueWords(vs []Violation, text string, m map[string]int) []Violati
 			Severity: SeverityWarning,
 		})
 	}
-	return vs
-}
-
-// chapter_words: word count deviation.
-// deviation < 20%: warning; deviation >= 20%: error.
-// Deviation formula: below min uses (min-actual)/min; above max uses (actual-max)/max.
-func appendChapterWords(vs []Violation, wordCount int, rng *WordRange) []Violation {
-	if rng == nil {
-		return vs
-	}
-	var deviation float64
-	switch {
-	case wordCount < rng.Min:
-		if rng.Min == 0 {
-			return vs
-		}
-		deviation = float64(rng.Min-wordCount) / float64(rng.Min)
-	case wordCount > rng.Max:
-		if rng.Max == 0 {
-			return vs
-		}
-		deviation = float64(wordCount-rng.Max) / float64(rng.Max)
-	default:
-		return vs // within range
-	}
-
-	severity := SeverityWarning
-	if deviation >= ChapterWordsDeviationThreshold {
-		severity = SeverityError
-	}
-	vs = append(vs, Violation{
-		Rule:      "chapter_words",
-		Limit:     fmt.Sprintf("%d-%d", rng.Min, rng.Max),
-		Actual:    wordCount,
-		Deviation: deviation,
-		Severity:  severity,
-	})
 	return vs
 }

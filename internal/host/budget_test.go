@@ -77,8 +77,12 @@ func TestBudgetSentinelWarnOnceThenBoundaryStop(t *testing.T) {
 
 	// Sub-agent boundary: exactly one stop, repeated boundary events do not stop again
 	r.cost = 10.5
-	s.HandleEvent(subagentEndEvent())
-	s.HandleEvent(subagentEndEvent())
+	if !s.HandleBoundary() {
+		t.Fatal("pending budget stop should be handled at boundary")
+	}
+	if s.HandleBoundary() {
+		t.Fatal("stopped budget should not report another handled boundary")
+	}
 	if len(r.aborts) != 1 {
 		t.Fatalf("expected exactly one abort at boundary, got %v", r.aborts)
 	}

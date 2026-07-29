@@ -13,18 +13,14 @@ import (
 	"github.com/voocel/ainovel-cli/internal/utils"
 )
 
-// exampleConfig is the commented template written to ~/.ainovel/config.example.jsonc after setup.
-// Single source of truth: embed config.example.jsonc from the same directory to avoid drifting from docs samples.
+// exampleConfig 是引导后写入 ~/.ainovel/config.example.jsonc 的带注释模板。
+// 嵌入文件必须与仓库根目录 config.example.jsonc 保持一致，测试会防止漂移。
 //
 //go:embed config.example.jsonc
 var exampleConfig string
 
-// NeedsSetup checks whether first-run setup is needed (triggered when no config exists).
-func NeedsSetup(flagPath string) bool {
-	if flagPath != "" {
-		_, err := os.Stat(flagPath)
-		return os.IsNotExist(err)
-	}
+// NeedsSetup 检查是否需要首次引导（全局与项目级配置都不存在时触发）。
+func NeedsSetup() bool {
 	if p := DefaultConfigPath(); p != "" {
 		if _, err := os.Stat(p); err == nil {
 			return false
@@ -39,9 +35,18 @@ func NeedsSetup(flagPath string) bool {
 type setupProvider struct {
 	name           string
 	label          string
-	baseURL        string // Prefilled base_url
-	needType       bool   // Custom proxies need an extra type/base_url prompt
-	apiKeyOptional bool   // true means API Key may be left blank
+	baseURL        string // 预填的 base_url
+	needType       bool   // 自定义代理需要额外问 type 和 base_url
+	apiKeyOptional bool   // true 表示 API Key 允许留空
+}
+
+// ProviderPreset 是首次引导和运行时 /config 共用的 provider 目录项。
+type ProviderPreset struct {
+	Name           string
+	Label          string
+	BaseURL        string
+	NeedType       bool
+	APIKeyOptional bool
 }
 
 var setupProviders = []setupProvider{
@@ -58,16 +63,28 @@ var setupProviders = []setupProvider{
 	{name: "custom", label: "Custom Proxy", needType: true, apiKeyOptional: true},
 }
 
-// RunSetup runs first-run setup and returns the generated config.
+// ProviderPresets 返回一份可安全修改的预设列表。
+func ProviderPresets() []ProviderPreset {
+	out := make([]ProviderPreset, 0, len(setupProviders))
+	for _, preset := range setupProviders {
+		out = append(out, ProviderPreset{
+			Name: preset.name, Label: preset.label, BaseURL: preset.baseURL,
+			NeedType: preset.needType, APIKeyOptional: preset.apiKeyOptional,
+		})
+	}
+	return out
+}
+
+// RunSetup 运行首次引导，返回生成的配置。
 func RunSetup() (Config, error) {
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("99")).
-		Render("No config file found, starting initial setup..."))
-	fmt.Fprintf(os.Stderr, "  Config path: %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render(DefaultConfigPath()))
-	fmt.Fprintf(os.Stderr, "  You can edit it later to adjust advanced settings.\n")
+		Render("未检测到配置文件，开始初始化设置..."))
+	fmt.Fprintf(os.Stderr, "  配置文件路径：%s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render(DefaultConfigPath()))
+	fmt.Fprintf(os.Stderr, "  完成后可随时编辑该文件调整高级设置。\n")
 	fmt.Fprintln(os.Stderr)
 
-	// Step 1: choose provider
+	// Step 1: 选择 Provider
 	sp, err := runProviderSelect()
 	if err != nil {
 		return Config{}, err
@@ -77,9 +94,9 @@ func RunSetup() (Config, error) {
 	var pc ProviderConfig
 	printStepDone("Provider", sp.label)
 
-	// Custom proxy: ask for a name and API protocol type
+	// 自定义代理：额外问名称和 API 协议类型
 	if sp.needType {
-		providerName, err = runTextInput("Provider name", "my-proxy")
+		providerName, err = runTextInput("Provider 名称", "my-proxy")
 		if err != nil {
 			return Config{}, err
 		}
@@ -90,10 +107,10 @@ func RunSetup() (Config, error) {
 		pc.Type = providerType
 	}
 
-	// Step 2: enter API Key
+	// Step 2: 输入 API Key
 	var apiKey string
 	if sp.apiKeyOptional {
-		apiKey, err = runOptionalTextInput("[2/4] API Key (optional)", "Leave blank to skip API Key")
+		apiKey, err = runOptionalTextInput("[2/4] API Key（可留空）", "留空表示不使用 API Key")
 	} else {
 		apiKey, err = runTextInput("[2/4] API Key", "sk-xxx")
 	}
@@ -102,18 +119,18 @@ func RunSetup() (Config, error) {
 	}
 	pc.APIKey = apiKey
 	if apiKey == "" {
-		printStepDone("API Key", "Not set")
+		printStepDone("API Key", "未设置")
 	} else {
 		printStepDone("API Key", maskKey(apiKey))
 	}
 
-	// Step 3: Base URL (press Enter to use the default official endpoint)
+	// Step 3: Base URL（直接回车使用官方默认地址）
 	baseDefault := sp.baseURL
-	baseHint := "Leave blank to use the official endpoint"
+	baseHint := "留空使用官方地址"
 	if baseDefault != "" {
 		baseHint = baseDefault
 	}
-	baseURL, err := runTextInputWithDefault("[3/4] Base URL (press Enter for default; proxy users enter proxy URL)", baseHint, baseDefault)
+	baseURL, err := runTextInputWithDefault("[3/4] Base URL（直接回车使用默认，代理用户填写代理地址）", baseHint, baseDefault)
 	if err != nil {
 		return Config{}, err
 	}
@@ -121,15 +138,16 @@ func RunSetup() (Config, error) {
 	if baseURL != "" {
 		printStepDone("Base URL", baseURL)
 	} else {
-		printStepDone("Base URL", "Default")
+		printStepDone("Base URL", "默认")
 	}
 
-	// Step 4: model name (required)
-	modelName, err := runTextInput("[4/4] Model name", "e.g. gpt-4o / claude-sonnet-4 / gemini-2.5-pro")
+	// Step 4: 模型名（必填）
+	modelName, err := runTextInput("[4/4] 模型名称", "例如：gpt-4o / claude-sonnet-4 / gemini-2.5-pro")
 	if err != nil {
 		return Config{}, err
 	}
 	printStepDone("Model", modelName)
+	pc.Models = []ModelConfig{{Name: modelName}}
 
 	cfg := Config{
 		Provider:  providerName,
@@ -139,25 +157,25 @@ func RunSetup() (Config, error) {
 		Style:     "default",
 	}
 
-	// Save
+	// 保存
 	path := DefaultConfigPath()
 	if err := SaveConfig(path, cfg); err != nil {
 		return cfg, fmt.Errorf("save config: %w", err)
 	}
 
-	// Generate the commented template
+	// 生成注释模板
 	saveExampleConfig()
 
-	// The global preference directory is created by the startup flow (runWithConfig); here we only use the path for guidance
+	// 全局偏好目录由启动流程（runWithConfig）统一创建，这里仅取路径用于提示
 	rulesDir := rules.DefaultHomeRulesDir()
 
 	fmt.Fprintln(os.Stderr)
-	fmt.Fprintf(os.Stderr, "%s Config saved to %s\n",
+	fmt.Fprintf(os.Stderr, "%s 配置已保存到 %s\n",
 		lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Render("✓"), path)
-	fmt.Fprintf(os.Stderr, "  Default model: %s\n", modelName)
-	fmt.Fprintln(os.Stderr, "  Edit the config file if you want different models per role.")
+	fmt.Fprintf(os.Stderr, "  默认模型：%s\n", modelName)
+	fmt.Fprintln(os.Stderr, "  如需按角色配置不同模型，编辑配置文件即可。")
 	if rulesDir != "" {
-		fmt.Fprintf(os.Stderr, "  Global writing preferences can go into .md files under %s (see README.txt there)\n", rulesDir)
+		fmt.Fprintf(os.Stderr, "  全局写作偏好可放 %s 下的 .md 文件（见其中 README.txt）\n", rulesDir)
 	}
 	fmt.Fprintln(os.Stderr)
 
@@ -172,7 +190,7 @@ func saveExampleConfig() {
 	_ = os.WriteFile(filepath.Join(dir, "config.example.jsonc"), []byte(exampleConfig), 0o644)
 }
 
-// printStepDone prints a completion line for one setup step.
+// printStepDone 打印一步完成的确认行。
 func printStepDone(label, value string) {
 	fmt.Fprintf(os.Stderr, "  %s %s: %s\n",
 		lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Render("✓"),
@@ -187,11 +205,11 @@ func maskKey(key string) string {
 	return key[:4] + "****" + key[len(key)-4:]
 }
 
-// ---------- TUI components ----------
+// ---------- TUI 组件 ----------
 
 func runProviderSelect() (setupProvider, error) {
 	m := setupSelectModel{
-		title: "[1/4] Choose provider",
+		title: "[1/4] 选择 Provider",
 		items: setupProviders,
 	}
 	p := tea.NewProgram(m, tea.WithOutput(os.Stderr))
@@ -207,14 +225,14 @@ func runProviderSelect() (setupProvider, error) {
 }
 
 var apiTypeOptions = []setupProvider{
-	{name: "openai", label: "OpenAI-compatible"},
-	{name: "anthropic", label: "Anthropic-compatible"},
-	{name: "gemini", label: "Gemini-compatible"},
+	{name: "openai", label: "OpenAI 兼容"},
+	{name: "anthropic", label: "Anthropic 兼容"},
+	{name: "gemini", label: "Gemini 兼容"},
 }
 
 func runTypeSelect() (string, error) {
 	m := setupSelectModel{
-		title: "API protocol type",
+		title: "API 协议类型",
 		items: apiTypeOptions,
 	}
 	p := tea.NewProgram(m, tea.WithOutput(os.Stderr))
@@ -264,7 +282,7 @@ func runTextInputWithDefault(label, placeholder, defaultValue string) (string, e
 	return utils.CleanInputLine(result.value), nil
 }
 
-// ---------- Selector ----------
+// ---------- 选择器 ----------
 
 var (
 	setupCursorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
@@ -316,17 +334,17 @@ func (m setupSelectModel) View() string {
 		}
 		b.WriteString(cursor + label + "\n")
 	}
-	b.WriteString(setupDimStyle.Render("\n  ↑↓ select  Enter confirm  Esc cancel"))
+	b.WriteString(setupDimStyle.Render("\n  ↑↓ 选择  Enter 确认  Esc 取消"))
 	return b.String()
 }
 
-// ---------- Text input ----------
+// ---------- 文本输入 ----------
 
 type setupInputModel struct {
 	label        string
 	placeholder  string
-	defaultValue string // Default value used when the user presses Enter immediately
-	allowEmpty   bool   // Allow the user to submit an empty value directly
+	defaultValue string // 直接回车时使用的默认值
+	allowEmpty   bool   // 允许直接输入空值
 	value        string
 	cancelled    bool
 }
@@ -371,7 +389,7 @@ func (m setupInputModel) View() string {
 		b.WriteString(m.value)
 		b.WriteString(setupCursorStyle.Render("▌"))
 	}
-	b.WriteString(setupDimStyle.Render("  (Enter confirm, Esc cancel)"))
+	b.WriteString(setupDimStyle.Render("  (Enter 确认, Esc 取消)"))
 	b.WriteString("\n")
 	return b.String()
 }

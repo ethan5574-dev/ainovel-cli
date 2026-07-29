@@ -115,6 +115,15 @@ func Run(ctx context.Context, deps Deps, opts Options) (*Result, error) {
 	}
 
 	titleIdx := buildTitleIndex(outline)
+	for _, ch := range chapters {
+		summary, err := deps.Store.Summaries.LoadSummary(ch)
+		if err != nil {
+			return nil, fmt.Errorf("读取第 %d 章摘要失败：%w", ch, err)
+		}
+		if summary != nil && strings.TrimSpace(summary.Title) != "" {
+			titleIdx[ch] = summary.Title
+		}
+	}
 	var locations map[int]chapterLocation
 	if len(volumes) > 0 {
 		locations = buildLocations(volumes)

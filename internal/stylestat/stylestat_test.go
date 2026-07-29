@@ -17,7 +17,7 @@ func TestComputeBelowMinChapters(t *testing.T) {
 }
 
 func TestComputePatterns(t *testing.T) {
-	body := "他不是愤怒，而是恐惧。沉默了几息。像一盏灯。\n正文。\n"
+	body := "他不是愤怒，而是恐惧。沉默了几息。像一盏灯。她眼中闪过慌乱，心头一紧。他觉得这是一种说不出的寒意。\n正文。\n"
 	chapters := make([]string, 6)
 	for i := range chapters {
 		chapters[i] = chapterWith(body)
@@ -27,10 +27,14 @@ func TestComputePatterns(t *testing.T) {
 		t.Fatal("expected stats")
 	}
 	want := map[string]int{
-		"Correction sentence 『not...(but) is...』":          6,
-		"Timing quantifier 『X breaths/X moments』":            6,
-		"Simile 『like a/as if/as though』":                    6,
-		"Silence beat 『was silent/did not speak/did not look back』": 6,
+		"矫正句『不是…(而)是…』":        6,
+		"计时量词『X息/X瞬』":          6,
+		"明喻『像一/仿佛/如同/宛如』":      6,
+		"沉默节拍『沉默了/没有说话/没有回头』":  6,
+		"神态模板『眼中闪过/嘴角勾起/咬了咬唇』": 6,
+		"躯体反应『心头一紧/身子一颤/倒吸凉气』": 6,
+		"思维标记『心想/意识到/感到/觉得』":   6,
+		"抽象套话『一种说不出的/的意义在于』":   6,
 	}
 	for _, p := range s.Patterns {
 		if w, ok := want[p.Name]; ok && p.Total != w {
@@ -40,13 +44,13 @@ func TestComputePatterns(t *testing.T) {
 			t.Errorf("%s per_chapter: got %v want 1.0", p.Name, p.PerChapter)
 		}
 	}
-	if len(s.Patterns) != 4 {
-		t.Errorf("want 4 pattern classes, got %d: %+v", len(s.Patterns), s.Patterns)
+	if len(s.Patterns) != len(want) {
+		t.Errorf("want %d pattern classes, got %d: %+v", len(want), len(s.Patterns), s.Patterns)
 	}
 }
 
 func TestComputeTopPhrasesWithStopwords(t *testing.T) {
-	// "青云山巅" appears frequently; "陆九渊" is a character name and should be filtered
+	// 「青云山巅」高频出现；「陆九渊」是角色名应被过滤
 	line := "众人望向青云山巅，陆九渊负手而立。\n"
 	chapters := make([]string, 10)
 	for i := range chapters {
@@ -120,12 +124,12 @@ func TestComputeTitleFormats(t *testing.T) {
 	for i := range chapters {
 		chapters[i] = chapterWith("正文。")
 	}
-	// Mixed format → report
+	// 混用 → 上报
 	s := Compute(Input{Chapters: chapters, Titles: []string{"第一章 风起", "云涌", "第3章 雷动"}})
 	if s.TitleFormats == nil || s.TitleFormats.WithPrefix != 2 || s.TitleFormats.WithoutPrefix != 1 {
 		t.Errorf("title formats: %+v", s.TitleFormats)
 	}
-	// Uniform format → do not report
+	// 统一 → 不上报
 	s = Compute(Input{Chapters: chapters, Titles: []string{"风起", "云涌"}})
 	if s.TitleFormats != nil {
 		t.Errorf("uniform titles should not report: %+v", s.TitleFormats)

@@ -1,6 +1,6 @@
 package domain
 
-// TimelineEvent represents a timeline event.
+// TimelineEvent 时间线事件。
 type TimelineEvent struct {
 	Chapter    int      `json:"chapter"`
 	Time       string   `json:"time"`
@@ -8,7 +8,7 @@ type TimelineEvent struct {
 	Characters []string `json:"characters,omitempty"`
 }
 
-// ForeshadowEntry represents a foreshadowing entry.
+// ForeshadowEntry 伏笔条目。
 type ForeshadowEntry struct {
 	ID          string `json:"id"`
 	Description string `json:"description"`
@@ -17,14 +17,14 @@ type ForeshadowEntry struct {
 	ResolvedAt  int    `json:"resolved_at,omitempty"`
 }
 
-// ForeshadowUpdate represents an incremental foreshadowing update action.
+// ForeshadowUpdate 伏笔增量操作。
 type ForeshadowUpdate struct {
 	ID          string `json:"id"`
 	Action      string `json:"action"` // plant / advance / resolve
 	Description string `json:"description,omitempty"`
 }
 
-// RelationshipEntry represents a relationship entry between characters.
+// RelationshipEntry 人物关系条目。
 type RelationshipEntry struct {
 	CharacterA string `json:"character_a"`
 	CharacterB string `json:"character_b"`
@@ -32,38 +32,40 @@ type RelationshipEntry struct {
 	Chapter    int    `json:"chapter"`
 }
 
-// ConsistencyIssue represents a consistency issue.
+// ConsistencyIssue 一致性问题。
 type ConsistencyIssue struct {
-	Type        string `json:"type"`     // consistency / character / pacing / continuity / foreshadow / hook / aesthetic
-	Severity    string `json:"severity"` // critical / error / warning
-	Description string `json:"description"`
-	Evidence    string `json:"evidence,omitempty"` // Evidence: raw quote, specific plot point, or state data
-	Suggestion  string `json:"suggestion,omitempty"`
+	Type           string `json:"type"`     // 模型依据 rubric 给出的具体问题维度
+	Severity       string `json:"severity"` // critical / error / warning
+	Description    string `json:"description"`
+	Evidence       string `json:"evidence,omitempty"` // 证据：原文片段、具体情节或状态数据
+	Suggestion     string `json:"suggestion,omitempty"`
+	Chapters       []int  `json:"chapters,omitempty"` // 证据实际落在哪些章节
+	RequiresChange bool   `json:"requires_change"`    // 是否应立即进入返工队列，由 Editor 语义判断
 }
 
-// DimensionScore represents a score for a single review dimension.
+// DimensionScore 单维度评审评分。
 type DimensionScore struct {
-	Dimension string `json:"dimension"`         // consistency / character / pacing / continuity / foreshadow / hook / aesthetic
+	Dimension string `json:"dimension"`         // 由评审 rubric 定义，可按任务扩展
 	Score     int    `json:"score"`             // 0-100
-	Verdict   string `json:"verdict"`           // pass / warning / fail
-	Comment   string `json:"comment,omitempty"` // Brief summary of findings for this dimension
+	Verdict   string `json:"verdict,omitempty"` // 兼容旧审阅；运行时不再用阈值覆盖模型判断
+	Comment   string `json:"comment,omitempty"` // 该维度的简要结论
 }
 
-// ReviewEntry represents a review entry by the Editor.
+// ReviewEntry Editor 的审阅条目。
 type ReviewEntry struct {
 	Chapter          int                `json:"chapter"`
 	Scope            string             `json:"scope"` // chapter / global / arc
 	Issues           []ConsistencyIssue `json:"issues"`
-	Dimensions       []DimensionScore   `json:"dimensions,omitempty"`      // Scores broken down by dimension
+	Dimensions       []DimensionScore   `json:"dimensions,omitempty"`      // 分维度评分
 	ContractStatus   string             `json:"contract_status,omitempty"` // met / partial / missed
-	ContractMisses   []string           `json:"contract_misses,omitempty"` // Unfulfilled contract items
-	ContractNotes    string             `json:"contract_notes,omitempty"`  // Brief description of contract fulfillment
+	ContractMisses   []string           `json:"contract_misses,omitempty"` // 未达成的 contract 条目
+	ContractNotes    string             `json:"contract_notes,omitempty"`  // 对 contract 履行情况的简述
 	Verdict          string             `json:"verdict"`                   // accept / polish / rewrite
 	Summary          string             `json:"summary"`
-	AffectedChapters []int              `json:"affected_chapters,omitempty"` // Chapter numbers requiring rewrite/polish
+	AffectedChapters []int              `json:"affected_chapters,omitempty"` // 需要重写/打磨的章节号
 }
 
-// CriticalCount returns the number of critical-level issues.
+// CriticalCount 返回 critical 级别问题数量。
 func (r *ReviewEntry) CriticalCount() int {
 	n := 0
 	for _, issue := range r.Issues {
@@ -74,7 +76,7 @@ func (r *ReviewEntry) CriticalCount() int {
 	return n
 }
 
-// ErrorCount returns the number of error-level issues.
+// ErrorCount 返回 error 级别问题数量。
 func (r *ReviewEntry) ErrorCount() int {
 	n := 0
 	for _, issue := range r.Issues {
@@ -85,7 +87,7 @@ func (r *ReviewEntry) ErrorCount() int {
 	return n
 }
 
-// Dimension returns the score for the specified dimension; returns nil if it doesn't exist.
+// Dimension 返回指定维度的评分；不存在则返回 nil。
 func (r *ReviewEntry) Dimension(name string) *DimensionScore {
 	if r == nil {
 		return nil

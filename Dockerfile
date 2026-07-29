@@ -26,5 +26,4 @@ RUN apk add --no-cache \
 WORKDIR /workspace
 
 COPY --from=builder /out/ainovel-cli /usr/local/bin/ainovel-cli
-
 ENTRYPOINT ["ainovel-cli"]

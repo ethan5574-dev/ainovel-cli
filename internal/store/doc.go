@@ -1,22 +1,23 @@
-// Package store provides file system-based persistent storage.
+// Package store 提供基于文件系统的持久化存储。
 //
-// Architecture: 1 IO base + multiple sub-stores + 1 composition root.
-// Each sub-store holds an independent IO instance and an independent sync.RWMutex.
-// Reads and writes for main domains (Progress, Outline, Drafts, Summaries, etc.) do not block each other;
-// WorldStore combines several low-frequency small domains to share a single lock.
+// 架构：1 个 IO 基座 + 多个子存储 + 1 个组合根。
+// 每个子存储持有独立的 IO 实例和独立的 sync.RWMutex。
+// 主要领域（Progress、Outline、Drafts、Summaries 等）的读写互不阻塞；
+// WorldStore 将多个低频小领域合并共享一把锁。
 //
-// The composition root Store holds references to all sub-stores and is responsible for cross-domain atomic operations
-// (ExpandArc, AppendVolume, ClearHandledSteer).
+// 组合根 Store 持有所有子存储的引用，并串行协调跨域操作
+// （ExpandArc、AppendVolume、ClearHandledSteer）；多个文件不构成事务原子提交，
+// 调用依靠安全写入顺序、显式错误与同参数幂等重放恢复。
 //
-// Sub-store divisions:
-//   - ProgressStore: Main progress state (meta/progress.json)
-//   - OutlineStore: Premise, outline (flat/layered), compass
-//   - DraftStore: Chapter plan, drafts, final chapters
-//   - SummaryStore: Chapter/Arc/Volume summaries
-//   - RunMetaStore: Run metadata (model, steer history)
-//   - SignalStore: One-off signal files (PendingCommit recovery)
-//   - CheckpointStore: Step-level checkpoints (meta/checkpoints.jsonl)
-//   - RuntimeStore: Runtime event queue (meta/runtime/*.jsonl)
-//   - CharacterStore: Character profiles, state snapshots
-//   - WorldStore: Timeline, foreshadow, relations, state changes, world rules, style rules, reviews
+// 子存储划分：
+//   - ProgressStore: 进度主状态（meta/progress.json）
+//   - OutlineStore: 前提、大纲（扁平/分层）、指南针
+//   - DraftStore: 章节构思、草稿、终稿
+//   - SummaryStore: 章/弧/卷摘要
+//   - RunMetaStore: 运行元数据（模型、干预历史）
+//   - SignalStore: 一次性信号文件（PendingCommit 恢复）
+//   - CheckpointStore: step 级 checkpoint（meta/checkpoints.jsonl）
+//   - RuntimeStore: 运行时事件队列（meta/runtime/*.jsonl）
+//   - CharacterStore: 角色档案、状态快照
+//   - WorldStore: 时间线、伏笔、关系、状态变化、世界规则、风格规则、审阅
 package store
