@@ -1,12 +1,10 @@
 package tools
 
 import (
-	"fmt"
 	"slices"
 
 	"github.com/voocel/ainovel-cli/internal/domain"
 	"github.com/voocel/ainovel-cli/internal/rules"
-	"github.com/voocel/ainovel-cli/internal/stylestat"
 )
 
 type contextBuildState struct {
@@ -378,16 +376,6 @@ func (t *ContextTool) buildStyleStats(envelope *chapterContextEnvelope, state co
 	if state.progress == nil || len(state.progress.CompletedChapters) == 0 {
 		return
 	}
-	completed := slices.Clone(state.progress.CompletedChapters)
-	slices.Sort(completed)
-	chapters := make([]string, 0, len(completed))
-	for _, ch := range completed {
-		if text, err := t.store.Drafts.LoadChapterText(ch); err == nil && text != "" {
-			chapters = append(chapters, text)
-		} else {
-			warn(fmt.Sprintf("style_stats.chapter_%d", ch), err)
-		}
-	}
 
 	var titles []string
 	if outline, err := t.store.Outline.LoadOutline(); err == nil {
@@ -398,11 +386,15 @@ func (t *ContextTool) buildStyleStats(envelope *chapterContextEnvelope, state co
 		warn("style_stats.outline", err)
 	}
 
-	stats := stylestat.Compute(stylestat.Input{
-		Chapters:  chapters,
-		Titles:    titles,
-		Stopwords: t.styleStopwords(warn),
-	})
+	stats, err := t.styleStats.Snapshot(
+		state.progress.CompletedChapters,
+		titles,
+		t.styleStopwords(warn),
+	)
+	if err != nil {
+		warn("style_stats", err)
+		return
+	}
 	if stats == nil {
 		return
 	}

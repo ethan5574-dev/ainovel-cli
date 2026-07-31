@@ -36,15 +36,25 @@ type References struct {
 
 // ContextTool 组装当前章节所需上下文。
 type ContextTool struct {
-	store *store.Store
-	refs  References
-	style string
+	store      *store.Store
+	refs       References
+	style      string
+	styleStats *StyleStatsIndex
 }
 
-// NewContextTool 创建上下文工具。
+// NewContextTool 创建上下文工具。styleStats 必须与 commit_chapter 共享，
+// 否则重写章节后上下文会继续读取旧统计。
 // user_rules 由 buildUserRules 直接读本书快照（meta/user_rules.json）注入，不再依赖加载选项。
-func NewContextTool(store *store.Store, refs References, style string) *ContextTool {
-	return &ContextTool{store: store, refs: refs, style: style}
+func NewContextTool(
+	store *store.Store,
+	refs References,
+	style string,
+	styleStats *StyleStatsIndex,
+) *ContextTool {
+	if styleStats == nil {
+		panic("tools: NewContextTool requires StyleStatsIndex")
+	}
+	return &ContextTool{store: store, refs: refs, style: style, styleStats: styleStats}
 }
 
 func (t *ContextTool) Name() string { return "novel_context" }
@@ -493,6 +503,8 @@ func (t *ContextTool) ContextSummary() string {
 //
 //	< recent_state_changes < foreshadow_ledger < relationship_state < 其余（不裁剪）
 //
+// style_stats 是体积有界的全书级核心信号，不参与裁剪。
+//
 // 裁剪的 key 会记录到 result["_trimmed"] 供日志排查。
 func trimByBudget(result map[string]any, budget int) {
 	// 先测量当前大小
@@ -507,7 +519,6 @@ func trimByBudget(result map[string]any, budget int) {
 		"voice_samples",
 		"style_anchors",
 		"style_rules",
-		"style_stats",
 		"previous_tail",
 		"timeline",
 		"recent_state_changes",

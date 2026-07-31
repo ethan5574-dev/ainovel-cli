@@ -110,13 +110,14 @@ func resolvedRoleThinking(model agentcore.ChatModel, cfg bootstrap.Config, role 
 func BuildWorkers(
 	cfg bootstrap.Config,
 	store *store.Store,
+	styleStats *tools.StyleStatsIndex,
 	models *bootstrap.ModelSet,
 	bundle assets.Bundle,
 	recordUsage UsageRecorder,
 	onGuardBlock guard.BlockHook,
 ) (*subagent.Runner, *tools.AskUserTool, *ctxpack.WriterRestorePack, ApplyThinking) {
 	// 共享工具
-	contextTool := tools.NewContextTool(store, bundle.References, cfg.Style)
+	contextTool := tools.NewContextTool(store, bundle.References, cfg.Style, styleStats)
 	readChapter := tools.NewReadChapterTool(store)
 	askUser := tools.NewAskUserTool()
 
@@ -133,7 +134,7 @@ func BuildWorkers(
 		tools.NewDraftChapterTool(store),
 		tools.NewEditChapterTool(store),
 		tools.NewCheckConsistencyTool(store),
-		tools.NewCommitChapterTool(store),
+		tools.NewCommitChapterTool(store, styleStats),
 	}
 	editorTools := []agentcore.Tool{
 		contextTool,

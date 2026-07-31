@@ -261,7 +261,7 @@ func TestEngine_ReviewPermitWritesExactlyOneNewChapter(t *testing.T) {
 		Name: "writer", Description: "test writer", Model: scriptedWriterModel(), SystemPrompt: "test",
 		Tools: []agentcore.Tool{
 			tools.NewPlanChapterTool(st), tools.NewDraftChapterTool(st),
-			tools.NewCheckConsistencyTool(st), tools.NewCommitChapterTool(st),
+			tools.NewCheckConsistencyTool(st), tools.NewCommitChapterTool(st, tools.NewStyleStatsIndex(st)),
 		},
 		MaxTurns: 10, StopAfterTools: []string{"commit_chapter"},
 	}
@@ -350,7 +350,7 @@ func TestEngine_WritesBookToCompletion(t *testing.T) {
 			tools.NewPlanChapterTool(st),
 			tools.NewDraftChapterTool(st),
 			tools.NewCheckConsistencyTool(st),
-			tools.NewCommitChapterTool(st),
+			tools.NewCommitChapterTool(st, tools.NewStyleStatsIndex(st)),
 		},
 		MaxTurns:       10,
 		StopAfterTools: []string{"commit_chapter"},
@@ -777,7 +777,7 @@ func TestEngine_PauseWithEditorDispatchWaitsForRewriteQueue(t *testing.T) {
 			tools.NewPlanChapterTool(st),
 			tools.NewDraftChapterTool(st),
 			tools.NewCheckConsistencyTool(st),
-			tools.NewCommitChapterTool(st),
+			tools.NewCommitChapterTool(st, tools.NewStyleStatsIndex(st)),
 		},
 		MaxTurns: 10, StopAfterTools: []string{"commit_chapter"},
 	}
@@ -845,7 +845,7 @@ func TestEngine_BoundaryHoldDoesNotDispatchAnotherWorker(t *testing.T) {
 			tools.NewPlanChapterTool(st),
 			tools.NewDraftChapterTool(st),
 			tools.NewCheckConsistencyTool(st),
-			tools.NewCommitChapterTool(st),
+			tools.NewCommitChapterTool(st, tools.NewStyleStatsIndex(st)),
 		},
 		MaxTurns: 10, StopAfterTools: []string{"commit_chapter"},
 	}

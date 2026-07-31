@@ -21,11 +21,17 @@ import (
 
 // CommitChapterTool 提交章节：加载正文 → 保存终稿 → 生成摘要 → 更新状态 → 更新进度。
 type CommitChapterTool struct {
-	store *store.Store
+	store      *store.Store
+	styleStats *StyleStatsIndex
 }
 
-func NewCommitChapterTool(store *store.Store) *CommitChapterTool {
-	return &CommitChapterTool{store: store}
+// NewCommitChapterTool 创建提交工具。styleStats 必须与 novel_context 共享，
+// 保证新增、重写与恢复完成后刷新同一份统计索引。
+func NewCommitChapterTool(store *store.Store, styleStats *StyleStatsIndex) *CommitChapterTool {
+	if styleStats == nil {
+		panic("tools: NewCommitChapterTool requires StyleStatsIndex")
+	}
+	return &CommitChapterTool{store: store, styleStats: styleStats}
 }
 
 // commitOutput 在 domain.CommitResult 之上嵌入扩展字段，保持 domain 包不依赖 rules。
@@ -470,6 +476,7 @@ func (t *CommitChapterTool) Execute(_ context.Context, args json.RawMessage) (js
 	if err := t.store.World.SaveRuleViolations(a.Chapter, violations); err != nil {
 		slog.Warn("机械违规落盘失败", "module", "tools", "chapter", a.Chapter, "err", err)
 	}
+	t.refreshStyleStats(a.Chapter, content)
 	return output, nil
 }
 
@@ -492,6 +499,7 @@ func (t *CommitChapterTool) finishPendingCommit(pending domain.PendingCommit, pr
 	if err := t.store.Signals.ClearPendingCommit(); err != nil {
 		return nil, fmt.Errorf("clear pending commit: %w: %w", errs.ErrStoreWrite, err)
 	}
+	t.refreshStyleStats(pending.Chapter, pending.DraftContent)
 	if len(pending.Output) > 0 {
 		return append(json.RawMessage(nil), pending.Output...), nil
 	}
@@ -705,7 +713,24 @@ func (t *CommitChapterTool) executeRewriteCommit(a commitArgs, progress *domain.
 	if err := t.store.World.SaveRuleViolations(chapter, violations); err != nil {
 		slog.Warn("机械违规落盘失败", "module", "tools", "chapter", chapter, "err", err)
 	}
+	t.refreshStyleStats(chapter, content)
 	return output, nil
+}
+
+func (t *CommitChapterTool) refreshStyleStats(chapter int, content string) {
+	if content == "" {
+		var err error
+		content, err = t.store.Drafts.LoadChapterText(chapter)
+		if err != nil {
+			slog.Error("风格统计索引更新失败", "module", "tools", "chapter", chapter, "err", err)
+			return
+		}
+		if content == "" {
+			slog.Error("风格统计索引更新失败", "module", "tools", "chapter", chapter, "err", errors.New("终稿不存在"))
+			return
+		}
+	}
+	t.styleStats.ChapterCommitted(chapter, content)
 }
 
 // buildSkipResult 为"章节已完成的重复提交"构造与正常 commit 对齐的事实返回。

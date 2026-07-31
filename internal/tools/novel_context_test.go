@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -13,6 +14,10 @@ import (
 	"github.com/voocel/ainovel-cli/internal/rules"
 	"github.com/voocel/ainovel-cli/internal/store"
 )
+
+func newTestContextTool(st *store.Store, refs References, style string) *ContextTool {
+	return NewContextTool(st, refs, style, NewStyleStatsIndex(st))
+}
 
 func TestContextToolInjectsStyleStats(t *testing.T) {
 	dir := t.TempDir()
@@ -33,7 +38,7 @@ func TestContextToolInjectsStyleStats(t *testing.T) {
 		t.Fatalf("Save progress: %v", err)
 	}
 
-	tool := NewContextTool(st, References{}, "default")
+	tool := newTestContextTool(st, References{}, "default")
 	args, _ := json.Marshal(map[string]any{"chapter": 7})
 	raw, err := tool.Execute(context.Background(), args)
 	if err != nil {
@@ -77,7 +82,7 @@ func TestContextToolWarnsWhenUserRulesSnapshotIsCorrupt(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "meta", "user_rules.json"), []byte("{"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := NewContextTool(st, References{}, "default").Execute(context.Background(), json.RawMessage(`{}`))
+	raw, err := newTestContextTool(st, References{}, "default").Execute(context.Background(), json.RawMessage(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +122,7 @@ func TestContextToolReportsWarningsForCorruptedState(t *testing.T) {
 		t.Fatalf("write progress.json: %v", err)
 	}
 
-	tool := NewContextTool(store, References{}, "default")
+	tool := newTestContextTool(store, References{}, "default")
 	args, err := json.Marshal(map[string]any{"chapter": 2})
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
@@ -253,7 +258,7 @@ func TestContextToolChapterModeIncludesWorkingAndReferenceFields(t *testing.T) {
 		t.Fatalf("SetPlanningTier: %v", err)
 	}
 
-	tool := NewContextTool(s, References{
+	tool := newTestContextTool(s, References{
 		Consistency:      "一致性检查",
 		HookTechniques:   "钩子技巧",
 		QualityChecklist: "质量清单",
@@ -405,7 +410,7 @@ func TestContextToolArchitectModeIncludesPlanningAndFoundation(t *testing.T) {
 		t.Fatalf("SetPlanningTier: %v", err)
 	}
 
-	tool := NewContextTool(s, References{
+	tool := newTestContextTool(s, References{
 		OutlineTemplate:   "大纲模板",
 		CharacterTemplate: "角色模板",
 		LongformPlanning:  "长篇规划",
@@ -477,6 +482,35 @@ func TestTrimByBudgetRemovesMirroredMemoryKeys(t *testing.T) {
 	}
 }
 
+func TestTrimByBudgetKeepsStyleStats(t *testing.T) {
+	styleStats := map[string]any{
+		"chapters": 200,
+		"patterns": []map[string]any{
+			{"name": "矫正句", "total": 80, "per_chapter": 0.4},
+		},
+	}
+	result := map[string]any{
+		"references":  strings.Repeat("x", 500),
+		"style_stats": styleStats,
+		"episodic_memory": map[string]any{
+			"style_stats": styleStats,
+		},
+	}
+
+	trimByBudget(result, 100)
+
+	if _, ok := result["style_stats"]; !ok {
+		t.Fatal("style_stats must remain at top level")
+	}
+	episodic := result["episodic_memory"].(map[string]any)
+	if _, ok := episodic["style_stats"]; !ok {
+		t.Fatal("style_stats must remain in episodic_memory")
+	}
+	if trimmed, ok := result["_trimmed"].([]string); ok && slices.Contains(trimmed, "style_stats") {
+		t.Fatal("style_stats must not be reported as trimmed")
+	}
+}
+
 func TestContextToolSelectedMemoryRecallsStoryThreadsAndReviewLessons(t *testing.T) {
 	dir := t.TempDir()
 	s := store.NewStore(dir)
@@ -528,7 +562,7 @@ func TestContextToolSelectedMemoryRecallsStoryThreadsAndReviewLessons(t *testing
 		t.Fatalf("SaveReview: %v", err)
 	}
 
-	tool := NewContextTool(s, References{}, "default")
+	tool := newTestContextTool(s, References{}, "default")
 	args, err := json.Marshal(map[string]any{"chapter": 2})
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
@@ -605,7 +639,7 @@ func TestContextToolSelectedMemorySurfacesAgingForeshadow(t *testing.T) {
 		t.Fatalf("SaveForeshadowLedger: %v", err)
 	}
 
-	tool := NewContextTool(s, References{}, "default")
+	tool := newTestContextTool(s, References{}, "default")
 	args, err := json.Marshal(map[string]any{"chapter": 50})
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
@@ -667,7 +701,7 @@ func TestContextToolSelectedMemoryIncludesGlobalReviewLessons(t *testing.T) {
 		t.Fatalf("SaveReview(global): %v", err)
 	}
 
-	tool := NewContextTool(s, References{}, "default")
+	tool := newTestContextTool(s, References{}, "default")
 	args, err := json.Marshal(map[string]any{"chapter": 2})
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
@@ -712,7 +746,7 @@ func TestContextToolKeepsFullForeshadowWhenRecallNotTriggered(t *testing.T) {
 		t.Fatalf("SaveForeshadowLedger: %v", err)
 	}
 
-	tool := NewContextTool(s, References{}, "default")
+	tool := newTestContextTool(s, References{}, "default")
 	args, err := json.Marshal(map[string]any{"chapter": 2})
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
@@ -760,7 +794,7 @@ func TestContextToolFallsBackToFullForeshadowWhenSelectionIsTooSparse(t *testing
 		t.Fatalf("SaveForeshadowLedger: %v", err)
 	}
 
-	tool := NewContextTool(s, References{}, "default")
+	tool := newTestContextTool(s, References{}, "default")
 	args, err := json.Marshal(map[string]any{"chapter": 2})
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
@@ -821,7 +855,7 @@ func TestContextToolInjectsRewriteBriefForPendingRewriteChapter(t *testing.T) {
 		t.Fatalf("SaveReview: %v", err)
 	}
 
-	tool := NewContextTool(s, References{}, "default")
+	tool := newTestContextTool(s, References{}, "default")
 	args, err := json.Marshal(map[string]any{"chapter": 2})
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
@@ -863,7 +897,7 @@ func TestContextToolOmitsRewriteBriefForNormalChapter(t *testing.T) {
 		t.Fatalf("InitProgress: %v", err)
 	}
 
-	tool := NewContextTool(s, References{}, "default")
+	tool := newTestContextTool(s, References{}, "default")
 	args, err := json.Marshal(map[string]any{"chapter": 2})
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
@@ -908,7 +942,7 @@ func TestContextToolLoadsArcReviewAffectingEarlierChapter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := NewContextTool(s, References{}, "default").Execute(context.Background(), json.RawMessage(`{"chapter":3}`))
+	result, err := newTestContextTool(s, References{}, "default").Execute(context.Background(), json.RawMessage(`{"chapter":3}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -934,7 +968,7 @@ func TestContextToolDoesNotInjectUserDirectives(t *testing.T) {
 		t.Fatalf("InitProgress: %v", err)
 	}
 
-	tool := NewContextTool(s, References{}, "default")
+	tool := newTestContextTool(s, References{}, "default")
 	for name, chapter := range map[string]int{"writer": 1, "architect": 0} {
 		args, _ := json.Marshal(map[string]any{"chapter": chapter})
 		result, err := tool.Execute(context.Background(), args)
@@ -977,7 +1011,7 @@ func TestContextToolInjectsRuleViolations(t *testing.T) {
 		t.Fatalf("save violations: %v", err)
 	}
 
-	tool := NewContextTool(st, References{}, "default")
+	tool := newTestContextTool(st, References{}, "default")
 	args, _ := json.Marshal(map[string]any{"chapter": 2})
 	raw, err := tool.Execute(context.Background(), args)
 	if err != nil {

@@ -53,7 +53,7 @@ func TestContextToolInjectsCompactSimulationProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tool := NewContextTool(st, References{}, "default")
+	tool := newTestContextTool(st, References{}, "default")
 	architectRaw, err := tool.Execute(context.Background(), json.RawMessage(`{}`))
 	if err != nil {
 		t.Fatalf("architect Execute: %v", err)

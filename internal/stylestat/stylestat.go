@@ -3,6 +3,7 @@
 // 动机：弧内评审窗口（~10 章）对全书级模式固化天然失明——句式 tic 章均几十次、
 // 章末形态同构、跨章复读，单章看每处都"正常"，只有全书统计能暴露。统计归代码
 // （确定性、零幻觉），裁定归 LLM（editor 按数字判维度分，writer 据此自避免）。
+// Compute 供离线评测一次性全量计算；运行时使用 Tracker 按章节增量维护。
 package stylestat
 
 import (
@@ -237,18 +238,13 @@ func repeatedSentences(chapters []string) []SentenceStat {
 	}
 	seen := make(map[string]*rec)
 	for ci, text := range chapters {
-		for _, sent := range sentenceSplit.Split(text, -1) {
-			// 剥掉包裹引号再归并：同一句台词带/不带前引号不应算成两条
-			sent = strings.Trim(strings.TrimSpace(sent), `"“”‘’「」『』`)
-			if len([]rune(sent)) < 12 {
-				continue
-			}
+		for sent, count := range chapterSentenceCounts(text) {
 			r := seen[sent]
 			if r == nil {
 				r = &rec{chapters: make(map[int]struct{})}
 				seen[sent] = r
 			}
-			r.count++
+			r.count += count
 			r.chapters[ci] = struct{}{}
 		}
 	}
@@ -270,6 +266,11 @@ func repeatedSentences(chapters []string) []SentenceStat {
 		out = out[:5]
 	}
 	return out
+}
+
+// trimWrappedQuotes 剥掉包裹引号：同一句台词带/不带前引号不应算成两条。
+func trimWrappedQuotes(sentence string) string {
+	return strings.Trim(strings.TrimSpace(sentence), `"“”‘’「」『』`)
 }
 
 func endingShape(chapters []string) EndingStat {

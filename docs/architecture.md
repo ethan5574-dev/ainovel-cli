@@ -480,6 +480,11 @@ Violations represent architectural deviations.
 Modifying `writer.md` immediately causes style changes; adding new editor review dimensions is backward-compatible (save_review accepts structured JSON). Adding a new reference guide md requires wiring in three places (`tools.References` field + `loadReferences` in `assets/load.go` + `writerReferences`/`architectReferences` injection in `novel_context.go`), rather than being loaded automatically by just dropping it in the directory—`References` is an explicit field mapping, facilitating role/chapter-level pruning.
 
 **Whole-book Style Statistics (`internal/stylestat`)**: The review window within an arc is naturally blind to whole-book style freezes like "sentence pattern tics dozens of times per chapter, isomorphic chapter-end patterns, word-for-word repetition across chapters"—every single part looks normal when viewed in isolation. The chapter path in `novel_context` runs deterministic statistics (sentence pattern models, near-window high-frequency phrases, cross-chapter duplicate sentences, chapter-end patterns, title format mix-ups) on all completed chapters, and injects them into `episodic_memory.style_stats`: the editor adjudicates numerically on the aesthetic dimension, and the writer self-avoids based on this. **Statistics belong to code, adjudication belongs to LLM**—thresholds are not hard-coded, and whether a number constitutes a flaw is adjudicated by the model based on the genre. Its parallel product baseline `rules.Lint` (markdown leftovers / non-Chinese snippets) is always executed in `commit_chapter`, only returning facts.
+### 11.4 质量迭代
+
+改文风 → 改 `<书目录>/style/`（用户级）或 assets/voice.md（内置），文风评测集 A/B 验证；新增评审维度 → 改 editor.md（save_review 结构化接收）；新增参考资料 → 三处显式接线（`tools.References` + `loadReferences` + novel_context 注入映射）。
+
+**全书级风格统计（`internal/stylestat`）**：Host 为每本书创建唯一 `StyleStatsIndex`，并显式注入 `novel_context` 与 `commit_chapter`。首次启动从全部已完成章节恢复索引，后续对新增/重写章节增量更新（句式模式/高频短语/跨章重复句/章末形态），相同书状态下复用快照并注入 `episodic_memory.style_stats`：editor 按数字裁定，writer 据此自避免。离线 eval 仍可直接调用纯函数 `Compute`。**统计归代码，裁定归 LLM**。
 
 ---
 
