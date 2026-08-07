@@ -8,3 +8,14 @@ services:
       - ./workspace:/workspace
     stdin_open: true
     tty: true
+
+  ainovel-web:
+    image: ghcr.io/voocel/ainovel-cli:latest
+    build:
+      context: .
+    command: ["web", "--addr", "0.0.0.0:5173"]
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./config:/root/.ainovel
+      - ./workspace:/workspace

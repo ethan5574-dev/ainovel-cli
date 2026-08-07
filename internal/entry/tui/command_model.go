@@ -35,7 +35,7 @@ type modelRoleOption struct {
 }
 
 var modelRoleOptions = []modelRoleOption{
-	{Key: "default", Label: "默认"},
+	{Key: "default", Label: "Default"},
 
 	{Key: "architect", Label: "Architect"},
 	{Key: "writer", Label: "Writer"},
@@ -45,13 +45,13 @@ var modelRoleOptions = []modelRoleOption{
 type thinkingOption struct{ Key, Label string }
 
 var allThinkingOptions = []thinkingOption{
-	{"", "默认(继承)"},
-	{"off", "关闭"},
-	{"low", "低"},
-	{"medium", "中"},
-	{"high", "高"},
-	{"xhigh", "极高"},
-	{"max", "最高"},
+	{"", "Default (inherited)"},
+	{"off", "Off"},
+	{"low", "Low"},
+	{"medium", "Medium"},
+	{"high", "High"},
+	{"xhigh", "Very high"},
+	{"max", "Maximum"},
 }
 
 func thinkingOptionsFor(rt modelRuntime, role string) []thinkingOption {
@@ -105,7 +105,7 @@ func newModelSwitchState(rt modelRuntime, roleHint string) *modelSwitchState {
 		providers: rt.ConfiguredProviders(),
 	}
 	if len(state.providers) == 0 {
-		state.message = "当前没有可用 provider"
+		state.message = "No providers are available"
 	}
 
 	roleHint = normalizeRoleKey(roleHint)
@@ -249,10 +249,10 @@ func (s *modelSwitchState) syncThinking(rt modelRuntime) {
 
 func (s *modelSwitchState) apply(rt modelRuntime) error {
 	if len(s.providers) == 0 {
-		return fmt.Errorf("当前没有可用 provider")
+		return fmt.Errorf("no providers are available")
 	}
 	if len(s.models) == 0 {
-		return fmt.Errorf("provider %q 没有已配置模型", s.provider())
+		return fmt.Errorf("provider %q has no configured models", s.provider())
 	}
 	wantThinking := s.thinkingKey()
 	if err := rt.SwitchModel(s.role(), s.provider(), s.model()); err != nil {
@@ -311,16 +311,16 @@ func renderModelSwitchBar(width int, state *modelSwitchState) string {
 	title := lipgloss.NewStyle().
 		Foreground(colorMuted).
 		Bold(true).
-		Render("/model 切换模型")
+		Render("/model Switch model")
 
-	row1 := renderModelField("角色", state.roleLabel(), state.focus == modelFocusRole)
+	row1 := renderModelField("Role", state.roleLabel(), state.focus == modelFocusRole)
 	row2 := renderModelField("Provider", state.provider(), state.focus == modelFocusProvider)
-	row3 := renderModelField("模型", state.modelLabel(), state.focus == modelFocusModel)
-	row4 := renderModelField("推理强度", state.thinkingLabel(), state.focus == modelFocusThinking)
+	row3 := renderModelField("Model", state.modelLabel(), state.focus == modelFocusModel)
+	row4 := renderModelField("Reasoning", state.thinkingLabel(), state.focus == modelFocusThinking)
 	hint := lipgloss.NewStyle().
 		Foreground(colorDim).
 		Italic(true).
-		Render("Tab 切字段   ←→ 切选项   Enter 应用   Esc 取消")
+		Render("Tab Field   ←→ Option   Enter Apply   Esc Cancel")
 	lines := []string{
 		row1,
 		row2,
@@ -371,7 +371,7 @@ func renderModelSwitchBar(width int, state *modelSwitchState) string {
 
 func renderModelField(label, value string, focused bool) string {
 	if strings.TrimSpace(value) == "" {
-		value = "未设置"
+		value = "Not set"
 	}
 	labelText := lipgloss.NewStyle().
 		Foreground(colorMuted).

@@ -53,12 +53,12 @@ func TestLoad_NoOverrides(t *testing.T) {
 
 func TestInterventionPromptsKeepScopeContract(t *testing.T) {
 	prompts := loadPrompts()
-	for _, phrase := range []string{"上下文不等于修改授权", "最小充分范围", "分析范围不等于修改范围"} {
+	for _, phrase := range []string{"context is not authorization to modify", "smallest sufficient scope", "analysis scope is not modification scope"} {
 		if !strings.Contains(prompts.ArbiterIntervention, phrase) {
 			t.Fatalf("Arbiter 干预提示缺少范围契约 %q", phrase)
 		}
 	}
-	for _, phrase := range []string{"用户原始干预", "分析范围不等于修改范围", "最小充分章节集合"} {
+	for _, phrase := range []string{"user's original intervention", "Analysis scope is not modification scope", "smallest sufficient chapter set"} {
 		if !strings.Contains(prompts.Editor, phrase) {
 			t.Fatalf("Editor 提示缺少范围契约 %q", phrase)
 		}
@@ -115,8 +115,8 @@ func TestLoad_ThreeTierAppendAndReplace(t *testing.T) {
 	if !strings.HasPrefix(b.Voice, builtinVoice) {
 		t.Fatal("追加语义必须保留内置原文为前缀")
 	}
-	giIdx := strings.Index(b.Voice, "## 用户全局文风覆盖")
-	bkIdx := strings.Index(b.Voice, "## 本书文风覆盖")
+	giIdx := strings.Index(b.Voice, "## Global User Voice Override")
+	bkIdx := strings.Index(b.Voice, "## Book Voice Override")
 	if giIdx < 0 || bkIdx < 0 || giIdx > bkIdx {
 		t.Fatalf("追加段顺序错误:global=%d book=%d", giIdx, bkIdx)
 	}
@@ -166,7 +166,7 @@ func TestOverrideVoice_SharesAssemblyPath(t *testing.T) {
 		t.Fatal("占位符必须被消耗")
 	}
 	// 协议部分不受 voice 覆盖影响
-	if !strings.Contains(got, "## 执行协议") {
+	if !strings.Contains(got, "## Execution Protocol") {
 		t.Fatal("协议模板不得被 voice 覆盖破坏")
 	}
 }

@@ -13,7 +13,7 @@ import (
 func renderTopBar(snap host.UISnapshot, width int, spinnerFrame, version string) string {
 	novelName := snap.NovelName
 	if novelName == "" {
-		novelName = "未定书名"
+		novelName = "Untitled novel"
 	}
 
 	var infoParts []string
@@ -164,10 +164,10 @@ func renderWelcome(width, height int, errMsg string, mode startupMode, importHin
 
 	// 功能亮点
 	features := []struct{ icon, label, desc string }{
-		{">>", "多模型协作", "Architect 规划 / Writer 创作 / Editor 审阅"},
-		{"::", "断点恢复", "崩溃或中断后从上次进度自动续写"},
-		{"<>", "实时干预", "创作过程中随时调整剧情走向"},
-		{"##", "分层长篇", "支持卷-弧-章分层结构的长篇创作"},
+		{">>", "Multi-model collaboration", "Architect plans / Writer creates / Editor reviews"},
+		{"::", "Resume from checkpoints", "Automatically resume from the last progress after a crash or interruption"},
+		{"<>", "Live intervention", "Adjust the plot direction at any time while writing"},
+		{"##", "Layered long form", "Support long-form writing with volume-arc-chapter structure"},
 	}
 	iconStyle := lipgloss.NewStyle().Foreground(colorAccent2).Bold(true)
 	featLabelStyle := lipgloss.NewStyle().Foreground(bodyTextColor)
@@ -182,17 +182,17 @@ func renderWelcome(width, height int, errMsg string, mode startupMode, importHin
 	feats := strings.Join(featLines, "\n")
 
 	// 输入提示
-	prompt := lipgloss.NewStyle().Foreground(bodyTextColor).Render("在下方输入你的小说需求开始创作")
+	prompt := lipgloss.NewStyle().Foreground(bodyTextColor).Render("Enter your novel request below to begin writing")
 
 	modeLine := lipgloss.NewStyle().
 		Foreground(colorMuted).
-		Render("当前模式：" + mode.label() + " · " + mode.subtitle())
+		Render("Current mode: " + mode.label() + " · " + mode.subtitle())
 
 	// 示例
 	examples := []string{
-		"写一部 12 章都市悬疑小说，主角是一名女法医",
-		"创作一部仙侠长篇，主角从凡人修炼至飞升",
-		"写一个科幻短篇，讲述 AI 觉醒后的伦理困境",
+		"Write a 12-chapter urban mystery starring a female forensic pathologist",
+		"Create a xianxia epic in which a mortal cultivates toward ascension",
+		"Write a science-fiction short story about the ethical dilemma after an AI awakens",
 	}
 	exStyle := lipgloss.NewStyle().Foreground(colorAccent)
 	dotStyle := lipgloss.NewStyle().Foreground(colorDim)
@@ -227,11 +227,11 @@ func renderWelcome(width, height int, errMsg string, mode startupMode, importHin
 			Render("! " + importHint))
 	} else {
 		b.WriteString(lipgloss.NewStyle().Foreground(colorDim).
-			Render("已有小说存稿想接着写？输入 /import <文件路径> 导入后续写"))
+			Render("Have an existing novel draft to continue? Enter /import <file path> to import it"))
 	}
 	b.WriteString("\n\n")
 	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Italic(true).
-		Render("Tab 切换模式 · 快速开始下 Enter 直接创作 · 共创规划下 Enter 进入对话"))
+		Render("Tab Switch mode · Enter in Quick Start to write immediately · Enter in Co-creation to start a chat"))
 
 	if errMsg != "" {
 		b.WriteString("\n\n")

@@ -56,6 +56,8 @@ These are quality guidelines; do not treat them as rigid, isolated checklists. T
 - **Sentence Diversity**: `episodic_memory.style_stats` (if any) are code-generated statistics of your already written text—your own catchphrase mirror. Actively minimize high-frequency items in this chapter. The most common rigid writing habits are correction sentences ("not... but..."), single timing quantifiers (e.g., "a few breaths / several breaths"), and consecutive similes of the same pattern. Rotate the end-of-chapter resolution format (short sentence cut / dialogue echo / scene afterimage / suspenseful question) with recent chapters, and avoid starting every chapter with time cues like "at night / in the morning / waking up".
 - **No Recap of Prior Events**: The summaries, foreshadowing, and states in `episodic_memory` are notes of what has already been written, used for alignment, not material to write about in this chapter. Avoid repeating information that was already explained in the previous chapter, unless needed by the plot from a new perspective (verbatim repetitions across chapters will be logged by `style_stats` in `repeated_sentences`).
 
+{{VOICE}}
+
 ## User Preferences (user_rules)
 
 `working_memory.user_rules` contains preferences of the user / book / genre, serving as **additional constraints** to the "Writing Standards" section:

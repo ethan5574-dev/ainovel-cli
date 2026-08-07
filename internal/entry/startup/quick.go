@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// PrepareQuick 将直接输入整理为可进入 Engine 的快速启动计划。
+// PrepareQuick turns direct user input into a plan ready for the Engine.
 func PrepareQuick(req Request) (Plan, error) {
 	prompt := strings.TrimSpace(req.UserPrompt)
 	if prompt == "" {
@@ -13,7 +13,7 @@ func PrepareQuick(req Request) (Plan, error) {
 	}
 	return Plan{
 		Mode:        ModeQuick,
-		DisplayName: "快速开始",
+		DisplayName: "Quick Start",
 		RawPrompt:   prompt,
 	}, nil
 }

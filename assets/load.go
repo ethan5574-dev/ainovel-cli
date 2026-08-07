@@ -24,44 +24,44 @@ var stylesFS embed.FS
 //go:embed voice.md
 var voiceFS embed.FS
 
-// Prompts 表示嵌入的提示词集合。
+// Prompts contains the embedded prompt set.
 type Prompts struct {
 	ArchitectShort   string
 	ArchitectLong    string
-	Writer           string // 协议模板,含 {{VOICE}} 占位符;终稿经 BuildWriterPrompt 组装
+	Writer           string // Protocol template with {{VOICE}}; final prompt is assembled by BuildWriterPrompt.
 	Editor           string
-	ImportSegment    string // 语义切分：识别章节/卷/附属文本边界
-	ImportAnalyze    string // 连续批次逐章事实提取
-	ImportSynthesize string // 分层综合与卷弧划分（全书 BookSynthesis）
-	ImportRange      string // 长书 Map 阶段连续区间摘要（RangeDigest）
+	ImportSegment    string // Semantic segmentation: identify chapter/volume/appendix boundaries.
+	ImportAnalyze    string // Per-chapter fact extraction across consecutive batches.
+	ImportSynthesize string // Hierarchical synthesis and volume-arc grouping (BookSynthesis).
+	ImportRange      string // Consecutive range digest for the map phase of long books.
 	SimulationSource string
 	SimulationMerge  string
 
-	// Arbiter 裁定提示词(LLM-as-function,无 simulation guidance 包装)。
+	// Arbiter decision prompts (LLM-as-function, without simulation-guidance wrapping).
 	ArbiterPlanStart    string
 	ArbiterIntervention string
 	ArbiterFailure      string
 }
 
-// Bundle 表示运行所需的静态资源集合。
+// Bundle contains the static resources required at runtime.
 type Bundle struct {
 	References tools.References
 	Prompts    Prompts
 	Styles     map[string]string
-	Voice      string // 写作标准(文风层),已按三层覆盖组装;见 docs/voice-layer.md
+	Voice      string // Writing standard (voice layer), assembled with three-level overrides.
 }
 
-// LoadOptions 声明文风层的覆盖来源。空目录 = 跳过该层(eval 传零值以获得
-// 纯内置的确定性 baseline,不受使用者本机覆盖污染)。
+// LoadOptions declares voice-layer override sources. An empty directory skips that layer
+// (eval passes zero values for a deterministic built-in baseline).
 //
-// 路径语义:BookStyleDir 绑定书目录(outputDir)而非 cwd——文风随书走,换目录
-// 恢复同一本书加载同一份文风。注意与 rules 层不同(rules 的项目级绑定 cwd)。
+// Path semantics: BookStyleDir is tied to the book directory (outputDir), not cwd,
+// so the same book restores the same voice. The rules layer remains cwd-based.
 type LoadOptions struct {
 	BookStyleDir string // <outputDir>/style
 	HomeStyleDir string // ~/.ainovel/style
 }
 
-// DefaultLoadOptions 根据书目录构造生产环境的覆盖来源。
+// DefaultLoadOptions builds production override sources from the book directory.
 func DefaultLoadOptions(outputDir string) LoadOptions {
 	var opts LoadOptions
 	if outputDir != "" {
@@ -73,8 +73,8 @@ func DefaultLoadOptions(outputDir string) LoadOptions {
 	return opts
 }
 
-// Load 返回指定风格对应的资源集合。文风资产(voice / anti-ai-tone / styles /
-// 题材 style-references)按 opts 做三层覆盖:内置 < 全局 < 本书。
+// Load returns resources for the selected style. Voice assets (voice / anti-ai-tone / styles /
+// genre style-references) use three-level precedence: built-in < home < book.
 func Load(style string, opts LoadOptions) Bundle {
 	return Bundle{
 		References: loadReferences(style, opts),
@@ -84,13 +84,12 @@ func Load(style string, opts LoadOptions) Bundle {
 	}
 }
 
-// voicePlaceholder 是 writer 协议模板中文风段的原位插入点。
+// voicePlaceholder is the insertion point for the voice section in the writer protocol template.
 const voicePlaceholder = "{{VOICE}}"
 
-// BuildWriterPrompt 是 writer 系统提示词的唯一组装入口,生产 / eval / 测试共用,
-// 保证 A/B 两臂走同一路径(先例教训见 WithSimulationGuidance)。
-// writerPrompt 为含占位符的协议模板(可以已带 simulation guidance 后缀,占位符在
-// 前缀内,替换不受影响);style 为空时不追加。
+// BuildWriterPrompt is the sole assembly entry point for the writer system prompt, shared by
+// production, eval, and tests so both A/B arms use the same path.
+// writerPrompt may already contain a simulation-guidance suffix; an empty style adds nothing.
 func BuildWriterPrompt(writerPrompt, voice, style string) string {
 	out := strings.Replace(writerPrompt, voicePlaceholder, strings.TrimSpace(voice), 1)
 	if style != "" {
@@ -99,27 +98,27 @@ func BuildWriterPrompt(writerPrompt, voice, style string) string {
 	return out
 }
 
-// OverrideVoice 用 raw 整体替换已组装的文风段(eval 做 voice A/B 用)。
-// variant 与 baseline 仍经 BuildWriterPrompt 同一路径组装。
+// OverrideVoice replaces the assembled voice section with raw text for voice A/B evaluation.
+// The variant and baseline still pass through BuildWriterPrompt.
 func (b *Bundle) OverrideVoice(raw string) {
 	b.Voice = raw
 }
 
-// resolveAppendable 追加语义的三层组装:内置保留,全局/本书作为标记段追加。
-// 无覆盖时返回内置原文(逐字节不变——文风层验收标准之一)。
-// "后者优先"是给 LLM 的优先级指示而非机械保证;需要机械保证的约束走 rules 层。
+// resolveAppendable assembles three levels with append semantics: preserve built-in text,
+// then append home and book sections. Without overrides it returns the built-in text byte-for-byte.
+// "Later wins" is guidance for the LLM, not a mechanical guarantee; use rules for hard constraints.
 func resolveAppendable(builtin, name string, opts LoadOptions) string {
 	out := builtin
 	if s := readOverride(opts.HomeStyleDir, name); s != "" {
-		out += "\n\n## 用户全局文风覆盖（以下要求优先于项目默认）\n\n" + s
+		out += "\n\n## Global User Voice Override (the following takes priority over project defaults)\n\n" + s
 	}
 	if s := readOverride(opts.BookStyleDir, name); s != "" {
-		out += "\n\n## 本书文风覆盖（以下要求优先于以上全部）\n\n" + s
+		out += "\n\n## Book Voice Override (the following takes priority over everything above)\n\n" + s
 	}
 	return out
 }
 
-// readOverride 读取覆盖目录下的单个文件;目录为空、文件不存在或为空白一律返回 ""。
+// readOverride reads one file from an override directory; empty/missing directories or blank files return "".
 func readOverride(dir, name string) string {
 	if dir == "" {
 		return ""
@@ -131,7 +130,7 @@ func readOverride(dir, name string) string {
 	return strings.TrimSpace(string(data))
 }
 
-// styleNameRe 校验用户自定义 style 文件名(不含扩展名),拒绝路径字符。
+// styleNameRe validates custom style filenames (without the extension) and rejects path characters.
 var styleNameRe = regexp.MustCompile(`^[a-z0-9-]+$`)
 
 func loadReferences(style string, opts LoadOptions) tools.References {
@@ -160,8 +159,8 @@ func loadReferences(style string, opts LoadOptions) tools.References {
 		if data, err := referencesFS.ReadFile(genreDir + "arc-templates.md"); err == nil {
 			refs.ArcTemplates = string(data)
 		}
-		// 题材风格参考:同名整文件替换(本书 > 全局);自定义 style 无内置参考时
-		// 允许仅由覆盖提供,不回退 default(错误的参照比没有更糟)。
+		// Genre references are whole-file replacements (book > home). A custom style without a built-in
+		// reference may be supplied only by an override; falling back to default would be misleading.
 		relPath := filepath.Join("genres", style, "style-references.md")
 		for _, dir := range []string{opts.HomeStyleDir, opts.BookStyleDir} {
 			if s := readOverride(dir, relPath); s != "" {
@@ -191,21 +190,19 @@ func loadPrompts() Prompts {
 	}
 }
 
-// WithSimulationGuidance 给核心 prompt 追加仿写画像指引。导出供 eval 等外部场景做
-// variant 覆盖时复用，保证覆盖后的 prompt 与 Load 产出的 baseline 等价（同一包装路径）。
+// WithSimulationGuidance appends simulation-profile guidance to core prompts. It is exported
+// so eval and other external callers can wrap variants through the same path as Load's baseline.
 func WithSimulationGuidance(prompt, role string) string {
 	return prompt + "\n\n" + strings.ReplaceAll(simulationGuidance, "{{role}}", role)
 }
 
-// OverridePrompt 用 raw 覆盖 bundle 中指定 prompt 文件对应的角色提示词，并走与 Load
-// 完全相同的 WithSimulationGuidance 包装——eval 做 A/B 时只需调它，不必复制包装逻辑，
-// 否则 baseline 带仿写画像后缀、variant 不带，A/B 不等价。file 为 prompt 文件名。
-// 注意:覆盖 writer.md 时 raw 须自带 {{VOICE}} 占位符(协议模板语义);只想 A/B 文风
-// 用 OverrideVoice。
+// OverridePrompt replaces a role prompt in the bundle and applies the same WithSimulationGuidance
+// wrapper as Load. This keeps eval A/B variants equivalent. For writer.md, raw must include
+// {{VOICE}}; use OverrideVoice when only the voice should vary.
 func (b *Bundle) OverridePrompt(file, raw string) error {
 	role, ok := promptRole[file]
 	if !ok {
-		return fmt.Errorf("不支持覆盖的 prompt 文件: %s（仅核心提示词可覆盖）", file)
+		return fmt.Errorf("prompt file cannot be overridden: %s (only core prompts are supported)", file)
 	}
 	wrapped := WithSimulationGuidance(raw, role)
 	switch file {
@@ -221,7 +218,7 @@ func (b *Bundle) OverridePrompt(file, raw string) error {
 	return nil
 }
 
-// promptRole 把核心 prompt 文件名映射到 simulation guidance 的角色占位符。
+// promptRole maps core prompt filenames to simulation-guidance roles.
 var promptRole = map[string]string{
 	"architect-short.md": "architect",
 	"architect-long.md":  "architect",
@@ -229,14 +226,14 @@ var promptRole = map[string]string{
 	"editor.md":          "editor",
 }
 
-const simulationGuidance = `## 仿写画像
+const simulationGuidance = `## Simulation Profile
 
-当 novel_context 返回 simulation_profile 时，必须把它视为当前作品的仿写方向约束。{{role}} 应读取其中的 style、lexicon、plot_design、hook_design、pacing_density、reader_engagement 和 role_guidance。
+When novel_context returns simulation_profile, treat it as a constraint on the work's simulation direction. {{role}} must read its style, lexicon, plot_design, hook_design, pacing_density, reader_engagement, and role_guidance.
 
-使用原则：借鉴结构、节奏、钩子、信息释放和吸引读者的手法；不要复制原文句子、人物、地名、专有设定或固定桥段。若 simulation_profile 与用户显式要求冲突，优先服从用户要求。`
+Principles: borrow structure, pacing, hooks, information release, and reader-engagement techniques; do not copy source sentences, characters, place names, named settings, or fixed scenes. If simulation_profile conflicts with an explicit user request, follow the user request.`
 
-// loadStyles 枚举内置风格预设,再按 全局 → 本书 顺序叠加覆盖目录下 styles/*.md
-// (同名整文件替换,新文件名即新增风格;风格是整体声音,不做合并)。
+// loadStyles enumerates built-in styles, then applies styles/*.md overrides in home -> book order.
+// Same-named files replace the whole style; new filenames add styles.
 func loadStyles(opts LoadOptions) map[string]string {
 	styles := make(map[string]string)
 	entries, err := stylesFS.ReadDir("styles")
@@ -260,7 +257,7 @@ func loadStyles(opts LoadOptions) map[string]string {
 	return styles
 }
 
-// overlayStyles 把 <dir>/styles/*.md 叠进 styles 集合;非法文件名跳过并告警。
+// overlayStyles adds <dir>/styles/*.md to the style set; invalid filenames are skipped with a warning.
 func overlayStyles(styles map[string]string, dir string) {
 	if dir == "" {
 		return
@@ -275,7 +272,7 @@ func overlayStyles(styles map[string]string, dir string) {
 		}
 		name := strings.TrimSuffix(e.Name(), ".md")
 		if !styleNameRe.MatchString(name) {
-			slog.Warn("忽略非法风格文件名", "module", "assets", "dir", dir, "file", e.Name())
+			slog.Warn("Ignoring invalid style filename", "module", "assets", "dir", dir, "file", e.Name())
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join(dir, "styles", e.Name()))

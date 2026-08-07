@@ -49,25 +49,25 @@ func parseExportArgs(args []string) (exp.Options, error) {
 			case "from":
 				n, err := strconv.Atoi(v)
 				if err != nil || n < 0 {
-					return exp.Options{}, fmt.Errorf("from 需为非负整数：%q", v)
+					return exp.Options{}, fmt.Errorf("from must be a non-negative integer: %q", v)
 				}
 				opts.From = n
 			case "to":
 				n, err := strconv.Atoi(v)
 				if err != nil || n < 0 {
-					return exp.Options{}, fmt.Errorf("to 需为非负整数：%q", v)
+					return exp.Options{}, fmt.Errorf("to must be a non-negative integer: %q", v)
 				}
 				opts.To = n
 			default:
-				return exp.Options{}, fmt.Errorf("未知参数 %q（支持：from / to）", k)
+				return exp.Options{}, fmt.Errorf("unknown parameter %q (supported: from / to)", k)
 			}
 			continue
 		}
 		if strings.HasPrefix(a, "-") {
-			return exp.Options{}, fmt.Errorf("未知 flag %q", a)
+			return exp.Options{}, fmt.Errorf("unknown flag %q", a)
 		}
 		if opts.OutPath != "" {
-			return exp.Options{}, fmt.Errorf("仅支持一个路径参数：%q", a)
+			return exp.Options{}, fmt.Errorf("only one path argument is supported: %q", a)
 		}
 		opts.OutPath = a
 	}
@@ -77,9 +77,9 @@ func parseExportArgs(args []string) (exp.Options, error) {
 // formatExportSuccess 把 Result 渲染成事件 Summary。
 func formatExportSuccess(res *exp.Result) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "✓ 已导出 %d 章 / %s 到 %s", res.Chapters, humanBytes(res.Bytes), res.Path)
+	fmt.Fprintf(&b, "✓ Exported %d chapters / %s to %s", res.Chapters, humanBytes(res.Bytes), res.Path)
 	if n := len(res.Skipped); n > 0 {
-		fmt.Fprintf(&b, "（跳过 %d 章未完成：%s）", n, briefIntList(res.Skipped, 5))
+		fmt.Fprintf(&b, " (skipped %d incomplete chapters: %s)", n, briefIntList(res.Skipped, 5))
 	}
 	return b.String()
 }

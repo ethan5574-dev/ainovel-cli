@@ -56,7 +56,7 @@ func commandRegistryInstance() commandRegistry {
 			Name:        "help",
 			Group:       "system",
 			Usage:       "/help",
-			Description: "查看命令列表",
+			Description: "List available commands",
 			AutoExecute: true,
 			Run: func(m Model, _ []string) (tea.Model, tea.Cmd) {
 				m.help = newHelpState(m.width, m.height)
@@ -68,7 +68,7 @@ func commandRegistryInstance() commandRegistry {
 			Name:        "model",
 			Group:       "system",
 			Usage:       "/model [role]",
-			Description: "切换角色的模型与推理强度",
+			Description: "Switch a role's model and reasoning effort",
 			AutoExecute: true,
 			Run: func(m Model, args []string) (tea.Model, tea.Cmd) {
 				roleHint := ""
@@ -76,7 +76,7 @@ func commandRegistryInstance() commandRegistry {
 					roleHint = args[0]
 					if normalizeRoleKey(roleHint) == "" {
 						m.applyEvent(host.Event{
-							Time: time.Now(), Category: "ERROR", Summary: "未知角色：" + roleHint, Level: "error",
+							Time: time.Now(), Category: "ERROR", Summary: "Unknown role: " + roleHint, Level: "error",
 						})
 						m.refreshEventViewport()
 						return m, nil
@@ -91,11 +91,11 @@ func commandRegistryInstance() commandRegistry {
 			Name:        "config",
 			Group:       "system",
 			Usage:       "/config",
-			Description: "新增或编辑 Provider、模型与上下文窗口",
+			Description: "Add or edit providers, models, and context windows",
 			AutoExecute: true,
 			Run: func(m Model, args []string) (tea.Model, tea.Cmd) {
 				if len(args) != 0 {
-					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "用法：/config", Level: "error"})
+					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "Usage: /config", Level: "error"})
 					m.refreshEventViewport()
 					return m, nil
 				}
@@ -108,7 +108,7 @@ func commandRegistryInstance() commandRegistry {
 			Name:        "diag",
 			Group:       "analysis",
 			Usage:       "/diag",
-			Description: "诊断小说创作健康度",
+			Description: "Diagnose novel-writing health",
 			AutoExecute: true,
 			Run: func(m Model, _ []string) (tea.Model, tea.Cmd) {
 				m.reportSeq++
@@ -121,10 +121,10 @@ func commandRegistryInstance() commandRegistry {
 			Name:        "review",
 			Group:       "writing",
 			Usage:       "/review on|off",
-			Description: "切换逐章验收模式",
+			Description: "Toggle chapter-by-chapter review mode",
 			Run: func(m Model, args []string) (tea.Model, tea.Cmd) {
 				if len(args) != 1 || (args[0] != "on" && args[0] != "off") {
-					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "用法：/review on|off", Level: "error"})
+					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "Usage: /review on|off", Level: "error"})
 					m.refreshEventViewport()
 					return m, nil
 				}
@@ -133,7 +133,7 @@ func commandRegistryInstance() commandRegistry {
 					mode = domain.ChapterAdvanceAuto
 				}
 				if err := m.runtime.SetAdvanceMode(mode); err != nil {
-					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "切换推进模式失败：" + err.Error(), Level: "error"})
+					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "Failed to switch review mode: " + err.Error(), Level: "error"})
 					m.refreshEventViewport()
 					return m, nil
 				}
@@ -144,17 +144,17 @@ func commandRegistryInstance() commandRegistry {
 			Name:        "next",
 			Group:       "writing",
 			Usage:       "/next",
-			Description: "验收后放行一个新章节",
+			Description: "Approve one new chapter after review",
 			AutoExecute: true,
 			NeedsIdle:   true,
 			Run: func(m Model, args []string) (tea.Model, tea.Cmd) {
 				if len(args) != 0 {
-					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "用法：/next", Level: "error"})
+					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "Usage: /next", Level: "error"})
 					m.refreshEventViewport()
 					return m, nil
 				}
 				if err := m.runtime.AdvanceOneChapter(); err != nil {
-					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "放行下一章失败：" + err.Error(), Level: "error"})
+					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "Failed to approve the next chapter: " + err.Error(), Level: "error"})
 					m.refreshEventViewport()
 					return m, nil
 				}
@@ -164,15 +164,15 @@ func commandRegistryInstance() commandRegistry {
 		{
 			Name:        "import",
 			Group:       "writing",
-			Usage:       "/import <path> [--yes] [--story=open|closed] [--continue] [--guide=<切分指导>]",
-			Description: "语义导入外部小说（无参数则恢复未完成导入；--guide 用自然语言调整切分）",
+			Usage:       "/import <path> [--yes] [--story=open|closed] [--continue] [--guide=<segmentation guidance>]",
+			Description: "Semantically import an external novel (no path resumes an unfinished import; --guide adjusts segmentation in natural language)",
 			NeedsIdle:   true,
 			Run: func(m Model, args []string) (tea.Model, tea.Cmd) {
 				m.importSeq++
 				state, listenCmd, err := startImport(m.runtime, m.importSeq, args, m.width, m.height)
 				if err != nil {
 					m.applyEvent(host.Event{
-						Time: time.Now(), Category: "ERROR", Summary: "导入启动失败：" + err.Error(), Level: "error",
+						Time: time.Now(), Category: "ERROR", Summary: "Failed to start import: " + err.Error(), Level: "error",
 					})
 					m.refreshEventViewport()
 					return m, nil
@@ -186,13 +186,13 @@ func commandRegistryInstance() commandRegistry {
 		{
 			Name:        "reopen",
 			Group:       "writing",
-			Usage:       "/reopen [续写方向]",
-			Description: "重开已完结的书继续创作（方向先经裁定注入，再自动续跑）",
+			Usage:       "/reopen [continuation direction]",
+			Description: "Reopen a completed book to continue writing (the direction is arbitrated before resuming)",
 			NeedsIdle:   true,
 			Run: func(m Model, args []string) (tea.Model, tea.Cmd) {
 				if err := m.runtime.Reopen(strings.Join(args, " ")); err != nil {
 					m.applyEvent(host.Event{
-						Time: time.Now(), Category: "ERROR", Summary: "重开失败：" + err.Error(), Level: "error",
+						Time: time.Now(), Category: "ERROR", Summary: "Failed to reopen: " + err.Error(), Level: "error",
 					})
 					m.refreshEventViewport()
 					return m, nil
@@ -205,19 +205,19 @@ func commandRegistryInstance() commandRegistry {
 			Aliases:     []string{"plan"},
 			Group:       "writing",
 			Usage:       "/cocreate",
-			Description: "暂停创作，共创规划后续阶段走向",
+			Description: "Pause writing and co-create the direction of the next stage",
 			AutoExecute: true,
 			Run: func(m Model, _ []string) (tea.Model, tea.Cmd) {
 				if m.mode != modeRunning {
 					m.applyEvent(host.Event{
-						Time: time.Now(), Category: "ERROR", Summary: "阶段共创仅在创作中可用", Level: "error",
+						Time: time.Now(), Category: "ERROR", Summary: "Stage co-creation is available only while writing", Level: "error",
 					})
 					m.refreshEventViewport()
 					return m, nil
 				}
 				if !m.runtime.PauseForCoCreate() {
 					m.applyEvent(host.Event{
-						Time: time.Now(), Category: "ERROR", Summary: "无法进入阶段共创：全书已完成或已在共创中", Level: "error",
+						Time: time.Now(), Category: "ERROR", Summary: "Cannot enter stage co-creation: the book is complete or already in co-creation", Level: "error",
 					})
 					m.refreshEventViewport()
 					return m, nil
@@ -232,14 +232,14 @@ func commandRegistryInstance() commandRegistry {
 			Name:        "simulate",
 			Group:       "writing",
 			Usage:       "/simulate",
-			Description: "读取 ./simulate 生成或增量更新仿写画像",
+			Description: "Read ./simulate to create or incrementally update a style profile",
 			NeedsIdle:   true,
 			Run: func(m Model, args []string) (tea.Model, tea.Cmd) {
 				m.simSeq++
 				state, listenCmd, err := startSimulate(m.runtime, m.simSeq, args, m.width, m.height)
 				if err != nil {
 					m.applyEvent(host.Event{
-						Time: time.Now(), Category: "ERROR", Summary: "仿写画像启动失败：" + err.Error(), Level: "error",
+						Time: time.Now(), Category: "ERROR", Summary: "Failed to start style profiling: " + err.Error(), Level: "error",
 					})
 					m.refreshEventViewport()
 					return m, nil
@@ -253,14 +253,14 @@ func commandRegistryInstance() commandRegistry {
 			Name:        "importsim",
 			Group:       "writing",
 			Usage:       "/importsim <profile.json>",
-			Description: "导入已有仿写画像并按语料指纹合并",
+			Description: "Import an existing style profile and merge it by corpus fingerprint",
 			NeedsIdle:   true,
 			Run: func(m Model, args []string) (tea.Model, tea.Cmd) {
 				m.simSeq++
 				state, listenCmd, err := startImportSimulation(m.runtime, m.simSeq, args, m.width, m.height)
 				if err != nil {
 					m.applyEvent(host.Event{
-						Time: time.Now(), Category: "ERROR", Summary: "导入仿写画像失败：" + err.Error(), Level: "error",
+						Time: time.Now(), Category: "ERROR", Summary: "Failed to import style profile: " + err.Error(), Level: "error",
 					})
 					m.refreshEventViewport()
 					return m, nil
@@ -274,19 +274,19 @@ func commandRegistryInstance() commandRegistry {
 			Name:        "export",
 			Group:       "writing",
 			Usage:       "/export [path] [from=N] [to=M] [--overwrite]",
-			Description: "导出已完成章节为 TXT/EPUB",
+			Description: "Export completed chapters as TXT/EPUB",
 			AutoExecute: true,
 			Run: func(m Model, args []string) (tea.Model, tea.Cmd) {
 				cmd, err := startExport(m.runtime, args)
 				if err != nil {
 					m.applyEvent(host.Event{
-						Time: time.Now(), Category: "ERROR", Summary: "导出启动失败：" + err.Error(), Level: "error",
+						Time: time.Now(), Category: "ERROR", Summary: "Failed to start export: " + err.Error(), Level: "error",
 					})
 					m.refreshEventViewport()
 					return m, nil
 				}
 				m.applyEvent(host.Event{
-					Time: time.Now(), Category: "SYSTEM", Summary: "正在导出...", Level: "info",
+					Time: time.Now(), Category: "SYSTEM", Summary: "Exporting...", Level: "info",
 				})
 				m.refreshEventViewport()
 				return m, cmd
@@ -303,14 +303,14 @@ func (m Model) handleSlashCommand(cmd slashCommand) (tea.Model, tea.Cmd) {
 	spec, ok := commandRegistryInstance().Find(cmd.name)
 	if !ok {
 		m.applyEvent(host.Event{
-			Time: time.Now(), Category: "ERROR", Summary: "未知命令：/" + cmd.name, Level: "error",
+			Time: time.Now(), Category: "ERROR", Summary: "Unknown command: /" + cmd.name, Level: "error",
 		})
 		m.refreshEventViewport()
 		return m, nil
 	}
 	if spec.NeedsIdle && m.snapshot.IsRunning {
 		m.applyEvent(host.Event{
-			Time: time.Now(), Category: "ERROR", Summary: "命令仅可在空闲状态执行：/" + spec.Name, Level: "error",
+			Time: time.Now(), Category: "ERROR", Summary: "Command is available only while idle: /" + spec.Name, Level: "error",
 		})
 		m.refreshEventViewport()
 		return m, nil
