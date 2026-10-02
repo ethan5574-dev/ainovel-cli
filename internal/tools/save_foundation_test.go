@@ -63,14 +63,17 @@ func TestSaveFoundationPersistsPlanningTier(t *testing.T) {
 	}
 }
 
-func TestSaveFoundationPremiseSetsNovelName(t *testing.T) {
+func TestSaveFoundationPremiseDoesNotOwnBookMetadata(t *testing.T) {
 	dir := t.TempDir()
 	store := store.NewStore(dir)
 	if err := store.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := store.Progress.Init("novel", 0); err != nil {
+	if err := store.Progress.Init(0); err != nil {
 		t.Fatalf("Init progress: %v", err)
+	}
+	if err := store.Book.Save(domain.BookMetadata{Title: "长夜燃灯", Synopsis: "旧城熄灯后，少年追索失踪真相。"}); err != nil {
+		t.Fatalf("Save book: %v", err)
 	}
 
 	tool := NewSaveFoundationTool(store)
@@ -89,15 +92,100 @@ func TestSaveFoundationPremiseSetsNovelName(t *testing.T) {
 		t.Fatalf("Execute: %v", err)
 	}
 
-	progress, err := store.Progress.Load()
+	book, err := store.Book.Load()
 	if err != nil {
-		t.Fatalf("LoadProgress: %v", err)
+		t.Fatalf("Load book: %v", err)
 	}
-	if progress == nil {
-		t.Fatal("expected progress")
+	if book == nil || book.Title != "长夜燃灯" {
+		t.Fatalf("premise 不得改写作品信息: %+v", book)
 	}
-	if progress.NovelName != "长夜燃灯" {
-		t.Fatalf("expected novel name set, got %q", progress.NovelName)
+}
+
+func TestSaveFoundationCanRevisePremiseAfterOutline(t *testing.T) {
+	dir := t.TempDir()
+	st := store.NewStore(dir)
+	if err := st.Init(); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	if err := st.Progress.Init(0); err != nil {
+		t.Fatalf("Init progress: %v", err)
+	}
+	if err := st.Progress.UpdatePhase(domain.PhaseOutline); err != nil {
+		t.Fatalf("UpdatePhase outline: %v", err)
+	}
+
+	args, _ := json.Marshal(map[string]any{
+		"type":    "premise",
+		"content": "# 新书名\n\n修订后的故事前提。",
+	})
+	if _, err := NewSaveFoundationTool(st).Execute(context.Background(), args); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	p, err := st.Progress.Load()
+	if err != nil {
+		t.Fatalf("Load progress: %v", err)
+	}
+	if p.Phase != domain.PhaseOutline {
+		t.Fatalf("phase = %s, want outline", p.Phase)
+	}
+	if cp := st.Checkpoints.LatestByStep(domain.GlobalScope(), "premise"); cp == nil {
+		t.Fatal("修订后的 premise 应生成 checkpoint")
+	}
+}
+
+func TestSaveFoundationRejectsFullOutlineAfterComplete(t *testing.T) {
+	tests := []struct {
+		name    string
+		typeArg string
+		content any
+	}{
+		{
+			name: "flat", typeArg: "outline",
+			content: []map[string]any{{"chapter": 1, "title": "覆盖后", "core_event": "变化", "hook": "继续", "scenes": []string{}}},
+		},
+		{
+			name: "layered", typeArg: "layered_outline",
+			content: []map[string]any{{
+				"index": 1, "title": "覆盖卷", "theme": "变化",
+				"arcs": []map[string]any{{
+					"index": 1, "title": "覆盖弧", "goal": "变化",
+					"chapters": []map[string]any{{"title": "覆盖后", "core_event": "变化", "hook": "继续", "scenes": []string{}}},
+				}},
+			}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := store.NewStore(t.TempDir())
+			if err := s.Init(); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Progress.Init(1); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Outline.SaveOutline([]domain.OutlineEntry{{Chapter: 1, Title: "原始标题"}}); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Progress.MarkComplete(); err != nil {
+				t.Fatal(err)
+			}
+
+			args, _ := json.Marshal(map[string]any{"type": tt.typeArg, "content": tt.content})
+			if _, err := NewSaveFoundationTool(s).Execute(context.Background(), args); err == nil || !strings.Contains(err.Error(), "已完结") {
+				t.Fatalf("完结后全量覆盖必须被拒绝，err=%v", err)
+			}
+			outline, err := s.Outline.LoadOutline()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(outline) != 1 || outline[0].Title != "原始标题" {
+				t.Fatalf("被拒调用修改了 outline: %+v", outline)
+			}
+			if _, err := os.Stat(filepath.Join(s.Dir(), "layered_outline.json")); tt.typeArg == "layered_outline" && !os.IsNotExist(err) {
+				t.Fatalf("被拒调用写入了 layered_outline.json: %v", err)
+			}
+		})
 	}
 }
 
@@ -107,7 +195,7 @@ func TestSaveFoundationOutlineClearsLayeredStateWhenDowngrading(t *testing.T) {
 	if err := store.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := store.Progress.Init("test", 0); err != nil {
+	if err := store.Progress.Init(0); err != nil {
 		t.Fatalf("InitProgress: %v", err)
 	}
 
@@ -121,8 +209,19 @@ func TestSaveFoundationOutlineClearsLayeredStateWhenDowngrading(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Marshal layered args: %v", err)
 	}
-	if _, err := tool.Execute(context.Background(), layeredArgs); err != nil {
+	rawResult, err := tool.Execute(context.Background(), layeredArgs)
+	if err != nil {
 		t.Fatalf("Execute layered outline: %v", err)
+	}
+	var layeredResult map[string]any
+	if err := json.Unmarshal(rawResult, &layeredResult); err != nil {
+		t.Fatalf("Unmarshal layered result: %v", err)
+	}
+	if layeredResult["dynamic_planning"] != true || layeredResult["outlined_chapters"] != float64(1) {
+		t.Fatalf("layered result 应报告当前已细化章节: %#v", layeredResult)
+	}
+	if _, exists := layeredResult["chapters"]; exists {
+		t.Fatalf("layered result 不得把内部容量估算暴露为 chapters: %#v", layeredResult)
 	}
 
 	outlineArgs, err := json.Marshal(map[string]any{
@@ -177,7 +276,7 @@ func TestSaveFoundationAppendVolume(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 0); err != nil {
+	if err := s.Progress.Init(0); err != nil {
 		t.Fatalf("InitProgress: %v", err)
 	}
 
@@ -240,13 +339,13 @@ func TestSaveFoundationAppendVolume(t *testing.T) {
 	}
 }
 
-func TestSaveFoundationExpandArcCalibratesTarget(t *testing.T) {
+func TestExpandNextArcCalibratesTarget(t *testing.T) {
 	dir := t.TempDir()
 	s := store.NewStore(dir)
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 5); err != nil {
+	if err := s.Progress.Init(5); err != nil {
 		t.Fatalf("InitProgress: %v", err)
 	}
 	if err := s.Outline.SaveLayeredOutline([]domain.VolumeOutline{{
@@ -258,21 +357,35 @@ func TestSaveFoundationExpandArcCalibratesTarget(t *testing.T) {
 	}}); err != nil {
 		t.Fatalf("SaveLayeredOutline: %v", err)
 	}
+	// v0.7.9 以前 append_volume 允许模型漏填机械 index；新工具按结构位置处理。
+	legacy, err := os.ReadFile(filepath.Join(dir, "layered_outline.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy = []byte(strings.ReplaceAll(string(legacy), `"index": 2`, `"index": 0`))
+	if err := os.WriteFile(filepath.Join(dir, "layered_outline.json"), legacy, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.Progress.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.CompletedChapters = []int{1}
+	if err := s.Progress.Save(p); err != nil {
+		t.Fatal(err)
+	}
 
-	tool := NewSaveFoundationTool(s)
+	tool := NewExpandNextArcTool(s)
 	args, _ := json.Marshal(map[string]any{
-		"type": "expand_arc", "volume": 1, "arc": 2,
-		"content": map[string]any{
-			"title": "裂盟之后",
-			"goal":  "让分裂后的双方以不同选择推进同一主线",
-			"chapters": []map[string]any{{
-				"title": "各走一边", "core_event": "双方分别追索真相", "hook": "两条线索意外重合", "scenes": []string{"分道", "追索"},
-			}},
-		},
+		"title": "裂盟之后",
+		"goal":  "让分裂后的双方以不同选择推进同一主线",
+		"chapters": []map[string]any{{
+			"title": "各走一边", "core_event": "双方分别追索真相", "hook": "两条线索意外重合", "scenes": []string{"分道", "追索"},
+		}},
 	})
 	result, err := tool.Execute(context.Background(), args)
 	if err != nil {
-		t.Fatalf("Execute expand_arc: %v", err)
+		t.Fatalf("Execute expand_next_arc: %v", err)
 	}
 	var facts map[string]any
 	if err := json.Unmarshal(result, &facts); err != nil {
@@ -290,13 +403,13 @@ func TestSaveFoundationExpandArcCalibratesTarget(t *testing.T) {
 	}
 }
 
-func TestSaveFoundationAppendVolumeValidation(t *testing.T) {
+func TestSaveFoundationAppendVolumeAssignsIndexes(t *testing.T) {
 	dir := t.TempDir()
 	s := store.NewStore(dir)
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 0); err != nil {
+	if err := s.Progress.Init(0); err != nil {
 		t.Fatalf("InitProgress: %v", err)
 	}
 
@@ -316,21 +429,35 @@ func TestSaveFoundationAppendVolumeValidation(t *testing.T) {
 	})
 	tool.Execute(context.Background(), layeredArgs)
 
-	// Index 不递增 → 应失败（结构性校验）
+	// 模型提供的机械序号被忽略，store 按故事顺序生成。
 	appendArgs, _ := json.Marshal(map[string]any{
 		"type":   "append_volume",
 		"reason": "测试理由",
 		"content": map[string]any{
-			"index": 1, "title": "重复 Index", "theme": "x",
+			"index": 99, "title": "第二卷", "theme": "x",
 			"arcs": []map[string]any{{
-				"index": 1, "title": "弧一", "goal": "目标",
+				"index": 99, "title": "弧一", "goal": "目标",
 				"chapters": []map[string]any{{"title": "章", "core_event": "事件", "hook": "钩子"}},
 			}},
 		},
 	})
-	_, err := tool.Execute(context.Background(), appendArgs)
-	if err == nil {
-		t.Fatal("expected error when appending volume with non-increasing index")
+	result, err := tool.Execute(context.Background(), appendArgs)
+	if err != nil {
+		t.Fatalf("Execute append_volume: %v", err)
+	}
+	var facts map[string]any
+	if err := json.Unmarshal(result, &facts); err != nil {
+		t.Fatal(err)
+	}
+	if facts["volume"] != float64(2) {
+		t.Fatalf("expected assigned volume 2, got %+v", facts)
+	}
+	volumes, err := s.Outline.LoadLayeredOutline()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if volumes[1].Index != 2 || volumes[1].Arcs[0].Index != 1 {
+		t.Fatalf("unexpected indexes: %+v", volumes[1])
 	}
 }
 
@@ -342,7 +469,7 @@ func TestSaveFoundationAppendVolumeRejectsAfterComplete(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 0); err != nil {
+	if err := s.Progress.Init(0); err != nil {
 		t.Fatalf("InitProgress: %v", err)
 	}
 	if err := s.Progress.MarkComplete(); err != nil {
@@ -406,7 +533,6 @@ func TestSaveFoundationUpdateCompassOverridesLastUpdated(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 	if err := s.Progress.Save(&domain.Progress{
-		NovelName:         "光斑",
 		Phase:             domain.PhaseWriting,
 		CompletedChapters: []int{1, 2, 3, 5, 4}, // 乱序，验证取 max 而非 len
 	}); err != nil {
@@ -501,7 +627,7 @@ func completeBookSetup(t *testing.T) *store.Store {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 2); err != nil {
+	if err := s.Progress.Init(2); err != nil {
 		t.Fatalf("InitProgress: %v", err)
 	}
 	_ = s.Progress.UpdatePhase(domain.PhaseWriting)
@@ -637,7 +763,7 @@ func TestSaveFoundationCompleteBookRejectsBeforeWriting(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 0); err != nil {
+	if err := s.Progress.Init(0); err != nil {
 		t.Fatalf("InitProgress: %v", err)
 	}
 	_ = s.Progress.UpdatePhase(domain.PhasePremise)

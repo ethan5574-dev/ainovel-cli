@@ -132,13 +132,9 @@ func (s *CoCreateSession) InitialInput() string {
 	return strings.TrimSpace(s.history[0].Content)
 }
 
-func (s *CoCreateSession) BuildPlan() (Plan, error) {
+func (s *CoCreateSession) BuildPrompt() (string, error) {
 	if s == nil || !s.CanStart() {
-		return Plan{}, fmt.Errorf("cocreate draft prompt is required")
+		return "", fmt.Errorf("cocreate draft prompt is required")
 	}
-	return Plan{
-		Mode:        ModeCoCreate,
-		DisplayName: "Co-creation Plan",
-		RawPrompt:   s.DraftPrompt(),
-	}, nil
+	return s.DraftPrompt(), nil
 }

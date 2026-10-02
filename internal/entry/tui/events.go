@@ -2,14 +2,19 @@ package tui
 
 import (
 	"context"
+	"fmt"
+	"path/filepath"
+	"strings"
 	"time"
+	"unicode"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/voocel/ainovel-cli/internal/bootstrap"
 	"github.com/voocel/ainovel-cli/internal/diag"
-	"github.com/voocel/ainovel-cli/internal/domain"
-	"github.com/voocel/ainovel-cli/internal/entry/startup"
 	"github.com/voocel/ainovel-cli/internal/host"
 	"github.com/voocel/ainovel-cli/internal/store"
+	buildversion "github.com/voocel/ainovel-cli/internal/version"
 )
 
 // 消息类型
@@ -19,7 +24,7 @@ type (
 	doneMsg        struct{ complete bool } // complete=true 全书完成，false 出错停止
 	abortResultMsg struct{ stopped bool }
 	bootstrapMsg   struct {
-		replay    []domain.RuntimeQueueItem
+		existing  bool // 已有作品；无论恢复是否成功都应进入工作台
 		resumed   bool
 		completed bool // 目录里是本已完结的书：落完成态工作台而非欢迎页
 		err       error
@@ -31,7 +36,6 @@ type (
 		exportErr  error
 		finishedAt time.Time
 	}
-	askUserMsg       askUserRequest
 	startResultMsg   struct{ err error }
 	cocreateDeltaMsg struct {
 		reqID int
@@ -48,18 +52,70 @@ type (
 		reply host.CoCreateReply
 		err   error
 	}
-	steerResultMsg     struct{ err error }
-	continueResultMsg  struct{ err error }
-	spinnerTickMsg     time.Time
-	toolSpinnerTickMsg time.Time // 事件流工具 spinner 独立 tick（更快、独立于顶栏/星星）
-	cursorTickMsg      time.Time // 流式光标独立 tick
-	streamDeltaMsg     string    // 流式 token 增量
-	streamClearMsg     struct{}  // 清空流式缓冲（新消息开始）
-	streamFlushTickMsg struct{}  // 60fps 节流刷新流式面板（合并 token 级 delta）
-	quitResetMsg       struct{}  // 双次 Ctrl+C 超时重置
+	steerResultMsg      struct{ err error }
+	continueResultMsg   struct{ err error }
+	spinnerTickMsg      time.Time
+	eventSpinnerTickMsg time.Time // 事件流进行中事件的 spinner tick（更快、独立于顶栏/星星）
+	streamDeltaMsg      string    // 流式 token 增量
+	streamClearMsg      struct{}  // 清空流式缓冲（新消息开始）
+	streamFlushTickMsg  struct{}  // 流式刷新节流（仅有待刷数据时调度）
+	quitResetMsg        struct{}  // 双次 Ctrl+C 超时重置
+	updateCheckMsg      struct {
+		result *buildversion.CheckResult
+		err    error
+	}
 )
 
 // --- Cmd 函数 ---
+
+// checkForUpdate 后台查询上游新版本（5s 超时，24h 缓存节流）。错误随消息
+// 返回，由 Update 写日志但不打扰用户界面。
+func checkForUpdate(currentVersion string) tea.Cmd {
+	return func() tea.Msg {
+		configDir := bootstrap.DefaultConfigDir()
+		if configDir == "" {
+			return updateCheckMsg{err: fmt.Errorf("无法确定更新检查缓存目录")}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		res, err := buildversion.CheckUpdate(ctx, buildversion.CheckOptions{
+			CurrentVersion: currentVersion,
+			CachePath:      filepath.Join(configDir, "update-check.json"),
+		})
+		return updateCheckMsg{result: res, err: err}
+	}
+}
+
+// updateNotesPreviewWidth 是欢迎页与事件流共用的单行摘要宽度。远端 release
+// 文本不直接进入终端：先移除 ANSI/控制字符，再显式截断，避免终端控制序列和超长行。
+const updateNotesPreviewWidth = 56
+
+func formatUpdateNotice(result *buildversion.CheckResult) string {
+	notice := fmt.Sprintf("新版本 %s 已发布", result.Latest)
+	if preview := updateNotesPreview(result.Notes); preview != "" {
+		notice += " · " + preview
+	}
+	return notice + " · 运行 ainovel-cli update 升级"
+}
+
+func updateNotesPreview(notes string) string {
+	plain := ansi.Strip(notes)
+	plain = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) && r != '\n' && r != '\t' {
+			return -1
+		}
+		return r
+	}, plain)
+	for _, rawLine := range strings.Split(plain, "\n") {
+		line := strings.TrimSpace(rawLine)
+		line = strings.TrimSpace(strings.TrimLeft(line, "#>*-"))
+		line = strings.Join(strings.Fields(line), " ")
+		if line != "" {
+			return truncate(line, updateNotesPreviewWidth)
+		}
+	}
+	return ""
+}
 
 func listenEvents(rt *host.Host) tea.Cmd {
 	return func() tea.Msg {
@@ -96,25 +152,24 @@ func fetchSnapshot(rt *host.Host) tea.Cmd {
 
 func bootstrapRuntime(rt *host.Host) tea.Cmd {
 	return func() tea.Msg {
-		replay, err := rt.ReplayQueue(0)
-		if err != nil {
-			return bootstrapMsg{err: err}
+		snapshot := rt.Snapshot()
+		msg := bootstrapMsg{
+			existing:  snapshot.Phase != "" || snapshot.BookTitle != "",
+			completed: snapshot.Phase == "complete",
 		}
 		label, err := rt.Resume()
 		if err != nil {
-			return bootstrapMsg{replay: replay, err: err}
+			msg.err = err
+			return msg
 		}
 		if label == "" {
-			// 完结书不可续跑（恢复视为无标签），但也不能落欢迎页装作书不存在——
-			// 直接落到完成态工作台：面板照常展示本书，/reopen、/export、返工输入都在原位。
-			if rt.Snapshot().Phase == "complete" {
-				return bootstrapMsg{replay: replay, completed: true}
+			if msg.existing {
+				return msg
 			}
-			if len(replay) == 0 {
-				return nil
-			}
+			return nil
 		}
-		return bootstrapMsg{replay: replay, resumed: label != ""}
+		msg.resumed = true
+		return msg
 	}
 }
 
@@ -124,18 +179,22 @@ func bootstrapRuntime(rt *host.Host) tea.Cmd {
 // 方向）由 Resume 先经 Arbiter 裁定消化，再续跑引擎。
 func resumeBook(rt *host.Host) tea.Cmd {
 	return func() tea.Msg {
+		snapshot := rt.Snapshot()
 		label, err := rt.Resume()
-		return bootstrapMsg{resumed: label != "", err: err}
+		return bootstrapMsg{
+			existing: snapshot.Phase != "" || snapshot.BookTitle != "", completed: snapshot.Phase == "complete",
+			resumed: label != "", err: err,
+		}
 	}
 }
 
-func startRuntime(rt *host.Host, plan startup.Plan) tea.Cmd {
+func startRuntime(rt *host.Host, prompt string) tea.Cmd {
 	return func() tea.Msg {
 		// 启动侧确定性生成本书用户规则快照（用原始 prompt 归一化），须在 StartPrepared 前。
-		if err := rt.PrepareUserRules(plan.RawPrompt); err != nil {
+		if err := rt.PrepareUserRules(prompt); err != nil {
 			return startResultMsg{err: err}
 		}
-		err := rt.StartPrepared(plan.RawPrompt)
+		err := rt.StartPrepared(prompt)
 		return startResultMsg{err: err}
 	}
 }
@@ -260,22 +319,15 @@ func tickSpinner() tea.Cmd {
 	})
 }
 
-// tickToolSpinner 驱动事件流"进行中"行的 spinner。独立于 tickSpinner，节奏更快（150ms）。
-func tickToolSpinner() tea.Cmd {
+// tickEventSpinner 驱动事件流"进行中"行的 spinner。独立于 tickSpinner，节奏更快（150ms）。
+func tickEventSpinner() tea.Cmd {
 	return tea.Tick(150*time.Millisecond, func(t time.Time) tea.Msg {
-		return toolSpinnerTickMsg(t)
+		return eventSpinnerTickMsg(t)
 	})
 }
 
-func tickCursor() tea.Cmd {
-	return tea.Tick(120*time.Millisecond, func(t time.Time) tea.Msg {
-		return cursorTickMsg(t)
-	})
-}
-
-// tickStreamFlush 驱动流式面板节流刷新。streamDelta 不再每个 token 立即重渲，
-// 而是 mark dirty；本 tick 每 16ms（~60fps）检查并合并刷新一次，把 LLM 高速流式
-// 期的"每秒数十次全量重渲"压回 60 次上限。
+// tickStreamFlush 合并一个 16ms 窗口内的流式增量。它由首个待刷 delta 启动，
+// 刷完即停止，空闲时不会持续唤醒 TUI。
 func tickStreamFlush() tea.Cmd {
 	return tea.Tick(16*time.Millisecond, func(t time.Time) tea.Msg {
 		return streamFlushTickMsg{}
@@ -295,15 +347,5 @@ func listenStream(rt *host.Host) tea.Cmd {
 			return streamClearMsg{}
 		}
 		return streamDeltaMsg(delta)
-	}
-}
-
-func listenAskUser(bridge *askUserBridge) tea.Cmd {
-	return func() tea.Msg {
-		req, ok := <-bridge.requests
-		if !ok {
-			return nil
-		}
-		return askUserMsg(req)
 	}
 }

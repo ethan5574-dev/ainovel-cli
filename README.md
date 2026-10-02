@@ -9,16 +9,17 @@ An end-to-end AI engine for writing long-form novels. The Coordinator drives the
 
 ## Features
 
-- **Multi-agent collaboration** - The Coordinator orchestrates Architect / Writer / Editor in a long-running loop and makes the creative decisions.
-- **LLM-driven long loop** - One prompt can write an entire book, with the Host staying out of scheduling. Simpler is more stable.
-- **Step-level recovery** - Every successful tool call writes a checkpoint, enabling recovery at the plan / draft / check / commit step level after a crash.
-- **Two-layer rolling planning** - Long novels are not planned all at once. Initially we only plan the skeleton of the first 2 volumes/arcs plus the detailed chapters of the first arc; later arcs and volumes are expanded by the Architect when needed, using prior summaries and character state so the distant plan stays grounded.
-- **Smart related-chapter suggestions** - Each chapter can automatically recommend related historical chapters based on foreshadowing, character appearances, state changes, and relationships, keeping 500+ chapter stories coherent.
-- **Adaptive context strategy** - Automatically switches between full, sliding-window, and layered summaries based on total chapter count.
-- **Seven-dimensional quality review** - The Editor reviews consistency, character behavior, pacing, narrative coherence, foreshadowing, hooks, and aesthetic quality, with the aesthetic dimension split into descriptive quality, narrative technique, dialogue distinction, diction, and emotional impact.
-- **Real-time user intervention** - You can inject edits directly while writing without pausing; the system evaluates scope and rewrites affected chapters automatically.
-- **Unified TUI entry point** - Watch progress live in the interactive UI, or start from a single prompt.
-- **Multi-LLM support** - Switch freely among OpenRouter / Anthropic / Gemini / OpenAI and more.
+- **确定性引擎 + 多智能体协作** — Engine 按事实决策表调度 Architect / Writer / Editor 三个自主创作代理，主循环零 LLM 开销、行为可穷举测试
+- **语义裁定可审计** — 选规划师、干预分诊、失败出路等判断由 Arbiter 单次调用完成，每次裁定落盘可回放。越简单越稳定，拒绝复杂编排
+- **Step 级断点恢复** — 每个工具执行成功后写入 checkpoint，崩溃后精确到 plan/draft/check/commit 步骤级恢复
+- **卷弧双层滚动规划** — 长篇不再一次性规划全部章节。初始只规划前 2 卷弧骨架 + 第 1 弧详细章节，后续弧/卷在写作推进到时再由 Architect 展开，每次展开都参考前文摘要和角色状态，远期规划不空洞
+- **相关章节智能推荐** — 每章写作时从伏笔、角色出场、状态变化、关系四个维度自动推荐相关历史章节，配合下一章预告，确保 500+ 章长篇的连续性
+- **自适应上下文策略** — 根据总章节数自动切换全量 / 滑窗 / 分层摘要，支持 500+ 章长篇
+- **七维质量评审** — Editor 从设定一致性、角色行为、节奏、叙事连贯、伏笔、钩子、审美品质七个维度评审，审美维度细分描写质感/叙事手法/对话区分度/用词质量/情感打动力五项，每项必须引用原文举证
+- **用户实时干预** — 写作过程中随时在输入框注入修改意见（无需暂停），系统自动评估影响范围并重写受影响章节
+- **可选逐章验收** — 默认仍全自动；需要精细控制时用 `/review on`，每次 `/next` 只放行一个新章节，返工和崩溃恢复不会误消耗许可
+- **TUI + Headless 双入口** — 既可在交互界面实时观察和干预，也可在服务器、NAS 或 CI 中无界面持续运行
+- **多 LLM 支持** — OpenRouter / Anthropic / Gemini / OpenAI 等等随意切换
 
 ## Architecture
 
@@ -55,10 +56,10 @@ Core design: **LLM-driven, Host-served**. The Coordinator independently decides 
 
 | Agent | Responsibility | Tools |
 |--------|------|------|
-| **Coordinator** | Orchestrates the whole system and handles review decisions and user intervention | `subagent` `novel_context` |
-| **Architect** | Creates the premise, outline, character sheets, and world rules | `novel_context` `save_foundation` |
-| **Writer** | Independently plans, writes, self-checks, and submits a chapter | `novel_context` `read_chapter` `plan_chapter` `draft_chapter` `check_consistency` `commit_chapter` |
-| **Editor** | Reads the source text and reviews both structure and style | `novel_context` `read_chapter` `save_review` `save_arc_summary` `save_volume_summary` |
+| **Arbiter** | 语义裁定：启动选规划师、用户干预分诊、失败/僵局出路 | 无（单次 LLM 调用，输出结构化决策） |
+| **Architect** | 生成书名、小说简介、前提、大纲、角色档案、世界规则 | `novel_context` `save_book` `save_foundation` |
+| **Writer** | 自主完成一章的构思、写作、自审和提交 | `novel_context` `read_chapter` `plan_chapter` `draft_chapter` `check_consistency` `commit_chapter` |
+| **Editor** | 阅读原文，从结构和审美两个层面审阅 | `novel_context` `read_chapter` `save_review` `save_arc_summary` `save_volume_summary` |
 
 ### Writing Process
 
@@ -197,8 +198,8 @@ ToolResultMicrocompact → LightTrim → StoreSummaryCompact → FullSummary
 # One-click installation (macOS / Linux, no Go required)
 curl -fsSL https://raw.githubusercontent.com/voocel/ainovel-cli/main/scripts/install.sh | sh
 
-# Install a specific version
-curl -fsSL https://raw.githubusercontent.com/voocel/ainovel-cli/main/scripts/install.sh | sh -s -- v1.2.3
+# 安装指定版本
+curl -fsSL https://raw.githubusercontent.com/voocel/ainovel-cli/v1.2.3/scripts/install.sh | sh -s -- v1.2.3
 
 # Or install via Go
 go install github.com/voocel/ainovel-cli/cmd/ainovel-cli@latest
@@ -211,7 +212,25 @@ ainovel-cli update
 ainovel-cli
 ```
 
-> Windows or manual installation: Go to [Releases](https://github.com/voocel/ainovel-cli/releases/latest) to download the package for your platform.
+> Windows 或手动安装：前往 [Releases](https://github.com/voocel/ainovel-cli/releases/latest) 下载对应平台的包。
+> 安装脚本会从同一 GitHub Release 下载 SHA256 清单，校验通过后才提取并安装二进制。
+
+### Headless 模式
+
+`--headless` 无需 TUI，适合在服务器、NAS、CI 或后台任务中持续运行。它不提供首次配置引导，请先运行一次 `ainovel-cli` 完成配置，或手动创建 `~/.ainovel/config.json`。
+
+```bash
+# 使用一句话需求启动新任务
+ainovel-cli --headless --prompt "写一本东方玄幻长篇，主角从边陲小城起步"
+
+# 从文件读取需求
+ainovel-cli --headless --prompt-file prompt.txt
+
+# 在同一目录恢复未完成的任务
+ainovel-cli --headless
+```
+
+`--prompt` 与 `--prompt-file` 只能在 Headless 模式下使用，且不能同时指定。模型流式输出写入 stdout，运行事件写入 stderr，完整运行日志保存在作品目录的 `logs/headless.log`。
 
 ### Docker
 
@@ -243,12 +262,20 @@ docker compose run --rm ainovel --headless --prompt "Write a short mystery novel
 
 After entering the TUI, two initial interaction modes are supported at startup:
 
-- `Quick Start`: Start writing immediately with a single prompt.
-- `Co-creation`: Clarify requirements through multi-turn dialogue with AI. The **draft writing instructions are synchronized in real-time on the right side**. The AI proactively suggests 1-3 guides in each turn, which can be quickly filled by pressing number keys. Press `Ctrl+S` to start formal writing.
+- `快速开始`：一句话直接进入创作
+- `共创规划`：与 AI 多轮对话澄清需求，**右侧实时同步整理出的创作指令草稿**；AI 每轮主动提供 1-3 条引导建议，可连续按数字键组合填入，编辑后发送，按 `Ctrl+S` 进入正式创作
 
 Both modes will eventually converge into the same set of writing instructions, which are then passed to the same writing engine.
 
-### Managing Multiple Novels
+已有较长的世界设定或故事大纲时，可在欢迎页直接从文件创建新书：
+
+```text
+/start ./outline.md
+```
+
+`/start` 会把文件全文作为初始创作要求，交给 Architect 整理为内部设定和动态大纲，不会将文件内容当成已完成章节。导入已有小说并续写仍使用 `/import`。
+
+### 管理多本小说
 
 Each novel is bound to the directory where the command is launched, and output artifacts are stored in `{cwd}/output/novel/`. Starting in a different directory = starting a new novel; returning (`cd`) and starting again = automatically resuming from the last checkpoint. Configuration in `~/.ainovel/config.json` is shared globally and does not need to be copied.
 
@@ -332,7 +359,18 @@ You can also import previously generated profiles to avoid re-analyzing the same
 
 `/importsim` only accepts the `simulation_profile.v1` JSON format generated by this tool, merging by corpus fingerprint and skipping duplicate sources. Only import profile files from trusted sources; the imported content serves as a contextual reference for subsequent Agents. The profile is injected in a compact format into the `novel_context`, readable by Coordinator, Architect, Writer, and Editor. Agents only learn structure, pacing, hooks, and reader-attraction techniques, without copying the original phrasing or specific settings.
 
-## Import
+## 接纳手动修订
+
+可以直接编辑 `output/novel/chapters/*.md` 中已经完成的章节。系统按已接纳正文的 SHA-256 识别变化，不依赖文件修改时间：
+
+```text
+/sync --check   # 只列出发生变化的章节，不调用模型
+/sync           # 接纳修改，重建摘要、时间线、伏笔、关系、状态与风格记忆
+```
+
+检测到未接纳修改时，恢复创作、继续输入和 `/next` 都会明确要求先执行 `/sync`，避免旧事实继续驱动新章节。`/sync` 不改写用户正文；模型只负责从新正文重新提取完整章节事实和可复用风格偏好，文件版本、状态投影与崩溃恢复均由程序确定性处理。受影响的审阅、弧/卷摘要和角色快照会失效并由 Editor 补建；剧情变化会在续写前交给 Architect 更新后续计划，确认原计划仍适用时也会显式落盘。
+
+## 导入
 
 Type `/import <file_path>` in the TUI to reverse-import an existing novel: it splits the text by chapter, uses the LLM to reverse-engineer the premise, characters, worldview, hierarchical outline, and compass, and writes each chapter to disk. The original text forms the first volume of a serializable project. Once imported, it **automatically transitions to continuation writing**—the Coordinator reviews and summarizes the end of Volume 1, appends a new volume, and continues writing from the next chapter.
 
@@ -358,15 +396,44 @@ Enter `/export` in the TUI to merge and export completed chapters. The default f
 The format is determined by the **output file extension** (`.txt` / `.epub`):
 
 ```text
-/export                            # Default TXT, {novelDir}/{NovelName}.txt
-/export ~/my_novel.txt             # Extension .txt → TXT
-/export ~/my_novel.epub            # Extension .epub → EPUB (readable by Apple Books, WeChat Read, Kindle converter, etc.)
-/export from=10 to=30 --overwrite  # Chapter range + overwrite
+/import --guide=幕间·X 也是独立章节     # 指导文本可含空格，置于命令最后
+```
+
+全部选项（前三个会持久化，崩溃恢复后仍然遵守）：
+
+```text
+/import ~/我的小说.txt --yes           # 无人值守：自动接受切分并跑完全程
+/import ~/我的小说.txt --story=closed  # 预答"故事状态存疑"：按完结（closed）/未完（open）处理
+/import ~/我的小说.txt --continue      # 导入完成后直接接力续写，不停在验收
+/import                                # 无参数：从中断处恢复未完成的导入
+```
+
+前置与恢复：
+
+- 只能导入到**空书**（没有已完成章节），不支持把另一本书并入已有作品；源文件支持 `txt`/`md`，编码 UTF-8 / GB18030（自动识别，无法可靠解码会明确报错）。
+- 每个阶段的产物落在 `meta/import/` 工作区并按输入指纹绑定：中断或失败后重跑 `/import` 只补做缺失部分，不重复调用模型、不用记 "导到第几章了"。存在未完成的导入时，重新启动后的欢迎界面会主动提示进度（如"已分析 210/300 章"）；恢复完成前引擎被门禁挡住，不会把半成品当完整的书续写。模型输出失败的原始响应保存在 `meta/import/failures/` 供排查。
+- 故事状态被综合判定为 `uncertain` 时管线停下，用 `--story=open|closed` 明确后重跑即可。
+- 默认发布完成后设一次验收 Hold，等你确认再续写；`--continue` 跳过该 Hold（review 模式下仍需 `/next`）。
+- 导入的三个语义函数可在配置 `roles` 中指定独立模型档位（见[按角色使用不同模型](#按角色使用不同模型)）。
+
+> 原文会逐字落盘为已完成章节，因此导入适合"续写同一本书"。如果只想借鉴设定做全新创作，请用普通方式起一本新书、在需求里描述想要的风格设定。
+
+## 导出
+
+在 TUI 中输入 `/export` 可把已完成的章节合并导出，默认 TXT，写到 `{小说目录}/{书名}.txt`。导出是只读操作，写作中途也可以随时拿"现阶段成品"，不影响引擎运行。
+
+格式由**输出路径后缀**决定（`.txt` / `.epub`）：
+
+```text
+/export                            # 默认 TXT，{小说目录}/{书名}.txt
+/export ~/光斑.txt                  # 后缀 .txt → TXT
+/export ~/光斑.epub                 # 后缀 .epub → EPUB（Apple Books / 微信读书 / Kindle 转换器可读）
+/export from=10 to=30 --overwrite  # 章节区间 + 覆盖
 /export from=10 ~/x.epub --overwrite
 ```
 
-- **TXT** — `《Book Title》` → Volume dividers → Chapter text (hierarchical mode automatically adds volume dividers). Two kinds of internal data **will not be exported**: the premise (creative blueprint containing target readers/writing taboos, meant only for the author and the engine) and arc dividers (since arcs are too granular for the reader's view). The exporter uniformly generates "Chapter N Title" and strips duplicate headers (e.g. `# Chapter N...` or `# Chapter Title`) produced by the writer in the body text.
-- **EPUB** — EPUB 3 standard container, including cover page, TOC, and XHTML files split by chapter. The identifier is stably derived from the content (re-exporting the same book will be recognized as an update by reader apps). Cover image is not included by default.
+- **TXT** — `《书名》` → 卷分隔 → 章节正文（长篇分层模式自动加卷分隔）。两类内部数据**不进导出**：premise（创作蓝图，含目标读者 / 写作禁区等后台信息，写给作者与引擎看的）、弧分隔（读者视角下弧是过细的内部结构）。导出器统一生成"第 N 章 标题"，正文里 writer 自带的重复标题（`# 第N章…` 或 `# 章节名`）会被剥掉。
+- **EPUB** — EPUB 3 标准容器，含书名、小说简介元数据、封面页、目录和按章拆分的 XHTML，标识符基于内容稳定派生（重导出同一本书阅读器识别为更新版本）。不带封面图。
 
 Unfinished chapters within the range will be skipped and listed in the results, which is not treated as an error.
 
@@ -476,7 +543,60 @@ Writing a long-form novel can take hours or even days. Intermittent crashes, net
 
 ### Recovery Scenarios
 
-| Interruption Scenario | Recovery Behavior |
+写作标准与去 AI 味判据也可以直接覆盖，同样**无需改源码、无需重新编译**。覆盖目录两级：`<输出目录>/style/`（本书，随书走——换机器恢复同一本书加载同一份文风）> `~/.ainovel/style/`（全局），目录结构：
+
+```
+style/
+├── voice.md                          # 写作标准追加段（内置保留，你的要求追加在后、优先级更高）
+├── anti-ai-tone.md                   # 去 AI 味判据追加段（同上）
+├── styles/
+│   └── xianxia.md                    # 新增自定义风格（文件名即风格名，config 里 style: xianxia 即用）
+│                                     #（与内置同名如 fantasy.md 则整体替换）
+└── genres/
+    └── xianxia/
+        └── style-references.md       # 该风格的题材参考（整文件替换）
+```
+
+语义速记：**指导性文本（voice / anti-ai-tone）追加，风格预设（styles / genres）整文件替换**。追加的优先级是给模型的指示；需要机械强制的约束（禁用词、字数）请写在上面的 rules 目录里。改动重启后生效（断点恢复精确到步骤，重启无成本）。执行协议类提示词不开放覆盖——协作不变量由工具层守卫保障，这也是你可以放心改文风而不会弄坏系统的原因。设计细节见 `docs/voice-layer.md`。
+
+## 输出结构
+
+所有创作数据（章节、大纲、角色、进度等）保存在output目录中。中断后重新运行会自动从上次进度续写。删除output目录将重新开始创作。
+
+```
+output/{novel_name}/
+├── book.md             # 书名与小说简介（可读投影）
+├── chapters/           # 终稿（Markdown）
+│   ├── 01.md
+│   └── ...
+├── summaries/          # 章节摘要（JSON）
+├── drafts/             # 章节草稿
+├── reviews/            # 评审报告
+├── timeline.jsonl      # 时间线事实（追加日志）
+├── timeline.md         # 时间线可读投影
+├── premise.md          # 故事前提
+├── outline.json        # 扁平章节大纲（仅含已展开的章节）
+├── layered_outline.json # 分层大纲（长篇模式）
+├── characters.json     # 角色档案
+├── world_rules.json    # 世界规则
+├── meta/
+│   ├── book.json       # 作品信息唯一事实源
+│   ├── compass.json   # 终局方向指南针（长篇模式）
+│   ├── progress.json   # 进度状态
+│   ├── foreshadow.json # 伏笔台账
+│   ├── state_changes.jsonl # 角色状态变化追加日志
+│   ├── style_rules.json# 写作风格规则（弧边界时提炼）
+│   ├── snapshots/      # 角色状态快照（长篇）
+│   └── checkpoints.jsonl # Step 级 checkpoint（每个工具成功后追加）
+```
+
+## 断点恢复
+
+写一部长篇小说可能需要数小时甚至数天，中途崩溃、断网、Ctrl+C 都是常见情况。系统在**同一目录再次运行时自动恢复**，无需手动操作。
+
+### 恢复场景
+
+| 中断时机 | 恢复行为 |
 |---|---|
 | Planning Phase (building worldview/outline) | Checks saved settings and automatically completes missing items |
 | Chapter Writing In-Progress (draft not yet committed) | Resumes from that chapter, reading the existing draft to continue |
@@ -613,6 +733,7 @@ This project actively participates in and endorses the [linux.do community](http
 | "把感情线提前到第4章" | 调整大纲，可能重写第4章及后续 |
 | "加入一个反派角色" | 更新角色档案和世界规则，在后续章节引入 |
 | "节奏太慢了，加快推进" | 调整后续章节的大纲密度 |
+| "写到第20章" | 连续创作至第20章稳定提交后暂停 |
 
 ## 设计理念
 

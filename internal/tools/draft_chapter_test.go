@@ -15,7 +15,7 @@ func TestDraftChapterRejectsUnfinishedPendingRewrite(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 80); err != nil {
+	if err := s.Progress.Init(80); err != nil {
 		t.Fatalf("Progress.Init: %v", err)
 	}
 	for ch := 1; ch <= 58; ch++ {
@@ -55,7 +55,7 @@ func TestDraftChapterRejectsUnexpandedLayeredChapter(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 5); err != nil {
+	if err := s.Progress.Init(5); err != nil {
 		t.Fatalf("Progress.Init: %v", err)
 	}
 	if err := s.Outline.SaveLayeredOutline([]domain.VolumeOutline{{
@@ -93,7 +93,7 @@ func TestDraftChapterRejectsUnexpandedLayeredChapter(t *testing.T) {
 		t.Fatalf("Marshal: %v", err)
 	}
 
-	if _, err := tool.Execute(context.Background(), args); err == nil || !strings.Contains(err.Error(), "expand_arc") {
+	if _, err := tool.Execute(context.Background(), args); err == nil || !strings.Contains(err.Error(), "expand_next_arc") {
 		t.Fatalf("expected unexpanded chapter rejection, got %v", err)
 	}
 	progress, _ := s.Progress.Load()

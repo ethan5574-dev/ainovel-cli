@@ -11,7 +11,6 @@ func TestRuntimeStoreAppendQueueAssignsSeq(t *testing.T) {
 	store := NewStore(dir)
 
 	first, err := store.Runtime.AppendQueue(domain.RuntimeQueueItem{
-		Kind:     domain.RuntimeQueueUIEvent,
 		Priority: domain.RuntimePriorityBackground,
 		Summary:  "first",
 	})
@@ -19,7 +18,6 @@ func TestRuntimeStoreAppendQueueAssignsSeq(t *testing.T) {
 		t.Fatalf("AppendQueue first: %v", err)
 	}
 	second, err := store.Runtime.AppendQueue(domain.RuntimeQueueItem{
-		Kind:     domain.RuntimeQueueControl,
 		Priority: domain.RuntimePriorityControl,
 		Summary:  "second",
 	})
@@ -80,7 +78,6 @@ func TestRuntimeStoreLoadQueueAfter(t *testing.T) {
 
 	for _, summary := range []string{"one", "two", "three"} {
 		if _, err := store.Runtime.AppendQueue(domain.RuntimeQueueItem{
-			Kind:     domain.RuntimeQueueUIEvent,
 			Priority: domain.RuntimePriorityBackground,
 			Summary:  summary,
 		}); err != nil {
@@ -105,7 +102,6 @@ func TestRuntimeStoreReset(t *testing.T) {
 	store := NewStore(dir)
 
 	_, _ = store.Runtime.AppendQueue(domain.RuntimeQueueItem{
-		Kind:     domain.RuntimeQueueUIEvent,
 		Priority: domain.RuntimePriorityBackground,
 		Summary:  "queued",
 	})

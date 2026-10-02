@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 
 	"github.com/voocel/agentcore/schema"
 	"github.com/voocel/ainovel-cli/internal/domain"
+	"github.com/voocel/ainovel-cli/internal/errs"
+	"github.com/voocel/ainovel-cli/internal/flow"
 	"github.com/voocel/ainovel-cli/internal/llmcontract"
 	"github.com/voocel/ainovel-cli/internal/store"
 )
@@ -75,7 +78,7 @@ func (t *SaveReviewTool) Execute(_ context.Context, args json.RawMessage) (json.
 	if err != nil {
 		return nil, err
 	}
-	flow, err := reviewFlow(r.Verdict)
+	reviewOutcome, err := reviewFlow(r.Verdict)
 	if err != nil {
 		return nil, err
 	}
@@ -86,13 +89,49 @@ func (t *SaveReviewTool) Execute(_ context.Context, args json.RawMessage) (json.
 	if err != nil {
 		return nil, fmt.Errorf("load progress: %w", err)
 	}
-	if r.Scope == "global" && (progress == nil || progress.LatestCompleted() != r.Chapter) {
-		return nil, fmt.Errorf("global review chapter must be the latest completed chapter")
+	if progress == nil || !slices.Contains(progress.CompletedChapters, r.Chapter) {
+		return nil, fmt.Errorf("review chapter %d must be completed", r.Chapter)
+	}
+	scope := domain.ChapterScope(r.Chapter)
+	artifact := fmt.Sprintf("reviews/%02d.json", r.Chapter)
+	var existing *domain.ReviewEntry
+	switch r.Scope {
+	case "arc":
+		scope = domain.ArcScope(boundary.Volume, boundary.Arc)
+		existing, err = t.store.World.LoadReview(r.Chapter)
+		if err != nil {
+			return nil, fmt.Errorf("load arc review: %w", err)
+		}
+		if existing != nil && existing.Scope != "arc" {
+			existing = nil
+		}
+	case "global":
+		artifact = fmt.Sprintf("reviews/%02d-global.json", r.Chapter)
+		existing, err = t.store.World.LoadGlobalReview(r.Chapter)
+		if err != nil {
+			return nil, fmt.Errorf("load global review: %w", err)
+		}
+	}
+	if existing != nil {
+		if !reflect.DeepEqual(*existing, r) {
+			return nil, fmt.Errorf("第 %d 章聚合评审已存在且内容不同，拒绝覆盖: %w", r.Chapter, errs.ErrToolConflict)
+		}
+		return t.finishReview(r, progress, scope, artifact)
+	}
+	switch r.Scope {
+	case "arc":
+		if err := requireAggregateTarget(t.store, flow.AggregateArcReview, boundary.Volume, boundary.Arc, r.Chapter); err != nil {
+			return nil, err
+		}
+	case "global":
+		if err := requireAggregateTarget(t.store, flow.AggregateGlobalReview, 0, 0, r.Chapter); err != nil {
+			return nil, err
+		}
 	}
 
 	// 先原子应用控制状态，再保存审阅工件。若第二步失败，返工意图仍然存在；
 	// Writer 排空队列后，路由会因审阅工件缺失而重新派发 Editor，不会跳过审阅。
-	latest, err := t.store.Progress.ApplyReviewOutcome(flow, affected, r.Summary)
+	latest, err := t.store.Progress.ApplyReviewOutcome(reviewOutcome, affected, r.Summary)
 	if err != nil {
 		return nil, fmt.Errorf("apply review outcome: %w", err)
 	}
@@ -100,25 +139,25 @@ func (t *SaveReviewTool) Execute(_ context.Context, args json.RawMessage) (json.
 		return nil, fmt.Errorf("save review: %w", err)
 	}
 
+	return t.finishReview(r, latest, scope, artifact)
+}
+
+func (t *SaveReviewTool) finishReview(
+	r domain.ReviewEntry,
+	progress *domain.Progress,
+	scope domain.Scope,
+	artifact string,
+) (json.RawMessage, error) {
+	if _, err := t.store.Checkpoints.AppendArtifact(scope, "review", artifact); err != nil {
+		return nil, fmt.Errorf("checkpoint review: %w", err)
+	}
+
 	// 使用原子更新返回的 Progress 快照作为事实，避免二次读取产生新的失败窗口。
 	nextFlow := string(domain.FlowWriting)
 	nextChapter := 0
-	if latest != nil {
-		nextFlow = string(latest.Flow)
-		nextChapter = latest.NextChapter()
-	}
-
-	// 追加 checkpoint
-	scope := domain.ChapterScope(r.Chapter)
-	if r.Scope == "arc" {
-		scope = domain.ArcScope(boundary.Volume, boundary.Arc)
-	}
-	artifact := fmt.Sprintf("reviews/%02d.json", r.Chapter)
-	if r.Scope == "global" {
-		artifact = fmt.Sprintf("reviews/%02d-global.json", r.Chapter)
-	}
-	if _, err := t.store.Checkpoints.AppendArtifact(scope, "review", artifact); err != nil {
-		return nil, fmt.Errorf("checkpoint review: %w", err)
+	if progress != nil {
+		nextFlow = string(progress.Flow)
+		nextChapter = progress.NextChapter()
 	}
 
 	return json.Marshal(map[string]any{
@@ -126,7 +165,7 @@ func (t *SaveReviewTool) Execute(_ context.Context, args json.RawMessage) (json.
 		"chapter":           r.Chapter,
 		"scope":             r.Scope,
 		"verdict":           r.Verdict,
-		"affected_chapters": affected,
+		"affected_chapters": r.AffectedChapters,
 		"issues":            len(r.Issues),
 		"next_flow":         nextFlow,
 		"next_chapter":      nextChapter,

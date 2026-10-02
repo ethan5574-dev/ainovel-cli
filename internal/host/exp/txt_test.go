@@ -110,7 +110,7 @@ func TestRenderTXT_TitleAndChapter(t *testing.T) {
 	}
 }
 
-func TestRenderTXT_EmptyNovelNameNoTitleLine(t *testing.T) {
+func TestRenderTXT_EmptyBookTitleNoTitleLine(t *testing.T) {
 	got := renderTXT(
 		"",
 		[]int{1},

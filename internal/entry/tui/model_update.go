@@ -3,11 +3,13 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/voocel/ainovel-cli/internal/domain"
 	"github.com/voocel/ainovel-cli/internal/entry/startup"
 	"github.com/voocel/ainovel-cli/internal/host"
 	"github.com/voocel/ainovel-cli/internal/host/imp"
@@ -66,8 +68,6 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleOverlayKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	switch {
-	case m.askState != nil:
-		return m.handleBlockingModalKey(msg, m.handleAskUserKey)
 	case m.cocreate != nil:
 		return m.handleBlockingModalKey(msg, m.handleCoCreateKey)
 	case m.modelConfig != nil:
@@ -305,18 +305,13 @@ func (m Model) handleEnterKey() (tea.Model, tea.Cmd) {
 	case modeNew:
 		m.err = nil
 		if m.startupMode == startupModeQuick {
-			plan, err := startup.PrepareQuick(startup.Request{
-				Mode:        startup.ModeQuick,
-				UserPrompt:  text,
-				OutputDir:   m.runtime.Dir(),
-				Interactive: true,
-			})
+			prompt, err := startup.PrepareQuick(text)
 			if err != nil {
 				m.err = err
 				return m, nil
 			}
-			cmd := m.enterStarting(plan.RawPrompt)
-			return m, tea.Batch(startRuntime(m.runtime, plan), cmd)
+			cmd := m.enterStarting(prompt)
+			return m, tea.Batch(startRuntime(m.runtime, prompt), cmd)
 		}
 		m.cocreate = newCoCreateState(text)
 		return m, m.sendCoCreate()
@@ -389,7 +384,7 @@ func (m Model) handleMouseMsg(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, cmd
 	}
-	if m.modelSwitch != nil || m.modelConfig != nil || m.askState != nil {
+	if m.modelSwitch != nil || m.modelConfig != nil {
 		return m, nil
 	}
 	if pane, ok := m.paneAtMouse(msg.X, msg.Y); ok {
@@ -428,23 +423,26 @@ func (m Model) handleMouseMsg(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 func (m Model) handleRuntimeMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 	switch msg := msg.(type) {
 	case eventMsg:
+		hadRunningEvent := m.hasRunningEvent()
 		ev := host.Event(msg)
-		m.applyEvent(ev)
+		m.applyEventProjection(ev)
 		m.refreshEventViewport()
-		return m, listenEvents(m.runtime), true
-	case bootstrapMsg:
-		// 先回放历史事件再处理错误：Resume 被拒（如预算上限）是常规路径，
-		// 用户需要在看得到历史的前提下读到拒绝原因，而不是面对空白事件流。
-		m.applyRuntimeReplay(msg.replay)
-		if msg.err != nil {
-			m.err = msg.err
-			return m, fetchSnapshot(m.runtime), true
+		cmd := listenEvents(m.runtime)
+		if !hadRunningEvent && m.hasRunningEvent() && !m.eventSpinnerActive {
+			m.eventSpinnerActive = true
+			cmd = tea.Batch(cmd, tickEventSpinner())
 		}
-		// modeNew：启动恢复/导入完成落台；modeDone：/reopen 重开后回到创作台。
-		if msg.resumed && (m.mode == modeNew || m.mode == modeDone) {
+		return m, cmd, true
+	case bootstrapMsg:
+		// 是否已有作品决定界面落点，恢复成功只决定引擎是否运行。数据升级、
+		// 预算或修订门禁失败时仍留在工作台展示原书，不能退回欢迎页。
+		if (msg.existing || msg.resumed) && m.mode == modeNew && !msg.completed {
 			enableMouse := m.enterRunning()
 			m.resizeTextarea()
 			m.textarea.Placeholder = defaultSteerPlaceholder()
+			if msg.err != nil {
+				m.err = msg.err
+			}
 			return m, tea.Batch(fetchSnapshot(m.runtime), enableMouse), true
 		}
 		// 完结书：落完成态工作台（enterRunning 开鼠标后改 modeDone），不落欢迎页——
@@ -454,23 +452,41 @@ func (m Model) handleRuntimeMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 			m.mode = modeDone
 			m.resizeTextarea()
 			m.textarea.Placeholder = donePlaceholder
+			if msg.err != nil {
+				m.err = msg.err
+			}
 			return m, tea.Batch(fetchSnapshot(m.runtime), enableMouse, m.textarea.Focus()), true
 		}
+		// /reopen 等会话内恢复从完成态重新进入创作台。
+		if msg.resumed && m.mode == modeDone {
+			enableMouse := m.enterRunning()
+			m.resizeTextarea()
+			m.textarea.Placeholder = defaultSteerPlaceholder()
+			return m, tea.Batch(fetchSnapshot(m.runtime), enableMouse), true
+		}
+		if msg.err != nil {
+			m.err = msg.err
+		}
 		return m, fetchSnapshot(m.runtime), true
-	case askUserMsg:
-		m.askState = newAskUserState(askUserRequest(msg))
-		m.textarea.Blur()
-		m.applyEvent(host.Event{
-			Time: time.Now(), Category: "SYSTEM", Summary: "Waiting for the user to provide key details", Level: "info",
-		})
-		m.refreshEventViewport()
-		return m, listenAskUser(m.askBridge), true
 	case snapshotMsg:
-		m.snapshot = host.UISnapshot(msg)
+		next := host.UISnapshot(msg)
+		// 启动期 Host 尚未进入 running（规则归一化/启动裁定都在 StartPrepared 之前或之中），
+		// 直接套用快照会把工作台显示成"空闲"，让正在进行的启动看起来像卡死。
+		if m.starting {
+			next.IsRunning = true
+			next.RuntimeState = "starting"
+		}
+		detailChanged := !sameDetailSnapshot(m.snapshot, next)
+		runningChanged := m.snapshot.IsRunning != next.IsRunning
+		m.snapshot = next
 		m.syncRuntimePlaceholder()
 		m.refreshEventViewport()
-		m.refreshStreamViewport()
-		m.refreshDetailViewport()
+		if runningChanged {
+			m.refreshStreamViewport()
+		}
+		if detailChanged {
+			m.refreshDetailViewport()
+		}
 		m.refreshStateViewport()
 		return m, tickSnapshot(m.runtime), true
 	case doneMsg:
@@ -563,6 +579,40 @@ func (m Model) handleRuntimeMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		}
 		m.refreshEventViewport()
 		return m, nil, true
+	case updateCheckMsg:
+		if msg.err != nil {
+			message := "启动版本检查失败"
+			if msg.result != nil {
+				message = "启动版本检查完成，但缓存存在异常"
+			}
+			slog.Warn(message, "module", "version", "err", msg.err)
+		}
+		if msg.result == nil || !msg.result.UpdateAvailable {
+			return m, nil, true
+		}
+		notice := formatUpdateNotice(msg.result)
+		m.updateHint = notice
+		ev := host.Event{
+			Time: time.Now(), Category: "SYSTEM", Level: "info",
+			Summary: notice,
+		}
+		m.applyEvent(ev)
+		m.refreshEventViewport()
+		return m, nil, true
+	case revisionDoneMsg:
+		if msg.err != nil {
+			m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "章节同步失败：" + msg.err.Error(), Level: "error"})
+		} else if msg.checkOnly {
+			summary := "未检测到章节外部修改"
+			if len(msg.chapters) > 0 {
+				summary = fmt.Sprintf("检测到章节正文已被外部修改：%v；执行 /sync 接纳", msg.chapters)
+			}
+			m.applyEvent(host.Event{Time: time.Now(), Category: "SYSTEM", Summary: summary, Level: "info"})
+		} else {
+			m.applyEvent(host.Event{Time: time.Now(), Category: "SYSTEM", Summary: formatRevisionResult(msg.result), Level: "success"})
+		}
+		m.refreshEventViewport()
+		return m, tea.Batch(fetchSnapshot(m.runtime), m.textarea.Focus()), true
 	case modelConfigSavedMsg:
 		if m.modelConfig == nil {
 			return m, nil, true
@@ -622,45 +672,40 @@ func (m Model) handleRuntimeMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		return m, tea.Batch(fetchSnapshot(m.runtime), listenDone(m.runtime), m.textarea.Focus()), true
 	case spinnerTickMsg:
 		m.spinnerIdx = (m.spinnerIdx + 1) % len(spinnerFrames)
-		if m.snapshot.IsRunning {
-			// 星星 / 顶栏 spinner 的视觉刷新都走这里（350ms）
-			m.refreshEventViewport()
-		}
-		return m, tickSpinner(), true
-	case toolSpinnerTickMsg:
-		m.toolSpinnerIdx = (m.toolSpinnerIdx + 1) % len(toolSpinnerFrames)
-		// 事件流"进行中"行的 spinner 刷新（150ms，独立节奏）。
-		// Arbiter 可在 Engine 停机态处理 Continue/查询，因此不能用 snapshot.IsRunning
-		// 作为动画前提；只要存在调用类 running 事件就刷新。没有时跳过全量重渲。
-		if m.hasRunningEvent() {
-			m.refreshEventViewport()
-		}
-		return m, tickToolSpinner(), true
-	case cursorTickMsg:
 		m.cursorIdx++
 		if m.snapshot.IsRunning {
-			// cursor 闪烁需要全量重渲流式面板（光标位于 content 末尾）；
-			// 顺便把 dirty 一并清掉，flush tick 紧跟着不必重复刷。
+			// 顶栏、活动提示和流式光标共用低频动画，避免多条常驻 timer 重复触发全屏 View。
+			m.refreshEventViewport()
 			m.refreshStreamViewport()
 			m.streamDirty = false
 		}
 		if s := m.importer; s != nil && !s.done && !s.paused {
-			// 导入运行中：尾随星标与重试倒计时都在 viewport 内容里，按 tick 重算。
-			// 挂在 cursor tick（120ms）上与流式面板光标同速——同款星星不该一快一慢。
 			s.frame = m.cursorIdx
 			boxW, _ := reportModalSize(m.width, m.height)
 			s.refresh(paddedModalContentWidth(boxW))
 		}
-		return m, tickCursor(), true
+		return m, tickSpinner(), true
+	case eventSpinnerTickMsg:
+		m.eventSpinnerIdx = (m.eventSpinnerIdx + 1) % len(eventSpinnerFrames)
+		if m.hasRunningEvent() {
+			m.refreshEventViewport()
+			return m, tickEventSpinner(), true
+		}
+		m.eventSpinnerActive = false
+		return m, nil, true
 	case streamDeltaMsg:
 		if len(m.streamRounds) == 0 {
 			m.streamRounds = append(m.streamRounds, "")
 		}
 		m.streamRounds[len(m.streamRounds)-1] += string(msg)
-		// 不立即 refreshStreamViewport，由 streamFlushTick 60fps 合并刷新。
-		// LLM 高速流式期每秒数十 token，逐个刷新等于每秒数十次全量重渲 32 段。
+		// 不立即刷新；首个 delta 启动一次 16ms 合并窗口，后续 delta 复用该 timer。
 		m.streamDirty = true
-		return m, listenStream(m.runtime), true
+		cmd := listenStream(m.runtime)
+		if !m.flushPending {
+			m.flushPending = true
+			cmd = tea.Batch(cmd, tickStreamFlush())
+		}
+		return m, cmd, true
 	case streamClearMsg:
 		// round 边界：先把累积 delta 刷出去，新 round 才能视觉对齐
 		if m.flushStreamIfDirty() && m.streamScroll {
@@ -679,16 +724,36 @@ func (m Model) handleRuntimeMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		}
 		return m, listenStream(m.runtime), true
 	case streamFlushTickMsg:
+		m.flushPending = false
 		if m.flushStreamIfDirty() && m.streamScroll {
 			m.streamVP.GotoBottom()
 		}
-		return m, tickStreamFlush(), true
+		return m, nil, true
 	case quitResetMsg:
 		m.quitPending = false
 		return m, nil, true
 	default:
 		return m, nil, false
 	}
+}
+
+func sameDetailSnapshot(a, b host.UISnapshot) bool {
+	return a.Synopsis == b.Synopsis &&
+		a.Premise == b.Premise &&
+		a.Layered == b.Layered &&
+		a.CurrentVolumeArc == b.CurrentVolumeArc &&
+		a.NextVolumeTitle == b.NextVolumeTitle &&
+		a.CompassDirection == b.CompassDirection &&
+		a.CompassScale == b.CompassScale &&
+		a.SupportingCount == b.SupportingCount &&
+		a.CompletedCount == b.CompletedCount &&
+		a.InProgressChapter == b.InProgressChapter &&
+		a.LastCommitSummary == b.LastCommitSummary &&
+		a.LastReviewSummary == b.LastReviewSummary &&
+		slices.Equal(a.Outline, b.Outline) &&
+		slices.Equal(a.Characters, b.Characters) &&
+		slices.Equal(a.RecentSupporting, b.RecentSupporting) &&
+		slices.Equal(a.RecentSummaries, b.RecentSummaries)
 }
 
 func (m Model) handleStartResultMsg(msg startResultMsg) (tea.Model, tea.Cmd) {
@@ -742,7 +807,7 @@ func (m *Model) enterStarting(rawPrompt string) tea.Cmd {
 	m.err = nil
 	m.starting = true
 	m.snapshot.IsRunning = true
-	m.snapshot.RuntimeState = "running"
+	m.snapshot.RuntimeState = "starting"
 	enableMouse := m.enterRunning()
 	m.resetOutputPanels()
 	m.resizeTextarea()
@@ -795,11 +860,18 @@ func (m Model) handleTextareaMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// applyEvent 把一条事件应用到 m.events：
+// applyEvent 记录一条 TUI 本地产生的事件并更新投影。Host 事件已经在产生端
+// 落过日志，事件订阅路径应直接调用 applyEventProjection，避免重复记录。
+func (m *Model) applyEvent(ev host.Event) {
+	host.LogEvent(ev)
+	m.applyEventProjection(ev)
+}
+
+// applyEventProjection 把一条事件应用到 m.events：
 // - 带 ID 且已存在 → 原地更新（合并完成态字段，保留首次的 Time / Summary）
 // - 新事件 → 追加，必要时记录到 eventIndex
 // - 超过 maxEvents 时做滑动截断并重建索引
-func (m *Model) applyEvent(ev host.Event) {
+func (m *Model) applyEventProjection(ev host.Event) {
 	if ev.ID != "" {
 		if idx, ok := m.eventIndex[ev.ID]; ok && idx >= 0 && idx < len(m.events) {
 			existing := &m.events[idx]
@@ -814,6 +886,12 @@ func (m *Model) applyEvent(ev host.Event) {
 			}
 			if ev.Level != "" {
 				existing.Level = ev.Level
+			}
+			if ev.Detail != "" {
+				existing.Detail = ev.Detail
+			}
+			if ev.Kind != "" {
+				existing.Kind = ev.Kind
 			}
 			// Summary 非空时允许覆盖（结束态可能带补充信息）；否则保留首次
 			if ev.Summary != "" {
@@ -839,7 +917,7 @@ func (m *Model) applyEvent(ev host.Event) {
 }
 
 // trimStreamRounds 把 streamRounds 截断到 maxStreamRounds 段；超出从头丢弃。
-// 调用时机：每次 streamClear 新开轮次后、replay 灌完所有历史项后。
+// 调用时机：每次 streamClear 新开轮次后。
 func (m *Model) trimStreamRounds() {
 	if len(m.streamRounds) <= maxStreamRounds {
 		return
@@ -867,34 +945,4 @@ func (m *Model) resetOutputPanels() {
 	m.streamVP.SetContent("")
 	m.streamVP.GotoTop()
 	m.streamRound = 0
-}
-
-func (m *Model) applyRuntimeReplay(items []domain.RuntimeQueueItem) {
-	for _, item := range items {
-		switch item.Kind {
-		case domain.RuntimeQueueUIEvent:
-			// 事件流不做回放：队列里只有完成态事件，且 Agent/Depth/Duration/Level
-			// 等渲染所需字段未随 replay 还原，出来的行残缺不齐。宁可空面板也不要半截数据。
-			continue
-		case domain.RuntimeQueueStreamClear:
-			if len(m.streamRounds) == 0 {
-				m.streamRounds = append(m.streamRounds, "")
-			} else if strings.TrimSpace(m.streamRounds[len(m.streamRounds)-1]) != "" {
-				m.streamRounds = append(m.streamRounds, "")
-			}
-		case domain.RuntimeQueueStreamDelta:
-			text := host.ReplayDeltaText(item)
-			if text == "" {
-				continue
-			}
-			if len(m.streamRounds) == 0 {
-				m.streamRounds = append(m.streamRounds, "")
-			}
-			m.streamRounds[len(m.streamRounds)-1] += text
-		}
-	}
-	m.trimStreamRounds()
-	m.streamRound = len(m.streamRounds)
-	m.refreshEventViewport()
-	m.refreshStreamViewport()
 }

@@ -29,6 +29,7 @@ const (
 	expectNextChapter
 	expectFoundationFill
 	expectGlobalReview
+	expectOutlineFeedback
 )
 
 // expectedInstruction 按架构规格计算某 State 应得的裁定。
@@ -38,8 +39,10 @@ const (
 //     → 照缺项续派同一规划师；否则 → LLM 裁定（nil，含首次规划师选型）
 //  3. 重写/打磨队列非空 → writer 按队列头（绝对优先，压过一切弧末事务）
 //  4. Flow=Reviewing / Steering → LLM 裁定（nil）
-//  5. 分层模式弧末 → 评审 → 弧摘要 → (卷末)卷摘要 → 展开下一弧 → 追加新卷
-//  6. 其余 → writer 续写下一章
+//  5. 缺失的聚合工件 → Editor 补建
+//  6. 外部修订对后续规划有影响 → Architect 消费
+//  7. 分层模式弧末 → 评审 → 弧摘要 → (卷末)卷摘要 → 展开下一弧 → 追加新卷
+//  8. 其余 → writer 续写下一章
 func expectedInstruction(s State) expectKind {
 	p := s.Progress
 	if p == nil || p.Phase == domain.PhaseComplete {
@@ -56,6 +59,12 @@ func expectedInstruction(s State) expectKind {
 	}
 	if p.Flow == domain.FlowReviewing || p.Flow == domain.FlowSteering {
 		return expectNil
+	}
+	if s.AggregateRefresh != nil {
+		return expectArcSummary
+	}
+	if s.ImmediateFeedbackCount > 0 {
+		return expectOutlineFeedback
 	}
 	if p.Layered && s.ArcBoundary != nil && s.ArcBoundary.IsArcEnd {
 		b := s.ArcBoundary
@@ -110,7 +119,9 @@ func classify(t *testing.T, inst *Instruction) expectKind {
 		switch {
 		case contains(inst.Task, "补齐基础设定"):
 			return expectFoundationFill
-		case contains(inst.Task, "expand_arc"):
+		case contains(inst.Task, "writer_feedback"):
+			return expectOutlineFeedback
+		case contains(inst.Task, "expand_next_arc"):
 			return expectExpandArc
 		case contains(inst.Task, "append_volume"):
 			return expectNewVolume
@@ -118,6 +129,9 @@ func classify(t *testing.T, inst *Instruction) expectKind {
 	case "architect_short":
 		if contains(inst.Task, "补齐基础设定") {
 			return expectFoundationFill
+		}
+		if contains(inst.Task, "writer_feedback") {
+			return expectOutlineFeedback
 		}
 	}
 	t.Fatalf("无法归类的指令：agent=%q task=%q", inst.Agent, inst.Task)
@@ -203,6 +217,8 @@ func TestRoute_ExhaustiveAgainstSpec(t *testing.T) {
 	missingSets := [][]string{nil, {"characters", "world_rules"}}
 	tiers := []domain.PlanningTier{"", domain.PlanningTierShort, domain.PlanningTierLong}
 	globalReviews := []bool{false, true}
+	feedbackCounts := []int{0, 1}
+	aggregates := []*AggregateRefresh{nil, {Kind: AggregateArcSummary, Volume: 1, Arc: 1, EndChapter: 5}}
 
 	total := 0
 	for _, phase := range phases {
@@ -213,45 +229,51 @@ func TestRoute_ExhaustiveAgainstSpec(t *testing.T) {
 						for _, missing := range missingSets {
 							for _, tier := range tiers {
 								for _, hasGlobal := range globalReviews {
-									for _, bc := range enumerateBoundaryCases() {
-										total++
-										p := &domain.Progress{
-											Phase:             phase,
-											Flow:              fl,
-											Layered:           layered,
-											CompletedChapters: append([]int(nil), completed...),
-											PendingRewrites:   append([]int(nil), queue...),
-										}
-										last := 0
-										if n := len(completed); n > 0 {
-											last = completed[n-1]
-										}
-										s := State{
-											Progress:          p,
-											LastCompleted:     last,
-											ArcBoundary:       bc.boundary,
-											HasArcReview:      bc.hasArcReview,
-											HasArcSummary:     bc.hasArcSummary,
-											HasVolumeSummary:  bc.hasVolumeSummary,
-											FoundationMissing: append([]string(nil), missing...),
-											PlanningTier:      tier,
-											HasGlobalReview:   hasGlobal,
-										}
+									for _, feedbackCount := range feedbackCounts {
+										for _, aggregate := range aggregates {
+											for _, bc := range enumerateBoundaryCases() {
+												total++
+												p := &domain.Progress{
+													Phase:             phase,
+													Flow:              fl,
+													Layered:           layered,
+													CompletedChapters: append([]int(nil), completed...),
+													PendingRewrites:   append([]int(nil), queue...),
+												}
+												last := 0
+												if n := len(completed); n > 0 {
+													last = completed[n-1]
+												}
+												s := State{
+													Progress:               p,
+													LastCompleted:          last,
+													ArcBoundary:            bc.boundary,
+													HasArcReview:           bc.hasArcReview,
+													HasArcSummary:          bc.hasArcSummary,
+													HasVolumeSummary:       bc.hasVolumeSummary,
+													FoundationMissing:      append([]string(nil), missing...),
+													PlanningTier:           tier,
+													HasGlobalReview:        hasGlobal,
+													ImmediateFeedbackCount: feedbackCount,
+													AggregateRefresh:       aggregate,
+												}
 
-										before := snapshotState(s)
-										inst := Route(s)
-										want := expectedInstruction(s)
-										got := classify(t, inst)
-										if got != want {
-											t.Fatalf("phase=%s flow=%s queue=%v layered=%v completed=%v missing=%v tier=%q global=%v boundary=%s:\n规格期望 %d，实现返回 %d（inst=%+v）",
-												phase, fl, queue, layered, completed, missing, tier, hasGlobal, bc.name, want, got, inst)
-										}
-										assertConservation(t, s, inst)
-										if !reflect.DeepEqual(before, snapshotState(s)) {
-											t.Fatalf("Route 必须是纯函数，不得改写输入 State（boundary=%s）", bc.name)
-										}
-										if again := Route(s); !reflect.DeepEqual(inst, again) {
-											t.Fatalf("Route 必须确定：两次调用结果不同（boundary=%s）", bc.name)
+												before := snapshotState(s)
+												inst := Route(s)
+												want := expectedInstruction(s)
+												got := classify(t, inst)
+												if got != want {
+													t.Fatalf("phase=%s flow=%s queue=%v layered=%v completed=%v missing=%v tier=%q global=%v boundary=%s:\n规格期望 %d，实现返回 %d（inst=%+v）",
+														phase, fl, queue, layered, completed, missing, tier, hasGlobal, bc.name, want, got, inst)
+												}
+												assertConservation(t, s, inst)
+												if !reflect.DeepEqual(before, snapshotState(s)) {
+													t.Fatalf("Route 必须是纯函数，不得改写输入 State（boundary=%s）", bc.name)
+												}
+												if again := Route(s); !reflect.DeepEqual(inst, again) {
+													t.Fatalf("Route 必须确定：两次调用结果不同（boundary=%s）", bc.name)
+												}
+											}
 										}
 									}
 								}
@@ -307,7 +329,7 @@ func assertConservation(t *testing.T, s State, inst *Instruction) {
 		} else if inst.Chapter != p.NextChapter() {
 			t.Fatalf("续写指令章节号应为 NextChapter=%d，got %d", p.NextChapter(), inst.Chapter)
 		}
-	case "editor", "architect_long":
+	case "editor", "architect_long", "architect_short":
 		if inst.Chapter != 0 {
 			t.Fatalf("%s 指令不应带章节号：%+v", inst.Agent, inst)
 		}
@@ -331,6 +353,10 @@ func snapshotState(s State) State {
 	if s.ArcBoundary != nil {
 		b := *s.ArcBoundary
 		cp.ArcBoundary = &b
+	}
+	if s.AggregateRefresh != nil {
+		refresh := *s.AggregateRefresh
+		cp.AggregateRefresh = &refresh
 	}
 	cp.FoundationMissing = append([]string(nil), s.FoundationMissing...)
 	return cp

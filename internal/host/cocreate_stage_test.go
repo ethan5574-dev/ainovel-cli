@@ -11,7 +11,7 @@ import (
 )
 
 // newFlagTestHost 造一个最小 Host，只够驱动 cocreating 标记状态机与并发守卫。
-// emitEvent 用 recover + 非阻塞 select，缓冲 events 通道即可，无需 observer。
+// emitEvent 使用非阻塞通道，缓冲 events 即可，无需 observer。
 // PauseForCoCreate 的运行态分支会调 Engine Abort（复用已验证的 Esc 暂停路径），
 // 不在此单测；这里只覆盖非运行态与标记/守卫逻辑。
 func newFlagTestHost(lc lifecycle, cocreating bool) *Host {
@@ -196,7 +196,10 @@ func TestBuildStoryStateSummary_Populated(t *testing.T) {
 	if err := st.Init(); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Progress.Init("影之诗", 100); err != nil {
+	if err := st.Progress.Init(100); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Book.Save(domain.BookMetadata{Title: "影之诗", Synopsis: "少年追索失落的影子。"}); err != nil {
 		t.Fatal(err)
 	}
 	p, _ := st.Progress.Load()
@@ -218,5 +221,39 @@ func TestBuildStoryStateSummary_Populated(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("摘要应含 %q，实际:\n%s", want, got)
 		}
+	}
+}
+
+func TestBuildStoryStateSummaryUsesDynamicPlanningWording(t *testing.T) {
+	st := store.NewStore(t.TempDir())
+	if err := st.Init(); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Progress.Init(66); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Outline.SaveLayeredOutline([]domain.VolumeOutline{{
+		Index: 1, Title: "卷一", Arcs: []domain.ArcOutline{
+			{Index: 1, Chapters: []domain.OutlineEntry{{Title: "一"}, {Title: "二"}}},
+			{Index: 2, EstimatedChapters: 64},
+		},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := st.Progress.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Layered = true
+	if err := st.Progress.Save(p); err != nil {
+		t.Fatal(err)
+	}
+
+	got := buildStoryStateSummary(st)
+	if !strings.Contains(got, "当前已细化 2 章（后续按弧动态规划）") {
+		t.Fatalf("动态规划摘要口径错误:\n%s", got)
+	}
+	if strings.Contains(got, "66") || strings.Contains(got, "规划 2 章") {
+		t.Fatalf("动态规划摘要不得暗示固定总章数:\n%s", got)
 	}
 }

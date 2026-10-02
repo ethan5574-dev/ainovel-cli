@@ -30,6 +30,10 @@ jobs:
         shell: bash
         run: test -z "$(gofmt -l .)"
 
+      - name: Installer syntax check
+        if: runner.os == 'Linux'
+        run: sh -n scripts/install.sh
+
       - name: Vet
         env:
           GOWORK: "off"

@@ -43,23 +43,3 @@ func TestCanTransitionFlow(t *testing.T) {
 		}
 	}
 }
-
-func TestExtractNovelNameFromPremise_Placeholder(t *testing.T) {
-	cases := []struct {
-		name    string
-		premise string
-		want    string
-	}{
-		{"Real novel name", "# Long Night Approaching Dawn\n\n## Genre", "Long Night Approaching Dawn"},
-		{"With book quotes", "# 《Astral Shore》\n## Genre", "Astral Shore"},
-		{"Placeholder - Book Title", "# Book Title\n## Genre", ""},
-		{"Placeholder - Example Title", "# 《Example Title》\n## Genre", ""},
-		{"Placeholder - Actual Title", "# Actual Title\n## Genre", ""},
-		{"First line not title", "plain text first line\n# Book Title", ""},
-	}
-	for _, c := range cases {
-		if got := ExtractNovelNameFromPremise(c.premise); got != c.want {
-			t.Errorf("%s: got %q want %q", c.name, got, c.want)
-		}
-	}
-}

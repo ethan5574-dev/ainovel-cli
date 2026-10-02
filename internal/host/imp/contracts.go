@@ -111,6 +111,8 @@ var synthesisContract = llmcontract.Contract{
 	Name:        "import_book_synthesis",
 	Description: "综合全书事实并给出连续完整的卷弧范围",
 	Schema: schema.Object(
+		schema.Property("title", nullableString("正文中的正式书名；无法确认时为 null")).Required(),
+		schema.Property("synopsis", schema.String("面向读者的无剧透小说简介")).Required(),
 		schema.Property("premise", schema.String("故事前提的 Markdown 描述")).Required(),
 		schema.Property("characters", schema.Array("主要人物", schema.Object(
 			schema.Property("name", schema.String("人物名")).Required(),

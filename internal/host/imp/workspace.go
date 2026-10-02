@@ -74,9 +74,6 @@ func OpenWorkspace(bookDir string) *Workspace {
 	return &Workspace{dir: filepath.Join(bookDir, "meta", "import")}
 }
 
-// Dir 返回工作区绝对路径（诊断与失败工件落点用）。
-func (w *Workspace) Dir() string { return w.dir }
-
 func (w *Workspace) path(rel string) string { return filepath.Join(w.dir, rel) }
 
 // Active 判断是否存在已发布的活动工作区。meta/import/ 不存在就不算活动，

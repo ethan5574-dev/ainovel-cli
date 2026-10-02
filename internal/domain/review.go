@@ -24,6 +24,34 @@ type ForeshadowUpdate struct {
 	Description string `json:"description,omitempty"`
 }
 
+// RestoreOwnPlants 把旧记录里本章种下、而新记录未再声明的伏笔 plant 补回队首。
+// 一章埋过哪些伏笔是它自身的历史事实，重写正文不改变这一点；丢掉它，章节记录
+// 全量重放时本章及后续章节的 advance/resolve 会找不到前置 plant，整条链报错。
+func RestoreOwnPlants(prev, next []ForeshadowUpdate) []ForeshadowUpdate {
+	declared := make(map[string]struct{}, len(next))
+	for _, u := range next {
+		if u.Action == "plant" {
+			declared[u.ID] = struct{}{}
+		}
+	}
+	var restored []ForeshadowUpdate
+	for _, u := range prev {
+		if u.Action != "plant" {
+			continue
+		}
+		if _, ok := declared[u.ID]; ok {
+			continue
+		}
+		declared[u.ID] = struct{}{}
+		restored = append(restored, u)
+	}
+	if len(restored) == 0 {
+		return next
+	}
+	// plant 必须排在同章 advance/resolve 之前，重放才能先建起条目。
+	return append(restored, next...)
+}
+
 // RelationshipEntry 人物关系条目。
 type RelationshipEntry struct {
 	CharacterA string `json:"character_a"`

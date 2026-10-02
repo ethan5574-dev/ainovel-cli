@@ -3,7 +3,7 @@
 // 与 imp/ 对称：纯本地 IO，不依赖 LLM，不改 store 状态。导出可以与
 // Engine 并发运行（只读 Progress + 章节终稿），属于横向能力。
 //
-// 第一版只支持 TXT；EPUB 留待下一轮。
+// 当前支持 TXT 与 EPUB。
 package exp
 
 import "github.com/voocel/ainovel-cli/internal/store"
@@ -28,8 +28,7 @@ type Options struct {
 	// OutPath 也为空时回退 FormatTXT。SDK 调用方可显式指定以跳过推断。
 	Format Format
 
-	// OutPath 输出文件路径；空表示 {novelDir}/{NovelName}.{ext}，
-	// ext 由 Format 决定（NovelName 为空则用目录名）。
+	// OutPath 输出文件路径；空表示 {novelDir}/{BookMetadata.Title}.{ext}。
 	OutPath string
 
 	// From / To 章节范围，闭区间。0 表示从第 1 章 / 到最后一章。

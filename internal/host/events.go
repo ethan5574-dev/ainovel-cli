@@ -2,13 +2,11 @@ package host
 
 import (
 	"time"
-
-	"github.com/voocel/ainovel-cli/internal/domain"
 )
 
 // Event 是 TUI 消费的结构化事件。
 //
-// 对于 TOOL / DISPATCH / DECISION 三类调用事件，同一次调用的开始与结束共用一个 ID：
+// 对于 MODEL / TOOL / DISPATCH / DECISION 调用事件，同一次调用的开始与结束共用一个 ID：
 // 开始时先发 FinishedAt 为零值的事件（TUI 渲染为"进行中"样式）；
 // 结束时再发一条同 ID 的事件，填入 FinishedAt + Duration（+ Failed），
 // TUI 按 ID 定位原行原地更新，避免"开始一行、完成又一行"的冗余。
@@ -19,7 +17,7 @@ type Event struct {
 	Time       time.Time // 首次发出时间（开始时刻）
 	FinishedAt time.Time // 零值 = 进行中；非零 = 已完成
 	Failed     bool      // 已完成但失败（仅完成态有意义）
-	Category   string    // DISPATCH / TOOL / DECISION / SYSTEM / REVIEW / CHECK / ERROR / CONTEXT
+	Category   string    // DISPATCH / MODEL / TOOL / DECISION / SYSTEM / REVIEW / CHECK / ERROR / CONTEXT
 	Agent      string    // 产生事件的 agent
 	Summary    string
 	Detail     string        // 完整文案，写入日志不截断供排查；为空回退 Summary。UI 只读 Summary
@@ -31,15 +29,27 @@ type Event struct {
 }
 
 // Running 返回事件是否处于进行中。
-// 仅调用类事件（有 ID 的 TOOL / DISPATCH / DECISION）可能进行中；其它类型总是返回 false。
+// 仅调用类事件（有 ID 的 MODEL / TOOL / DISPATCH / DECISION）可能进行中；其它类型总是返回 false。
 func (e Event) Running() bool {
-	return e.ID != "" && e.FinishedAt.IsZero()
+	return e.hasLifecycle() && e.FinishedAt.IsZero()
+}
+
+func (e Event) hasLifecycle() bool {
+	if e.ID == "" {
+		return false
+	}
+	switch e.Category {
+	case "MODEL", "TOOL", "DISPATCH", "DECISION":
+		return true
+	default:
+		return false
+	}
 }
 
 // UISnapshot 是 TUI 渲染所需的聚合状态快照。
 type UISnapshot struct {
 	Provider             string
-	NovelName            string
+	BookTitle            string
 	ModelName            string
 	ModelContextWindow   int // 当前默认模型的上下文窗口（随 /model 切换实时解析）
 	ThinkingLevel        string
@@ -63,17 +73,6 @@ type UISnapshot struct {
 	RecoveryLabel        string
 	IsRunning            bool
 	Agents               []AgentSnapshot
-
-	// 上下文
-	ContextTokens         int
-	ContextWindow         int
-	ContextPercent        float64
-	ContextScope          string
-	ContextStrategy       string
-	ContextActiveMessages int
-	ContextSummaryCount   int
-	ContextCompactedCount int
-	ContextKeptCount      int
 
 	// 累计用量（整个会话，跨所有 agent 与模型切换）
 	TotalInputTokens      int
@@ -102,10 +101,11 @@ type UISnapshot struct {
 	CachePerModel []AgentCacheStat
 
 	// 基础设定
+	Synopsis         string
 	Premise          string
 	Outline          []OutlineSnapshot
 	Characters       []string
-	SupportingCount  int      // 配角名册中的次要角色总数
+	SupportingCount  int      // 章节记录中的次要角色总数
 	RecentSupporting []string // 最近活跃的次要角色（最多 5 个，按 LastSeenChapter 倒序）
 	Layered          bool
 	CurrentVolumeArc string
@@ -192,14 +192,4 @@ type CoCreateReply struct {
 	Ready       bool
 	Suggestions []string
 	Raw         string
-}
-
-// ReplayDeltaText 从运行时队列项中提取可回放的流式文本。
-func ReplayDeltaText(item domain.RuntimeQueueItem) string {
-	if payload, ok := item.Payload.(map[string]any); ok {
-		if text, ok := payload["delta"].(string); ok {
-			return text
-		}
-	}
-	return ""
 }

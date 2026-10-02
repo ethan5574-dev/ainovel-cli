@@ -115,30 +115,8 @@ func (r *ModelRegistry) ResolveContextWindow(pattern string) int {
 	return 0
 }
 
-// List returns all models (optional filter, empty string returns all).
-func (r *ModelRegistry) List(filter string) []ModelEntry {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	if filter == "" {
-		return append([]ModelEntry{}, r.models...)
-	}
-	lower := strings.ToLower(filter)
-	normalized := normalizeModelLookupID(filter)
-	var out []ModelEntry
-	for _, m := range r.models {
-		if strings.Contains(strings.ToLower(m.Provider), lower) ||
-			strings.Contains(normalizeModelLookupID(m.ID), normalized) ||
-			strings.Contains(strings.ToLower(m.ID), lower) ||
-			strings.Contains(strings.ToLower(m.Name), lower) {
-			out = append(out, m)
-		}
-	}
-	return out
-}
-
-// MergeModels merges fetched models case-insensitively by provider+id.
-// Non-zero price/window/MaxTokens/Name will overwrite existing entries; new entries are appended.
+// MergeModels 按 provider+id 大小写不敏感合并。
+// 非零价格/窗口/MaxTokens/Name 会覆盖已有条目；新增条目直接追加。
 func (r *ModelRegistry) MergeModels(fetched []ModelEntry) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -68,12 +68,6 @@ func Aggregate(runID, mode, variant string, repeat int, cases []CaseResult) Suit
 	return Suite{RunID: runID, Mode: mode, Variant: variant, Repeat: repeat, Gate: gate, Cases: cases}
 }
 
-func NewSingleCaseResult(c Case, r Result) CaseResult {
-	r.Arm = ArmSingle
-	r.Repeat = 1
-	return NewSingleRunsCaseResult(c, []RunResult{{Arm: ArmSingle, Repeat: 1, Result: r}})
-}
-
 func NewSingleRunsCaseResult(c Case, runs []RunResult) CaseResult {
 	cr := CaseResult{
 		CaseID:   c.ID,

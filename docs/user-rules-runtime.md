@@ -20,7 +20,7 @@ Architect / Writer / Editor / commit 检查共用
 
 ## 实现状态（2026-07-19，已落地 + 经 review 修缺）
 
-本设计已实现，24 包 `go build` / `go vet` / `go test` 全绿。一轮 code review 后修掉 4 个缺口（均已修复）：①启动 prompt 规则只接在死方法 `Host.Start` 上、真实入口走 `StartPrepared` 而漏建快照——已把原始 prompt 经 `Plan.RawPrompt` 透传到 quick/cocreate 两条入口，统一调 `Host.PrepareUserRules`；②快照落盘失败被吞——`PrepareUserRules` 改为落盘失败即返 error 中止开书（resume 路径保持 best-effort，避免给老书引入新失败模式）；③rules 文件读取错误静默跳过——`raw.go` 对非"不存在"错误（权限等）打日志；④README 仍教旧 YAML/front matter 且链向已删文件——已重写。
+本设计已实现，24 包 `go build` / `go vet` / `go test` 全绿。一轮 code review 后修掉 4 个缺口（均已修复）：①启动 prompt 规则只接在死方法 `Host.Start` 上、真实入口走 `StartPrepared` 而漏建快照——已把原始 prompt 从 quick/cocreate 两条入口直接透传，统一调 `Host.PrepareUserRules`；②快照落盘失败被吞——`PrepareUserRules` 改为落盘失败即返 error 中止开书（resume 路径保持 best-effort，避免给老书引入新失败模式）；③rules 文件读取错误静默跳过——`raw.go` 对非"不存在"错误（权限等）打日志；④README 仍教旧 YAML/front matter 且链向已删文件——已重写。
 
 落地与本文档基本一致，结构化输出升级后的实现选择如下：
 

@@ -66,7 +66,10 @@ func TestRunEndToEnd(t *testing.T) {
 	if !doneSeen {
 		t.Fatal("未收到 StageDone")
 	}
-	// 正式状态就绪：premise 与覆盖全章的扁平大纲已落盘（world_rules 合法为空，不做要求）。
+	// 正式状态就绪：作品信息、premise 与覆盖全章的扁平大纲已落盘（world_rules 合法为空，不做要求）。
+	if book, _ := st.Book.Load(); book == nil || book.Synopsis == "" {
+		t.Fatalf("作品信息未落盘: %+v", book)
+	}
 	if p, _ := st.Outline.LoadPremise(); p == "" {
 		t.Fatal("premise 未落盘")
 	}

@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,7 +41,7 @@ func TestFailureFactsKeepPartialStateAndWarnings(t *testing.T) {
 	if err := st.Init(); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Progress.Init("test", 3); err != nil {
+	if err := st.Progress.Init(3); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Mkdir(filepath.Join(dir, "premise.md"), 0o755); err != nil {
@@ -55,6 +56,40 @@ func TestFailureFactsKeepPartialStateAndWarnings(t *testing.T) {
 	}
 	if len(facts.FactWarnings) == 0 {
 		t.Fatalf("不可读的基础事实必须作为告警交给 Arbiter: %+v", facts)
+	}
+}
+
+func TestIsNonSemanticWorkerFailure(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "context overflow", err: agentcore.ErrContextOverflow, want: true},
+		{name: "partial stream", err: agentcore.ErrStreamPartial, want: true},
+		{name: "stream idle", err: agentcore.ErrProviderStreamIdle, want: true},
+		{name: "quota", err: agentcore.ErrProviderQuota, want: true},
+		{name: "rate limit", err: agentcore.ErrProviderRateLimit, want: true},
+		{name: "timeout", err: agentcore.ErrProviderTimeout, want: true},
+		{name: "auth", err: agentcore.ErrProviderAuth, want: true},
+		{name: "network wrapped", err: fmt.Errorf("provider: %w", agentcore.ErrProviderNetwork), want: true},
+		{name: "raw EOF", err: fmt.Errorf("upstream closed: EOF"), want: true},
+		{name: "overloaded", err: agentcore.ErrProviderOverloaded, want: true},
+		{name: "flattened overloaded", err: fmt.Errorf("bad_response_status_code: Too many concurrent requests [provider, HTTP 500, openai]"), want: true},
+		{name: "content filter", err: agentcore.ErrProviderContentFilter, want: false},
+		{name: "max turns", err: agentcore.ErrMaxTurns, want: false},
+		{name: "stop guard", err: agentcore.ErrStopGuard, want: false},
+		{name: "canceled", err: context.Canceled, want: false},
+		{name: "tool validation", err: agentcore.ErrToolValidation, want: false},
+		{name: "unknown", err: fmt.Errorf("unknown failure"), want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isNonSemanticWorkerFailure(tt.err); got != tt.want {
+				t.Fatalf("isNonSemanticWorkerFailure(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -118,6 +153,24 @@ func (m *editThenCancelModel) GenerateStream(ctx context.Context, msgs []agentco
 }
 
 func (m *editThenCancelModel) SupportsTools() bool { return true }
+
+// providerNetworkModel 模拟 Worker 在任何模型输出前即遭遇瞬态网络故障。
+// MaxRetries=0 时每次 subagent.Run 对应一次调用，便于验证 Engine 重试计数。
+type providerNetworkModel struct {
+	calls atomic.Int32
+}
+
+func (m *providerNetworkModel) Generate(context.Context, []agentcore.Message, []agentcore.ToolSpec, ...agentcore.CallOption) (*agentcore.LLMResponse, error) {
+	m.calls.Add(1)
+	return nil, fmt.Errorf("test provider EOF: %w", agentcore.ErrProviderNetwork)
+}
+
+func (m *providerNetworkModel) GenerateStream(context.Context, []agentcore.Message, []agentcore.ToolSpec, ...agentcore.CallOption) (<-chan agentcore.StreamEvent, error) {
+	m.calls.Add(1)
+	return nil, fmt.Errorf("test provider EOF: %w", agentcore.ErrProviderNetwork)
+}
+
+func (m *providerNetworkModel) SupportsTools() bool { return true }
 
 func testToolCallMsg(name string, args any) agentcore.Message {
 	data, _ := json.Marshal(args)
@@ -244,7 +297,7 @@ func TestEngine_ReviewPermitWritesExactlyOneNewChapter(t *testing.T) {
 	if err := st.Init(); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Progress.Init("逐章验收试书", 3); err != nil {
+	if err := st.Progress.Init(3); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.Progress.UpdatePhase(domain.PhaseWriting); err != nil {
@@ -295,7 +348,7 @@ func TestEngine_StalePairedDispatchDoesNotBypassHold(t *testing.T) {
 	if err := st.Init(); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Progress.Init("过期派单试书", 3); err != nil {
+	if err := st.Progress.Init(3); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.Progress.UpdatePhase(domain.PhaseWriting); err != nil {
@@ -329,7 +382,7 @@ func TestEngine_WritesBookToCompletion(t *testing.T) {
 	if err := st.Init(); err != nil {
 		t.Fatalf("init: %v", err)
 	}
-	if err := st.Progress.Init("引擎试书", 2); err != nil {
+	if err := st.Progress.Init(2); err != nil {
 		t.Fatalf("progress: %v", err)
 	}
 	if err := st.Progress.UpdatePhase(domain.PhaseWriting); err != nil {
@@ -397,7 +450,7 @@ func TestEngine_WorkerFailureConsultsArbiterAndAborts(t *testing.T) {
 	if err := st.Init(); err != nil {
 		t.Fatalf("init: %v", err)
 	}
-	if err := st.Progress.Init("失败试书", 2); err != nil {
+	if err := st.Progress.Init(2); err != nil {
 		t.Fatalf("progress: %v", err)
 	}
 	if err := st.Progress.UpdatePhase(domain.PhaseWriting); err != nil {
@@ -452,6 +505,165 @@ func TestEngine_WorkerFailureConsultsArbiterAndAborts(t *testing.T) {
 	}
 }
 
+// seedStuckRewrite 造出"第 2 章已完成并排进返工队列"的现场。
+func seedStuckRewrite(t *testing.T, st *storepkg.Store) {
+	t.Helper()
+	if err := st.Init(); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	if err := st.Progress.Init(5); err != nil {
+		t.Fatalf("progress: %v", err)
+	}
+	if err := st.Progress.UpdatePhase(domain.PhaseWriting); err != nil {
+		t.Fatalf("phase: %v", err)
+	}
+	if err := st.Progress.MarkChapterComplete(2, 3000, "", ""); err != nil {
+		t.Fatalf("complete: %v", err)
+	}
+	if err := st.Progress.SetPendingRewrites([]int{2}, "评审要求重写"); err != nil {
+		t.Fatalf("pending: %v", err)
+	}
+	if err := st.Progress.SetFlow(domain.FlowRewriting); err != nil {
+		t.Fatalf("flow: %v", err)
+	}
+}
+
+// TestEngine_DeadlockAbortDropsStuckRewrite 锁死 issue #110 的死锁面：僵局熔断时
+// 卡死的返工章必须出队。PendingRewrites 是持久化事实，只暂停不出队的话重启会立刻
+// 重放同一条死指令，把整本书永久锁死。
+func TestEngine_DeadlockAbortDropsStuckRewrite(t *testing.T) {
+	st := storepkg.NewStore(t.TempDir())
+	seedStuckRewrite(t, st)
+	e, events, _ := newTestEngine(t, st, subagent.NewRunner(), nil)
+
+	inst := &flow.Instruction{Agent: "writer", Task: "重写第 2 章", Chapter: 2}
+	e.lastKey, e.repeats = instructionKey(inst), deadlockAbortAt-1
+
+	if stop := e.trackDeadlock(context.Background(), &inst); !stop {
+		t.Fatal("僵局熔断仍应停机等待人工介入")
+	}
+	p, err := st.Progress.Load()
+	if err != nil {
+		t.Fatalf("progress: %v", err)
+	}
+	if len(p.PendingRewrites) != 0 {
+		t.Fatalf("熔断时卡死的返工章必须出队: %v", p.PendingRewrites)
+	}
+	if p.Flow != domain.FlowWriting {
+		t.Fatalf("队列排空后 flow 应回到 writing，实际 %s", p.Flow)
+	}
+	var notified bool
+	for _, ev := range *events {
+		if strings.Contains(ev.Summary, "移出返工队列") {
+			notified = true
+		}
+	}
+	if !notified {
+		t.Fatalf("跳过返工必须显式告知用户: %+v", *events)
+	}
+}
+
+// TestEngine_DropStuckRewriteOnlyTouchesQueuedChapter 出队是破坏性动作，误伤面必须钉死：
+// 只有"排在返工队列里的那一章"可以被移出，其余指令一律不动队列。
+func TestEngine_DropStuckRewriteOnlyTouchesQueuedChapter(t *testing.T) {
+	cases := []struct {
+		name string
+		inst *flow.Instruction
+	}{
+		{"非 writer 指令", &flow.Instruction{Agent: "editor", Task: "弧级评审"}},
+		{"不涉及章节的 writer 指令", &flow.Instruction{Agent: "writer", Task: "续写"}},
+		{"不在队列里的续写章", &flow.Instruction{Agent: "writer", Task: "写第 3 章", Chapter: 3}},
+		{"空指令", nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			st := storepkg.NewStore(t.TempDir())
+			seedStuckRewrite(t, st)
+			e, _, _ := newTestEngine(t, st, subagent.NewRunner(), nil)
+			if e.dropStuckRewrite(tc.inst) {
+				t.Fatal("不该出队")
+			}
+			p, err := st.Progress.Load()
+			if err != nil {
+				t.Fatalf("progress: %v", err)
+			}
+			if len(p.PendingRewrites) != 1 || p.PendingRewrites[0] != 2 {
+				t.Fatalf("返工队列不得被误伤: %v", p.PendingRewrites)
+			}
+		})
+	}
+}
+
+// TestEngine_TransientProviderFailuresDoNotBecomeDeadlock 回归第 135 章故障链：
+// 两轮网络失败后的 worker_failure=retry 不能在下一轮被 trackDeadlock 当成
+// “同一写作任务连续无进展”并触发 deadlock 改派。
+func TestEngine_TransientProviderFailuresDoNotBecomeDeadlock(t *testing.T) {
+	st := storepkg.NewStore(t.TempDir())
+	if err := st.Init(); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	if err := st.Progress.Init(1); err != nil {
+		t.Fatalf("progress: %v", err)
+	}
+	if err := st.Progress.UpdatePhase(domain.PhaseWriting); err != nil {
+		t.Fatalf("phase: %v", err)
+	}
+	if err := st.Outline.SaveOutline([]domain.OutlineEntry{{Chapter: 1, Title: "第一章", CoreEvent: "开端"}}); err != nil {
+		t.Fatalf("outline: %v", err)
+	}
+
+	network := &providerNetworkModel{}
+	writer := subagent.Config{
+		Name: "writer", Description: "network failing writer",
+		Model: network, SystemPrompt: "test", MaxTurns: 5, MaxRetries: 0,
+	}
+	var arbiterCalls atomic.Int32
+	arb := &scriptedChatModel{fn: func([]agentcore.Message) agentcore.Message {
+		if arbiterCalls.Add(1) == 1 {
+			return testTextMsg(`{"action":"retry","dispatch":null,"reason":"瞬态网络故障，重试原任务"}`)
+		}
+		return testTextMsg(`{"action":"abort","dispatch":null,"reason":"网络持续不可用，暂停等待恢复"}`)
+	}}
+	e, events, done := newTestEngine(t, st, subagent.NewRunner(writer), arb)
+
+	if !e.start(nil) {
+		t.Fatal("engine start")
+	}
+	waitEngineDone(t, done)
+
+	if got := network.calls.Load(); got != 4 {
+		t.Fatalf("两轮 Engine 失败周期各执行 2 次 Worker，got %d", got)
+	}
+	recs, err := st.Decisions.Recent(10)
+	if err != nil {
+		t.Fatalf("decisions: %v", err)
+	}
+	var workerFailures, deadlocks int
+	for _, rec := range recs {
+		switch rec.Kind {
+		case "worker_failure":
+			workerFailures++
+		case "deadlock":
+			deadlocks++
+		}
+	}
+	if workerFailures != 2 || deadlocks != 0 {
+		t.Fatalf("网络失败只能进入 worker_failure，got worker_failure=%d deadlock=%d records=%+v", workerFailures, deadlocks, recs)
+	}
+	var failedDispatches, duplicateErrors int
+	for _, ev := range *events {
+		if ev.Category == "DISPATCH" && ev.Failed && ev.Kind == "network" && strings.Contains(ev.Detail, "test provider EOF") {
+			failedDispatches++
+		}
+		if ev.Category == "ERROR" && strings.Contains(ev.Detail, "test provider EOF") {
+			duplicateErrors++
+		}
+	}
+	if failedDispatches != 4 || duplicateErrors != 0 {
+		t.Fatalf("每次 Worker 失败应只更新 DISPATCH，got dispatch=%d duplicate_error=%d events=%+v", failedDispatches, duplicateErrors, *events)
+	}
+}
+
 // failNTimesGuard 立即升级的 StopGuard(模拟空转熔断)。
 func failNTimesGuard() agentcore.StopGuard {
 	return func(context.Context, agentcore.StopInfo) agentcore.StopDecision {
@@ -467,7 +679,7 @@ func TestEngine_RetriesUnfinishedPlanStart(t *testing.T) {
 	if err := st.Init(); err != nil {
 		t.Fatalf("init: %v", err)
 	}
-	if err := st.Progress.Init("", 0); err != nil {
+	if err := st.Progress.Init(0); err != nil {
 		t.Fatalf("progress: %v", err)
 	}
 	// 模拟 StartPrepared 失败现场:输入事实在,裁定事实缺位。
@@ -539,7 +751,7 @@ func TestEngine_PlanStartRetryFailurePauses(t *testing.T) {
 	if err := st.Init(); err != nil {
 		t.Fatalf("init: %v", err)
 	}
-	if err := st.Progress.Init("", 0); err != nil {
+	if err := st.Progress.Init(0); err != nil {
 		t.Fatalf("progress: %v", err)
 	}
 	if err := st.RunMeta.SetStartPrompt("凡人修仙"); err != nil {
@@ -594,7 +806,7 @@ func TestEngine_DeadlockConsultsArbiter(t *testing.T) {
 	if err := st.Init(); err != nil {
 		t.Fatalf("init: %v", err)
 	}
-	if err := st.Progress.Init("僵局试书", 3); err != nil {
+	if err := st.Progress.Init(3); err != nil {
 		t.Fatalf("progress: %v", err)
 	}
 	// 规划期 + tier 已知 + 缺项恒在 → Route 每轮产出同一补齐指令
@@ -637,13 +849,13 @@ func TestEngine_DeadlockConsultsArbiter(t *testing.T) {
 
 // TestEngine_IntermediateCheckpointsDoNotMaskDeadlock 锁定 #84：Writer 反复修改
 // 草稿会产生新 digest 和新 edit checkpoint，但只要 Route 仍是同一个
-// "写第 1 章"，就说明 Engine 级后置条件(commit)未完成，必须继续累计僵局。
+// “打磨第 1 章”，就说明 Engine 级后置条件(commit)未完成，必须继续累计僵局。
 func TestEngine_IntermediateCheckpointsDoNotMaskDeadlock(t *testing.T) {
 	st := storepkg.NewStore(t.TempDir())
 	if err := st.Init(); err != nil {
 		t.Fatalf("init: %v", err)
 	}
-	if err := st.Progress.Init("#84 回归", 1); err != nil {
+	if err := st.Progress.Init(1); err != nil {
 		t.Fatalf("progress: %v", err)
 	}
 	if err := st.Progress.UpdatePhase(domain.PhaseWriting); err != nil {
@@ -654,6 +866,15 @@ func TestEngine_IntermediateCheckpointsDoNotMaskDeadlock(t *testing.T) {
 	}
 	if err := st.Drafts.SaveDraft(1, "版本0 正文初稿"); err != nil {
 		t.Fatalf("draft: %v", err)
+	}
+	if err := st.Progress.MarkChapterComplete(1, len([]rune("版本0 正文初稿")), "mystery", "quest"); err != nil {
+		t.Fatalf("complete: %v", err)
+	}
+	if err := st.Progress.SetPendingRewrites([]int{1}, "测试打磨不提交"); err != nil {
+		t.Fatalf("pending rewrite: %v", err)
+	}
+	if err := st.Progress.SetFlow(domain.FlowPolishing); err != nil {
+		t.Fatalf("flow: %v", err)
 	}
 
 	writerModel := &editThenCancelModel{}
@@ -691,17 +912,23 @@ func TestEngine_IntermediateCheckpointsDoNotMaskDeadlock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decisions: %v", err)
 	}
-	var hasWorkerFailure, hasDeadlock bool
+	var hasWorkerFailure, hasDeadlockWithCause bool
 	for _, rec := range recs {
 		switch rec.Kind {
 		case "worker_failure":
 			hasWorkerFailure = true
 		case "deadlock":
-			hasDeadlock = true
+			var facts arbiter.FailureFacts
+			if err := json.Unmarshal(rec.Facts, &facts); err != nil {
+				t.Fatalf("decode deadlock facts: %v", err)
+			}
+			if facts.ErrorKind == "canceled" && strings.Contains(facts.Error, "context canceled") {
+				hasDeadlockWithCause = true
+			}
 		}
 	}
-	if !hasWorkerFailure || !hasDeadlock {
-		t.Fatalf("应先记录 worker_failure 再记录 deadlock: %+v", recs)
+	if !hasWorkerFailure || !hasDeadlockWithCause {
+		t.Fatalf("应先记录 worker_failure，deadlock 应保留最后错误: %+v", recs)
 	}
 }
 
@@ -713,7 +940,7 @@ func TestEngine_PauseWithEditorDispatchWaitsForRewriteQueue(t *testing.T) {
 	if err := st.Init(); err != nil {
 		t.Fatalf("init: %v", err)
 	}
-	if err := st.Progress.Init("返工试书", 3); err != nil {
+	if err := st.Progress.Init(3); err != nil {
 		t.Fatalf("progress: %v", err)
 	}
 	if err := st.Progress.UpdatePhase(domain.PhaseWriting); err != nil {
@@ -824,7 +1051,7 @@ func TestEngine_BoundaryHoldDoesNotDispatchAnotherWorker(t *testing.T) {
 	if err := st.Init(); err != nil {
 		t.Fatalf("init: %v", err)
 	}
-	if err := st.Progress.Init("暂停试书", 3); err != nil {
+	if err := st.Progress.Init(3); err != nil {
 		t.Fatalf("progress: %v", err)
 	}
 	if err := st.Progress.UpdatePhase(domain.PhaseWriting); err != nil {
@@ -874,6 +1101,57 @@ func TestEngine_BoundaryHoldDoesNotDispatchAnotherWorker(t *testing.T) {
 	}
 }
 
+func TestEngine_TargetChapterHoldStopsAtRequestedChapter(t *testing.T) {
+	st := storepkg.NewStore(t.TempDir())
+	if err := st.Init(); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Progress.Init(3); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Progress.UpdatePhase(domain.PhaseWriting); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Outline.SaveOutline([]domain.OutlineEntry{
+		{Chapter: 1, Title: "一", CoreEvent: "a"},
+		{Chapter: 2, Title: "二", CoreEvent: "b"},
+		{Chapter: 3, Title: "三", CoreEvent: "c"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	writer := subagent.Config{
+		Name: "writer", Description: "test writer", Model: scriptedWriterModel(), SystemPrompt: "test",
+		Tools: []agentcore.Tool{
+			tools.NewPlanChapterTool(st), tools.NewDraftChapterTool(st),
+			tools.NewCheckConsistencyTool(st), tools.NewCommitChapterTool(st, tools.NewStyleStatsIndex(st)),
+		},
+		MaxTurns: 10, StopAfterTools: []string{"commit_chapter"},
+	}
+	e, _, done := newTestEngine(t, st, subagent.NewRunner(writer), nil)
+	if err := st.RunMeta.SetAdvanceHold(domain.AdvanceHold{
+		After: domain.AdvanceHoldAtChapter, TargetChapter: 2, Reason: "写到第2章",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !e.start(nil) {
+		t.Fatal("engine start")
+	}
+	waitEngineDone(t, done)
+
+	progress, err := st.Progress.Load()
+	if err != nil || progress == nil {
+		t.Fatalf("load progress: %v", err)
+	}
+	if !slices.Equal(progress.CompletedChapters, []int{1, 2}) {
+		t.Fatalf("应准确停在第2章, completed=%v", progress.CompletedChapters)
+	}
+	meta, _ := st.RunMeta.Load()
+	if meta.AdvanceHold != nil {
+		t.Fatalf("目标章节 hold 应已消费: %+v", meta.AdvanceHold)
+	}
+}
+
 // TestEngine_ExitRaceRestoresPendingDispatch 回归(评审阻断3):
 // 干预入队与引擎退出竞态时,残留的裁定派单不得无声丢弃——PendingSteer 必须回存,
 // pause 类事实动作必须补执行。
@@ -882,7 +1160,7 @@ func TestEngine_ExitRaceRestoresPendingDispatch(t *testing.T) {
 	if err := st.Init(); err != nil {
 		t.Fatalf("init: %v", err)
 	}
-	if err := st.Progress.Init("竞态试书", 2); err != nil {
+	if err := st.Progress.Init(2); err != nil {
 		t.Fatalf("progress: %v", err)
 	}
 	if err := st.Progress.UpdatePhase(domain.PhaseWriting); err != nil {

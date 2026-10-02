@@ -16,24 +16,37 @@ import (
 type Store struct {
 	dir string
 
-	Progress    *ProgressStore
-	Outline     *OutlineStore
-	Drafts      *DraftStore
-	Summaries   *SummaryStore
-	RunMeta     *RunMetaStore
-	UserRules   *UserRulesStore
-	Signals     *SignalStore
-	Runtime     *RuntimeStore
-	Characters  *CharacterStore
-	Cast        *CastStore
-	World       *WorldStore
-	Checkpoints *CheckpointStore
-	Sessions    *SessionStore
-	Usage       *UsageStore
-	Simulation  *SimulationStore
-	Decisions   *DecisionStore
+	Progress       *ProgressStore
+	Book           *BookStore
+	Outline        *OutlineStore
+	Drafts         *DraftStore
+	Summaries      *SummaryStore
+	RunMeta        *RunMetaStore
+	UserRules      *UserRulesStore
+	Signals        *SignalStore
+	Runtime        *RuntimeStore
+	Characters     *CharacterStore
+	World          *WorldStore
+	Checkpoints    *CheckpointStore
+	Sessions       *SessionStore
+	Usage          *UsageStore
+	Simulation     *SimulationStore
+	Decisions      *DecisionStore
+	ChapterRecords *ChapterRecordStore
+	Revisions      *RevisionStore
 
 	crossMu sync.Mutex // 串行化跨域协调；不代表多个文件具备事务原子性
+}
+
+const (
+	LegacyProjectFormatVersion        = 1
+	ChapterRecordProjectFormatVersion = 2
+	CurrentProjectFormatVersion       = 3
+	projectFormatPath                 = "meta/format.json"
+)
+
+type projectFormat struct {
+	Version int `json:"version"`
 }
 
 // NewStore 创建状态管理器，dir 为小说输出根目录。
@@ -41,28 +54,54 @@ func NewStore(dir string) *Store {
 	io := newIO(dir)
 	outline := NewOutlineStore(io)
 	return &Store{
-		dir:         dir,
-		Progress:    NewProgressStore(newIO(dir)),
-		Outline:     outline,
-		Drafts:      NewDraftStore(newIO(dir)),
-		Summaries:   NewSummaryStore(newIO(dir), outline),
-		RunMeta:     NewRunMetaStore(newIO(dir)),
-		UserRules:   NewUserRulesStore(newIO(dir)),
-		Signals:     NewSignalStore(newIO(dir)),
-		Runtime:     NewRuntimeStore(newIO(dir)),
-		Characters:  NewCharacterStore(newIO(dir), outline),
-		Cast:        NewCastStore(newIO(dir)),
-		World:       NewWorldStore(newIO(dir)),
-		Checkpoints: NewCheckpointStore(io),
-		Sessions:    NewSessionStore(newIO(dir)),
-		Usage:       NewUsageStore(newIO(dir)),
-		Simulation:  NewSimulationStore(newIO(dir)),
-		Decisions:   NewDecisionStore(newIO(dir)),
+		dir:            dir,
+		Progress:       NewProgressStore(newIO(dir)),
+		Book:           NewBookStore(newIO(dir)),
+		Outline:        outline,
+		Drafts:         NewDraftStore(newIO(dir)),
+		Summaries:      NewSummaryStore(newIO(dir), outline),
+		RunMeta:        NewRunMetaStore(newIO(dir)),
+		UserRules:      NewUserRulesStore(newIO(dir)),
+		Signals:        NewSignalStore(newIO(dir)),
+		Runtime:        NewRuntimeStore(newIO(dir)),
+		Characters:     NewCharacterStore(newIO(dir), outline),
+		World:          NewWorldStore(newIO(dir)),
+		Checkpoints:    NewCheckpointStore(io),
+		Sessions:       NewSessionStore(newIO(dir)),
+		Usage:          NewUsageStore(newIO(dir)),
+		Simulation:     NewSimulationStore(newIO(dir)),
+		Decisions:      NewDecisionStore(newIO(dir)),
+		ChapterRecords: NewChapterRecordStore(newIO(dir)),
+		Revisions:      NewRevisionStore(newIO(dir)),
 	}
 }
 
 // Dir 返回输出根目录。
 func (s *Store) Dir() string { return s.dir }
+
+// LoadProjectFormatVersion 返回作品目录的数据格式版本。旧作品没有版本文件，
+// 视为 v1，由启动迁移统一升级，业务代码无需保留旧格式分支。
+func (s *Store) LoadProjectFormatVersion() (int, error) {
+	var format projectFormat
+	if err := s.Progress.io.ReadJSON(projectFormatPath, &format); err != nil {
+		if os.IsNotExist(err) {
+			return LegacyProjectFormatVersion, nil
+		}
+		return 0, err
+	}
+	if format.Version <= 0 {
+		return 0, fmt.Errorf("项目格式版本无效: %d", format.Version)
+	}
+	return format.Version, nil
+}
+
+// SaveProjectFormatVersion 在一次迁移全部完成后原子更新项目格式版本。
+func (s *Store) SaveProjectFormatVersion(version int) error {
+	if version <= 0 {
+		return fmt.Errorf("项目格式版本必须大于 0: %d", version)
+	}
+	return s.Progress.io.WriteJSON(projectFormatPath, projectFormat{Version: version})
+}
 
 // CheckConsistency 对事实层做一次浅层校验，用于启动/恢复时生成 warning。
 // 纯只读：不修正数据，仅返回可读的问题描述。调用方决定如何展示（log / UI）。
@@ -112,11 +151,18 @@ func (s *Store) CheckConsistency() []string {
 	return warnings
 }
 
-// FoundationMissing 返回基础设定中尚缺的项，按用于 Prompt/Reminder 的稳定顺序排列。
+// FoundationMissing 返回初始规划中尚缺的作品信息与基础设定，顺序稳定。
 // 长篇模式（已有 layered_outline）额外要求 compass。读取失败必须原样返回，不能把
 // 损坏或无权限读取的工件误判成“尚未创建”，否则调用方可能覆盖真实数据。
 func (s *Store) FoundationMissing() ([]string, error) {
 	var missing []string
+	book, err := s.Book.Load()
+	if err != nil {
+		return nil, fmt.Errorf("load book metadata: %w", err)
+	}
+	if book == nil {
+		missing = append(missing, "book")
+	}
 	premise, err := s.Outline.LoadPremise()
 	if err != nil {
 		return nil, fmt.Errorf("load premise: %w", err)
@@ -177,7 +223,7 @@ func (s *Store) FoundationMissing() ([]string, error) {
 // novel_context 读到的这个值原样交回审查工具，确保结论针对的是实际落盘版本，
 // 而不是会话中尚未保存或已经过期的内容。
 func (s *Store) FoundationFingerprint() (string, error) {
-	files := []string{"premise.md", "outline.json", "characters.json", "world_rules.json"}
+	files := []string{"meta/book.json", "premise.md", "outline.json", "characters.json", "world_rules.json"}
 	layered, err := s.Outline.LoadLayeredOutline()
 	if err != nil {
 		return "", fmt.Errorf("load layered outline: %w", err)
@@ -206,50 +252,70 @@ func (s *Store) Init() error {
 		return fmt.Errorf("load checkpoints: %w", err)
 	}
 	return s.Progress.io.EnsureDirs([]string{
-		"chapters", "summaries", "drafts", "reviews", "meta", "meta/runtime", "meta/runtime/tasks", "meta/sessions", "meta/sessions/agents",
+		"chapters", "summaries", "drafts", "reviews", "meta", "meta/chapter_records", "meta/runtime", "meta/runtime/tasks", "meta/sessions", "meta/sessions/agents",
 	})
 }
 
 // ── 跨域协调方法 ──
 
-// ExpandArc 将骨架弧校准并展开为详细章节（Outline + Progress 联动）。
-func (s *Store) ExpandArc(volumeIdx, arcIdx int, expansion domain.ArcExpansion) error {
+// ArcPosition 是由分层大纲故事顺序确定的卷弧位置。
+type ArcPosition struct {
+	Volume int
+	Arc    int
+}
+
+// ExpandNextArc 展开当前已完成弧之后的下一弧（Outline + Progress 联动）。
+// 目标由已落盘进度和大纲共同确定，模型只负责创作内容。
+func (s *Store) ExpandNextArc(expansion domain.ArcExpansion) (ArcPosition, error) {
 	s.crossMu.Lock()
 	defer s.crossMu.Unlock()
 
 	s.Outline.io.mu.Lock()
 	defer s.Outline.io.mu.Unlock()
 
-	volumes, err := s.Outline.expandArcUnlocked(volumeIdx, arcIdx, expansion)
-	if err != nil {
-		return err
+	var volumes []domain.VolumeOutline
+	if err := s.Outline.io.ReadJSONUnlocked("layered_outline.json", &volumes); err != nil {
+		return ArcPosition{}, fmt.Errorf("load layered_outline: %w", err)
 	}
+	repairMissingLayeredIndexes(volumes)
 
 	s.Progress.io.mu.Lock()
 	defer s.Progress.io.mu.Unlock()
 
 	p, err := s.Progress.loadUnlocked()
 	if err != nil {
-		return err
+		return ArcPosition{}, err
 	}
 	if p == nil {
-		p = &domain.Progress{}
+		return ArcPosition{}, fmt.Errorf("progress 未初始化: %w", errs.ErrToolPrecondition)
 	}
-	p.TotalChapters = domain.TotalChapters(volumes)
-	return s.Progress.saveUnlocked(p)
+	boundary := checkArcBoundary(volumes, p.LatestCompleted())
+	if boundary == nil || !boundary.IsArcEnd || boundary.nextVolumePos < 0 {
+		return ArcPosition{}, fmt.Errorf("当前进度不在弧末，无下一弧可展开: %w", errs.ErrToolPrecondition)
+	}
+	position := ArcPosition{Volume: boundary.NextVolume, Arc: boundary.NextArc}
+	volumes, err = s.Outline.expandArcAtUnlocked(volumes, boundary.nextVolumePos, boundary.nextArcPos, expansion)
+	if err != nil {
+		return ArcPosition{}, err
+	}
+	p.TotalChapters = domain.EstimatedChapterCapacity(volumes)
+	if err := s.Progress.saveUnlocked(p); err != nil {
+		return ArcPosition{}, err
+	}
+	return position, nil
 }
 
 // AppendVolume 追加新卷到分层大纲末尾（Outline + Progress 联动）。
-func (s *Store) AppendVolume(vol domain.VolumeOutline) error {
+func (s *Store) AppendVolume(vol domain.VolumeOutline) (domain.VolumeOutline, error) {
 	s.crossMu.Lock()
 	defer s.crossMu.Unlock()
 
 	s.Outline.io.mu.Lock()
 	defer s.Outline.io.mu.Unlock()
 
-	volumes, err := s.Outline.appendVolumeUnlocked(vol)
+	volumes, saved, err := s.Outline.appendVolumeUnlocked(vol)
 	if err != nil {
-		return err
+		return domain.VolumeOutline{}, err
 	}
 
 	s.Progress.io.mu.Lock()
@@ -257,13 +323,16 @@ func (s *Store) AppendVolume(vol domain.VolumeOutline) error {
 
 	p, err := s.Progress.loadUnlocked()
 	if err != nil {
-		return err
+		return domain.VolumeOutline{}, err
 	}
 	if p == nil {
 		p = &domain.Progress{}
 	}
-	p.TotalChapters = domain.TotalChapters(volumes)
-	return s.Progress.saveUnlocked(p)
+	p.TotalChapters = domain.EstimatedChapterCapacity(volumes)
+	if err := s.Progress.saveUnlocked(p); err != nil {
+		return domain.VolumeOutline{}, err
+	}
+	return saved, nil
 }
 
 // ReviseOutline 从 fromChapter 起替换尚未发生的计划尾段。
@@ -306,7 +375,7 @@ func (s *Store) ReviseOutline(fromChapter int, replacement []domain.OutlineEntry
 		if err != nil {
 			return 0, err
 		}
-		p.TotalChapters = domain.TotalChapters(volumes)
+		p.TotalChapters = domain.EstimatedChapterCapacity(volumes)
 		if err := s.Progress.saveUnlocked(p); err != nil {
 			return 0, fmt.Errorf("save progress: %w: %w", errs.ErrStoreWrite, err)
 		}

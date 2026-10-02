@@ -5,70 +5,114 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
-	"time"
 
 	"github.com/voocel/ainovel-cli/internal/domain"
-	"github.com/voocel/ainovel-cli/internal/rules"
 )
 
 // WorldStore 管理时间线、伏笔、人物关系、状态变化、世界规则、风格规则、审阅和交接。
-type WorldStore struct{ io *IO }
+type WorldStore struct {
+	io *IO
 
-func NewWorldStore(io *IO) *WorldStore { return &WorldStore{io: io} }
+	timeline                *appendLog[domain.TimelineEvent]
+	stateChanges            *appendLog[domain.StateChange]
+	timelineProjectionReady bool
+}
+
+func NewWorldStore(io *IO) *WorldStore {
+	return &WorldStore{
+		io: io,
+		timeline: newAppendLog(
+			"timeline.jsonl",
+			"timeline.json",
+			timelineEventKey,
+			cloneTimelineEvent,
+		),
+		stateChanges: newAppendLog(
+			"meta/state_changes.jsonl",
+			"meta/state_changes.json",
+			stateChangeKey,
+			func(change domain.StateChange) domain.StateChange { return change },
+		),
+	}
+}
 
 // ── 时间线 ──
 
-// SaveTimeline 全量写入 timeline.json + timeline.md（原子写入）。
+// SaveTimeline 全量替换时间线事实与人类可读投影。
 func (s *WorldStore) SaveTimeline(events []domain.TimelineEvent) error {
 	return s.io.WithWriteLock(func() error {
-		if err := s.io.WriteJSONUnlocked("timeline.json", events); err != nil {
+		if err := s.timeline.replaceUnlocked(s.io, events); err != nil {
+			s.timelineProjectionReady = false
 			return err
 		}
-		return s.io.WriteMarkdownUnlocked("timeline.md", renderTimeline(events))
+		if err := s.io.WriteMarkdownUnlocked("timeline.md", renderTimeline(events)); err != nil {
+			s.timelineProjectionReady = false
+			return err
+		}
+		s.timelineProjectionReady = true
+		return nil
 	})
 }
 
 // LoadTimeline 读取时间线。
 func (s *WorldStore) LoadTimeline() ([]domain.TimelineEvent, error) {
-	var events []domain.TimelineEvent
-	if err := s.io.ReadJSON("timeline.json", &events); err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return events, nil
+	s.io.mu.Lock()
+	defer s.io.mu.Unlock()
+	return s.timeline.allUnlocked(s.io)
 }
 
 // AppendTimelineEvents 追加时间线事件。同一事件重复提交时按稳定 key 去重，保证
 // commit_chapter 崩溃后重跑不会污染时间线。
 func (s *WorldStore) AppendTimelineEvents(newEvents []domain.TimelineEvent) error {
 	return s.io.WithWriteLock(func() error {
-		var existing []domain.TimelineEvent
-		if err := s.io.ReadJSONUnlocked("timeline.json", &existing); err != nil {
-			if !os.IsNotExist(err) {
+		if !s.timelineProjectionReady {
+			existing, err := s.timeline.allUnlocked(s.io)
+			if err != nil {
+				return err
+			}
+			if err := s.ensureTimelineProjectionUnlocked(existing); err != nil {
 				return err
 			}
 		}
-		seen := make(map[string]struct{}, len(existing)+len(newEvents))
-		for _, e := range existing {
-			seen[timelineEventKey(e)] = struct{}{}
-		}
-		all := existing
-		for _, e := range newEvents {
-			key := timelineEventKey(e)
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
-			all = append(all, e)
-		}
-		if err := s.io.WriteJSONUnlocked("timeline.json", all); err != nil {
+
+		added, err := s.timeline.appendUnlocked(s.io, newEvents)
+		if err != nil {
+			// 追加错误时磁盘上可能已有部分完整记录，重放前必须
+			// 从事实日志重建投影，不能仅依赖 added 的返回值。
+			s.timelineProjectionReady = false
 			return err
 		}
-		return s.io.WriteMarkdownUnlocked("timeline.md", renderTimeline(all))
+		if len(added) == 0 {
+			return nil
+		}
+		if err := s.io.AppendLineUnlocked("timeline.md", []byte(renderTimelineEntries(added))); err != nil {
+			s.timelineProjectionReady = false
+			return err
+		}
+		return nil
 	})
+}
+
+// ensureTimelineProjectionUnlocked 在进程首次追加或上次投影失败后核对 timeline.md。
+// 正常路径只执行一次全量核对，之后每章与 JSONL 同步追加；投影不参与事实读取。
+func (s *WorldStore) ensureTimelineProjectionUnlocked(events []domain.TimelineEvent) error {
+	if s.timelineProjectionReady {
+		return nil
+	}
+	expected := renderTimeline(events)
+	actual, err := s.io.ReadFileUnlocked("timeline.md")
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if string(actual) != expected {
+		if err := s.io.WriteMarkdownUnlocked("timeline.md", expected); err != nil {
+			return err
+		}
+	}
+	s.timelineProjectionReady = true
+	return nil
 }
 
 // LoadRecentTimeline 返回最近 window 章内的时间线事件。
@@ -250,39 +294,23 @@ func (s *WorldStore) UpdateRelationships(changes []domain.RelationshipEntry) err
 // AppendStateChanges 追加角色状态变化。同一状态变化重复提交时按稳定 key 去重。
 func (s *WorldStore) AppendStateChanges(changes []domain.StateChange) error {
 	return s.io.WithWriteLock(func() error {
-		var existing []domain.StateChange
-		if err := s.io.ReadJSONUnlocked("meta/state_changes.json", &existing); err != nil {
-			if !os.IsNotExist(err) {
-				return err
-			}
-		}
-		seen := make(map[string]struct{}, len(existing)+len(changes))
-		for _, c := range existing {
-			seen[stateChangeKey(c)] = struct{}{}
-		}
-		all := existing
-		for _, c := range changes {
-			key := stateChangeKey(c)
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
-			all = append(all, c)
-		}
-		return s.io.WriteJSONUnlocked("meta/state_changes.json", all)
+		_, err := s.stateChanges.appendUnlocked(s.io, changes)
+		return err
 	})
 }
 
 // LoadStateChanges 读取全部状态变化记录。
 func (s *WorldStore) LoadStateChanges() ([]domain.StateChange, error) {
-	var changes []domain.StateChange
-	if err := s.io.ReadJSON("meta/state_changes.json", &changes); err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return changes, nil
+	s.io.mu.Lock()
+	defer s.io.mu.Unlock()
+	return s.stateChanges.allUnlocked(s.io)
+}
+
+// SaveStateChanges 全量替换状态变化事实，供章节修订后重建投影。
+func (s *WorldStore) SaveStateChanges(changes []domain.StateChange) error {
+	return s.io.WithWriteLock(func() error {
+		return s.stateChanges.replaceUnlocked(s.io, changes)
+	})
 }
 
 // ── 世界规则 ──
@@ -328,6 +356,21 @@ func (s *WorldStore) LoadStyleRules() (*domain.WritingStyleRules, error) {
 	return &rules, nil
 }
 
+func (s *WorldStore) SaveAuthorRevisionStyle(style domain.AuthorRevisionStyle) error {
+	return s.io.WriteJSON("meta/author_revision_style.json", style)
+}
+
+func (s *WorldStore) LoadAuthorRevisionStyle() (*domain.AuthorRevisionStyle, error) {
+	var style domain.AuthorRevisionStyle
+	if err := s.io.ReadJSON("meta/author_revision_style.json", &style); err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &style, nil
+}
+
 // ── 审阅 ──
 
 // SaveReview 保存审阅结果。
@@ -351,15 +394,23 @@ func (s *WorldStore) HasArcReview(chapter int) (bool, error) {
 // HasGlobalReview 检查指定章节是否已保存 scope=global 的全局审阅
 // (save_review 落盘为 reviews/%02d-global.json;非分层书按 ReviewInterval 触发)。
 func (s *WorldStore) HasGlobalReview(chapter int) (bool, error) {
-	var r domain.ReviewEntry
-	err := s.io.ReadJSON(fmt.Sprintf("reviews/%02d-global.json", chapter), &r)
-	if os.IsNotExist(err) {
-		return false, nil
-	}
+	r, err := s.LoadGlobalReview(chapter)
 	if err != nil {
 		return false, err
 	}
-	return r.Scope == "global", nil
+	return r != nil && r.Scope == "global", nil
+}
+
+// LoadGlobalReview 读取指定截止章节的全局审阅。
+func (s *WorldStore) LoadGlobalReview(chapter int) (*domain.ReviewEntry, error) {
+	var r domain.ReviewEntry
+	if err := s.io.ReadJSON(fmt.Sprintf("reviews/%02d-global.json", chapter), &r); err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &r, nil
 }
 
 // LoadReview 读取章节审阅结果。
@@ -435,16 +486,43 @@ func pairKey(a, b string) string {
 func timelineEventKey(e domain.TimelineEvent) string {
 	chars := append([]string(nil), e.Characters...)
 	slices.Sort(chars)
-	return fmt.Sprintf("%d|%s|%s|%s", e.Chapter, e.Time, e.Event, strings.Join(chars, ","))
+	parts := make([]string, 0, len(chars)+2)
+	parts = append(parts, e.Time, e.Event)
+	parts = append(parts, chars...)
+	return stableRecordKey(e.Chapter, parts...)
+}
+
+func cloneTimelineEvent(event domain.TimelineEvent) domain.TimelineEvent {
+	event.Characters = append([]string(nil), event.Characters...)
+	return event
 }
 
 func stateChangeKey(c domain.StateChange) string {
-	return fmt.Sprintf("%d|%s|%s|%s|%s", c.Chapter, c.Entity, c.Field, c.OldValue, c.NewValue)
+	return stableRecordKey(c.Chapter, c.Entity, c.Field, c.OldValue, c.NewValue)
+}
+
+// stableRecordKey 使用长度前缀编码可变文本，避免内容中的分隔符导致去重碰撞。
+func stableRecordKey(chapter int, parts ...string) string {
+	var b strings.Builder
+	b.WriteString(strconv.Itoa(chapter))
+	for _, part := range parts {
+		b.WriteByte('|')
+		b.WriteString(strconv.Itoa(len(part)))
+		b.WriteByte(':')
+		b.WriteString(part)
+	}
+	return b.String()
 }
 
 func renderTimeline(events []domain.TimelineEvent) string {
 	var b strings.Builder
 	b.WriteString("# 时间线\n\n")
+	b.WriteString(renderTimelineEntries(events))
+	return b.String()
+}
+
+func renderTimelineEntries(events []domain.TimelineEvent) string {
+	var b strings.Builder
 	for _, e := range events {
 		chars := ""
 		if len(e.Characters) > 0 {
@@ -506,55 +584,4 @@ func renderWorldRules(rules []domain.WorldRule) string {
 		b.WriteString("\n")
 	}
 	return b.String()
-}
-
-// ── 章节机械违规事实 ──
-//
-// commit_chapter 的 rule_violations(user_rules 机械检查的 warning 级结果)持久化,
-// editor 评审该章时经 novel_context(chapter=N) 读取并映射进七维评审
-// (editor.md §机械检查映射)。writer 返工该章时同样可见。追加式,同章最新一条为准。
-
-// ChapterViolations 一章的机械违规记录。
-type ChapterViolations struct {
-	Chapter    int               `json:"chapter"`
-	Violations []rules.Violation `json:"violations"`
-	At         string            `json:"at"`
-}
-
-const ruleViolationsFile = "meta/rule_violations.jsonl"
-
-// SaveRuleViolations 追加一章的机械违规(空列表也追加——覆盖旧记录,表示重写后已清)。
-func (s *WorldStore) SaveRuleViolations(chapter int, violations []rules.Violation) error {
-	rec := ChapterViolations{Chapter: chapter, Violations: violations, At: time.Now().Format(time.RFC3339)}
-	data, err := json.Marshal(rec)
-	if err != nil {
-		return err
-	}
-	return s.io.AppendLine(ruleViolationsFile, append(data, '\n'))
-}
-
-// LoadRuleViolations 读取某章最新一条机械违规记录;无记录返回 nil。
-func (s *WorldStore) LoadRuleViolations(chapter int) []rules.Violation {
-	s.io.mu.RLock()
-	defer s.io.mu.RUnlock()
-	data, err := os.ReadFile(s.io.path(ruleViolationsFile))
-	if err != nil {
-		return nil
-	}
-	var latest []rules.Violation
-	var found bool
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		var rec ChapterViolations
-		if json.Unmarshal([]byte(line), &rec) == nil && rec.Chapter == chapter {
-			latest, found = rec.Violations, true
-		}
-	}
-	if !found {
-		return nil
-	}
-	return latest
 }

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -13,7 +14,11 @@ func TestSetupFileWritesDefaultLog(t *testing.T) {
 	previous := slog.Default()
 
 	dir := t.TempDir()
-	cleanup, err := SetupFile(dir, "test.log", false)
+	cleanup, err := SetupFile(dir, "test.log", false,
+		slog.String("version", "v1.2.3"),
+		slog.String("commit", "abc123"),
+		slog.String("built", "2026-08-03"),
+	)
 	if err != nil {
 		t.Fatalf("SetupFile: %v", err)
 	}
@@ -29,6 +34,17 @@ func TestSetupFileWritesDefaultLog(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "logger-test-message") {
 		t.Fatalf("log missing message: %q", data)
+	}
+	if !regexp.MustCompile(`time=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(Z|[+-]\d{2}:\d{2})`).Match(data) {
+		t.Fatalf("日志时间应包含日期、毫秒和时区: %q", data)
+	}
+	if !strings.Contains(string(data), "msg=日志会话开始") || !strings.Contains(string(data), "session=") {
+		t.Fatalf("日志应包含可关联的会话边界与 session 属性: %q", data)
+	}
+	for _, want := range []string{"version=v1.2.3", "commit=abc123", "built=2026-08-03"} {
+		if !strings.Contains(string(data), want) {
+			t.Fatalf("日志应包含构建标识 %q: %q", want, data)
+		}
 	}
 }
 

@@ -6,12 +6,12 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/voocel/agentcore"
 	"github.com/voocel/ainovel-cli/internal/domain"
 	storepkg "github.com/voocel/ainovel-cli/internal/store"
-	"sync/atomic"
 )
 
 // errorKind classifies a runtime error into a stable, short label for log
@@ -21,11 +21,25 @@ import (
 // the rendered string fallback used when the chain has been flattened
 // (e.g. inside sub-agent JSON results).
 func errorKind(err error, msg string) string {
-	if err != nil && errors.Is(err, agentcore.ErrProviderStreamIdle) {
-		return "stream_idle"
+	if kind := agentcore.ErrorKind(err); kind != "" && kind != "unknown" {
+		return kind
 	}
-	if msg != "" && agentcore.IsStreamIdleMessage(msg) {
-		return "stream_idle"
+	if msg == "" {
+		return ""
+	}
+	if kind := agentcore.ErrorKind(errors.New(msg)); kind != "unknown" {
+		return kind
+	}
+	lower := strings.ToLower(msg)
+	switch {
+	case strings.Contains(lower, "tool argument validation failed"):
+		return "tool_validation"
+	case strings.Contains(lower, "too many concurrent requests"):
+		return "overloaded"
+	// providerError 会把 litellm 的结构化类型附在文本末尾。
+	// HTTP/2 INTERNAL_ERROR 本身没有可分类关键词，保留这个显式 network 标记即可。
+	case strings.Contains(lower, "[network,"):
+		return "network"
 	}
 	return ""
 }
@@ -37,7 +51,7 @@ func nextEventID() string {
 	return fmt.Sprintf("e%d", atomic.AddUint64(&eventIDCounter, 1))
 }
 
-// activeCall 记录一次正在进行的调用（TOOL / DISPATCH）的 ID、起点时间与 summary。
+// activeCall 记录一次正在进行的调用的 ID、起点时间与 summary。
 // summary 在完成事件时回填进 finish Event，保证 replay（runtime queue）能还原行内容。
 type activeCall struct {
 	id      string
@@ -56,18 +70,12 @@ type observer struct {
 	agents  map[string]*agentState
 	agentMu sync.Mutex
 
-	// aborting 由 Host 在 Abort()/Close() 入口置位、Start/Resume/Continue 清位。
-	// 置位期间所有 context-cancel 衍生的错误事件被抑制（既是用户期望，也避免与
-	// "用户手动暂停"事件重复）。真实异常（非 cancel）仍照常上报。
-	aborting atomic.Bool
-
 	streamThinking      bool
 	lastThinkingByAgent map[string]string          // agent → 最近的累积 thinking 文本（用于提取增量 delta）
 	dispatchStarts      map[string]*activeCall     // dispatched agent → 进行中的 DISPATCH 调用
+	modelStarts         map[string]*activeCall     // agent → 进行中的模型响应
 	toolStarts          map[string]*activeCall     // agent → 进行中的 TOOL 调用
 	streamExtractors    map[string]*agentExtractor // agent → 当前工具调用 JSON 参数的内容抽取器
-	streamArgPrefixes   map[string]string          // agent/tool → 参数流前缀，用于提前识别轻量标签
-	streamArgLabels     map[string]string          // agent/tool → 已从参数流提前识别出的展示名
 	retryEvents         map[string]string          // retry scope → event ID，用同一行原地更新 (2/7)
 	streamHasContent    bool                       // 当前 streamRound 是否已输出过内容（判断是否需要段落分隔）
 	streamLastByte      byte                       // 最近一次流式输出的末字节（用于精确补齐换行）
@@ -100,10 +108,9 @@ func newObserver(s *storepkg.Store, emitEv func(Event), emitD func(string), emit
 		agents:              make(map[string]*agentState),
 		lastThinkingByAgent: make(map[string]string),
 		dispatchStarts:      make(map[string]*activeCall),
+		modelStarts:         make(map[string]*activeCall),
 		toolStarts:          make(map[string]*activeCall),
 		streamExtractors:    make(map[string]*agentExtractor),
-		streamArgPrefixes:   make(map[string]string),
-		streamArgLabels:     make(map[string]string),
 		retryEvents:         make(map[string]string),
 	}
 }
@@ -117,7 +124,7 @@ func newObserver(s *storepkg.Store, emitEv func(Event), emitD func(string), emit
 //     (TOOL 行/流式正文/thinking/retry/context)。
 
 // dispatchStart 记录一次 Worker 派发开始并发 DISPATCH 行。
-func (o *observer) dispatchStart(agent, task string) {
+func (o *observer) dispatchStart(agent, task, reason string) {
 	summary := dispatchSummary(agent, task)
 	o.updateAgent(agent, func(a *agentState) {
 		a.state = "working"
@@ -130,28 +137,33 @@ func (o *observer) dispatchStart(agent, task string) {
 		ID:       id,
 		Time:     time.Now(),
 		Category: "DISPATCH",
-		Agent:    "engine",
+		Agent:    agent,
 		Summary:  summary,
+		Detail:   dispatchDetail(task, reason),
 		Level:    "info",
 	})
 }
 
 // dispatchFinish 把 DISPATCH 行落成完成态并复位 Worker 状态;
-// 清理该 Worker 名下的孤儿 TOOL 行(abort/错误路径 ProgressToolEnd 可能缺席)。
-func (o *observer) dispatchFinish(agent string, failed bool) {
+// 清理该 Worker 名下未结束的 MODEL / TOOL 行。
+func (o *observer) dispatchFinish(agent string, runErr error) {
 	o.updateAgent(agent, func(a *agentState) {
 		a.state = "idle"
 		a.tool = ""
 	})
 	delete(o.lastThinkingByAgent, agent)
+	if call, ok := o.modelStarts[agent]; ok {
+		delete(o.modelStarts, agent)
+		o.emitCallFinish(call, "MODEL", agent, runErr)
+	}
 	if call, ok := o.toolStarts[agent]; ok {
 		delete(o.toolStarts, agent)
 		delete(o.streamExtractors, agent)
-		o.emitCallFinish(call, "TOOL", agent, failed)
+		o.emitCallFinish(call, "TOOL", agent, runErr)
 	}
 	if call, ok := o.dispatchStarts[agent]; ok {
 		delete(o.dispatchStarts, agent)
-		o.emitCallFinish(call, "DISPATCH", agent, failed)
+		o.emitCallFinish(call, "DISPATCH", agent, runErr)
 	}
 	o.streamClear()
 }
@@ -170,10 +182,6 @@ func (o *observer) finalize() {
 		a.tool = ""
 	}
 }
-
-// setAborting 由 Host 在 Abort/Close/Start 等生命周期切换处调用，控制
-// "context canceled" 类衍生事件是否需要抑制（避免与"用户手动暂停"重复）。
-func (o *observer) setAborting(v bool) { o.aborting.Store(v) }
 
 func (o *observer) retryEventID(scope string, attempt int) string {
 	if strings.TrimSpace(scope) == "" {
@@ -200,13 +208,14 @@ func (o *observer) persistEvent(ev Event) {
 		return
 	}
 	priority := domain.RuntimePriorityBackground
-	switch ev.Category {
-	case "SYSTEM", "ERROR":
+	switch {
+	case ev.Level == "error":
+		priority = domain.RuntimePriorityControl
+	case ev.Category == "SYSTEM" || ev.Category == "ERROR":
 		priority = domain.RuntimePriorityControl
 	}
 	if _, err := o.store.Runtime.AppendQueue(domain.RuntimeQueueItem{
 		Time:     ev.Time,
-		Kind:     domain.RuntimeQueueUIEvent,
 		Priority: priority,
 		Category: ev.Category,
 		Summary:  ev.Summary,

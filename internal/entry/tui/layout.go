@@ -36,21 +36,9 @@ func contextPercentColor(percent float64) lipgloss.AdaptiveColor {
 	}
 }
 
-func renderContextUsageField(label string, percent float64, tokens, window int) string {
-	if window <= 0 || tokens <= 0 {
-		return ""
-	}
-	percentColor := contextPercentColor(percent)
-	usage := lipgloss.NewStyle().Foreground(percentColor).Bold(true).
-		Render(fmt.Sprintf("%.0f%%", percent)) +
-		contextUsageMetaStyle.Render(" · ") +
-		contextUsageMetaStyle.Render(fmt.Sprintf("%s/%s", formatNumber(tokens), formatNumber(window)))
-	return fieldLabelStyle.Render(label) + usage + "\n"
-}
-
-// formatContextWindow formats token counts into compact window notation: "128K" / "200K" / "1M" / "2M".
-// Gemini's 1048576 (2^20), etc. which is technically 1M, is displayed as "1M" instead of "1.0M".
-// n<=0 returns empty string, based on which caller decides whether to show it.
+// formatContextWindow 把 token 数格式化成紧凑窗口标记："128K" / "200K" / "1M" / "2M"。
+// Gemini 的 1048576 (2^20) 等技术意义上的 1M 会展示为 "1M" 而非 "1.0M"。
+// n<=0 返回空串，调用方应据此决定是否展示。
 func formatContextWindow(n int) string {
 	if n <= 0 {
 		return ""

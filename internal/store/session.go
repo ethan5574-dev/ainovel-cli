@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -34,7 +35,11 @@ type ModelLookup func(agentName string) (provider, model string)
 // SubAgentLogger 返回子代理的 OnMessage 回调。
 func (s *SessionStore) SubAgentLogger(lookup ModelLookup) func(agentName, task string, msg agentcore.AgentMessage) {
 	return func(agentName, task string, msg agentcore.AgentMessage) {
-		rel := s.subAgentPath(agentName, task)
+		rel, err := s.subAgentPath(agentName, task)
+		if err != nil {
+			slog.Warn("session log failed", "agent", agentName, "err", err)
+			return
+		}
 		var meta *sessionLogMeta
 		if lookup != nil {
 			meta = lookupMeta(lookup, agentName)
@@ -120,22 +125,52 @@ func usageMeta(usage *agentcore.Usage) *sessionLogMeta {
 }
 
 // subAgentPath 根据 agentName+task 生成文件路径。
-func (s *SessionStore) subAgentPath(agentName, task string) string {
+func (s *SessionStore) subAgentPath(agentName, task string) (string, error) {
 	suffix := extractChapter(task)
 	if suffix != "" {
-		return fmt.Sprintf("meta/sessions/agents/%s-%s.jsonl", agentName, suffix)
+		return fmt.Sprintf("meta/sessions/agents/%s-%s.jsonl", agentName, suffix), nil
 	}
 	key := agentName + "|" + task
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	if cached, ok := s.taskKey[key]; ok {
-		s.mu.Unlock()
-		return fmt.Sprintf("meta/sessions/agents/%s-%s.jsonl", agentName, cached)
+		return fmt.Sprintf("meta/sessions/agents/%s-%s.jsonl", agentName, cached), nil
+	}
+	if _, ok := s.seq[agentName]; !ok {
+		seq, err := s.maxAgentSequence(agentName)
+		if err != nil {
+			return "", err
+		}
+		s.seq[agentName] = seq
 	}
 	s.seq[agentName]++
 	suffix = fmt.Sprintf("%03d", s.seq[agentName])
 	s.taskKey[key] = suffix
-	s.mu.Unlock()
-	return fmt.Sprintf("meta/sessions/agents/%s-%s.jsonl", agentName, suffix)
+	return fmt.Sprintf("meta/sessions/agents/%s-%s.jsonl", agentName, suffix), nil
+}
+
+func (s *SessionStore) maxAgentSequence(agentName string) (int, error) {
+	entries, err := os.ReadDir(s.io.path("meta/sessions/agents"))
+	if os.IsNotExist(err) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("read agent sessions: %w", err)
+	}
+
+	prefix := agentName + "-"
+	maxSeq := 0
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ".jsonl") {
+			continue
+		}
+		seq, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(name, prefix), ".jsonl"))
+		if err == nil && seq > maxSeq {
+			maxSeq = seq
+		}
+	}
+	return maxSeq, nil
 }
 
 var chapterRe = regexp.MustCompile(`第\s*(\d+)\s*章`)
@@ -304,8 +339,3 @@ func extractJSONFieldInt(data json.RawMessage, field string) int {
 
 // CompactTag 是占位标记前缀，方便搜索和还原。
 const CompactTag = "[session_compact:"
-
-// IsCompacted 检查文本是否已被压缩。
-func IsCompacted(text string) bool {
-	return strings.HasPrefix(text, CompactTag)
-}

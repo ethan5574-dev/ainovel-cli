@@ -20,8 +20,13 @@ func newTestStore(t *testing.T, novelName string, completed []int) (*store.Store
 	if err := s.Init(); err != nil {
 		t.Fatalf("init store: %v", err)
 	}
-	if err := s.Progress.Init(novelName, len(completed)); err != nil {
+	if err := s.Progress.Init(len(completed)); err != nil {
 		t.Fatalf("init progress: %v", err)
+	}
+	if novelName != "" {
+		if err := s.Book.Save(domain.BookMetadata{Title: novelName, Synopsis: "一段面向读者的测试简介。"}); err != nil {
+			t.Fatalf("save book: %v", err)
+		}
 	}
 	if err := s.Progress.UpdatePhase(domain.PhaseWriting); err != nil {
 		t.Fatalf("phase writing: %v", err)
@@ -193,15 +198,10 @@ func TestRun_UnsupportedFormat(t *testing.T) {
 	}
 }
 
-func TestRun_FallbackFileNameWhenNovelNameEmpty(t *testing.T) {
-	s, dir := newTestStore(t, "", []int{1})
-	res, err := Run(context.Background(), Deps{Store: s}, Options{})
-	if err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	wantBase := filepath.Base(dir) + ".txt"
-	if filepath.Base(res.Path) != wantBase {
-		t.Errorf("Path base = %q want %q (fallback to dir name)", filepath.Base(res.Path), wantBase)
+func TestRunRejectsMissingBookMetadata(t *testing.T) {
+	s, _ := newTestStore(t, "", []int{1})
+	if _, err := Run(context.Background(), Deps{Store: s}, Options{}); err == nil {
+		t.Fatal("作品信息缺失时必须拒绝导出")
 	}
 }
 

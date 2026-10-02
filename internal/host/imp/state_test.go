@@ -217,13 +217,16 @@ func TestResumeStatusPublishedIsTerminal(t *testing.T) {
 		t.Fatalf("未发布的失鲜工作区应判未完成（active=%v done=%v）", active, done)
 	}
 	// 正式库已按该切分全量落库 → 发布对账通过，终态不受上游失鲜影响。
+	if err := st.Book.Save(domain.BookMetadata{Title: "测试书", Synopsis: "测试简介"}); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.Outline.SavePremise("前提"); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.Outline.SaveOutline([]domain.OutlineEntry{{Chapter: 1, Title: "第一章"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Progress.Save(&domain.Progress{NovelName: "书", CompletedChapters: []int{1}}); err != nil {
+	if err := st.Progress.Save(&domain.Progress{CompletedChapters: []int{1}}); err != nil {
 		t.Fatal(err)
 	}
 	if active, done, err := ResumeStatus(st); err != nil || !active || !done {
@@ -247,5 +250,12 @@ func TestImportPreconditions(t *testing.T) {
 	}
 	if err := checkImportPreconditions(nonEmpty); err == nil {
 		t.Fatal("非空书应被拒绝导入")
+	}
+	withBook := store.NewStore(t.TempDir())
+	if err := withBook.Book.Save(domain.BookMetadata{Title: "已有作品", Synopsis: "已有简介"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkImportPreconditions(withBook); err == nil {
+		t.Fatal("已有作品信息时应被拒绝导入")
 	}
 }

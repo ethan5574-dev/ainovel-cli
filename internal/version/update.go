@@ -32,6 +32,7 @@ type UpdateResult struct {
 
 type release struct {
 	TagName string         `json:"tag_name"`
+	Body    string         `json:"body"` // release notes 原文（markdown），版本检查提醒展示用
 	Assets  []releaseAsset `json:"assets"`
 }
 

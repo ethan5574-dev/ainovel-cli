@@ -48,15 +48,17 @@ const (
 const (
 	AdvanceHoldAtBoundary           AdvanceHoldAfter = "boundary"
 	AdvanceHoldAfterRewritesDrained AdvanceHoldAfter = "rewrites_drained"
+	AdvanceHoldAtChapter            AdvanceHoldAfter = "chapter"
 )
 
 type AdvanceHold struct {
-	After  AdvanceHoldAfter `json:"after"`
-	Reason string           `json:"reason"`
+	After         AdvanceHoldAfter `json:"after"`
+	TargetChapter int              `json:"target_chapter,omitempty"`
+	Reason        string           `json:"reason"`
 }
 ```
 
-没有通用 PolicyEngine、条件数组、许可队列、过期时间或策略版本。已有真实需求只需要一个持久模式、一个精确许可和一个一次性 hold。
+没有通用 PolicyEngine、条件数组、许可队列、过期时间或策略版本。章节推进只保留一个持久模式、一个精确许可和一个类型化的一次性 hold。
 
 ### 3.1 不变量
 
@@ -70,8 +72,9 @@ type AdvanceHold struct {
 8. 只有目标章已经进入 `CompletedChapters`、对应 `PendingCommit` 已清空、且存在该章 `commit` checkpoint 时，许可才算稳定消费。
 9. 目标章已完成但缺 commit checkpoint 属于状态损坏：显式报错并暂停，不猜测修复。
 10. 未完成许可必须等于 `Progress.NextChapter()`。`PendingRewrites` 不改变 `NextChapter()`，所以返工与在途正向许可可以机械共存。
-11. `AdvanceHold` 只能使用 `boundary` 或 `rewrites_drained`，且必须携带非空原因。
+11. `AdvanceHold` 只能使用 `boundary`、`rewrites_drained` 或 `chapter`，且必须携带非空原因；`chapter` 必须携带正数目标章节，其他条件禁止携带。
 12. hold 与许可使用 compare-and-clear；状态被新动作替换时不得误清。
+13. 目标章节 hold 在 `review` 模式下构成一次性区间授权；暂停后原有逐章验收政策保持不变。
 
 ## 4. Store API
 
@@ -123,7 +126,7 @@ func StartsForwardChapter(
 - `consume`：完本态只需清理意图；
 - `consume-and-stop`：清理意图并暂停。
 
-`boundary` 在当前 Worker 边界触发；`rewrites_drained` 等返工队列排空后触发。未知条件和缺失事实直接报错。
+`boundary` 在当前 Worker 边界触发；`rewrites_drained` 等返工队列排空后触发；`chapter` 在目标章进入完成列表、`PendingCommit` 清空且 commit checkpoint 存在后触发。未知条件和缺失事实直接报错。
 
 ## 6. ChapterAdvanceGate
 
@@ -191,9 +194,10 @@ Arbiter 可以把“重写第 3 章，改完让我看”裁成：
 
 ```go
 type AdvanceHoldOp struct {
-	Cancel bool                    `json:"cancel,omitempty"`
-	After  domain.AdvanceHoldAfter `json:"after,omitempty"`
-	Reason string                  `json:"reason,omitempty"`
+	Cancel        bool                    `json:"cancel,omitempty"`
+	After         domain.AdvanceHoldAfter `json:"after,omitempty"`
+	TargetChapter int                     `json:"target_chapter,omitempty"`
+	Reason        string                  `json:"reason,omitempty"`
 }
 ```
 
@@ -201,7 +205,9 @@ type AdvanceHoldOp struct {
 
 - 显式“先停一下”使用 `boundary`；
 - `auto` 下“修改已写章节，改完让我验收”使用 `rewrites_drained`；
+- “写到第 N 章”使用 `chapter`，与“全书共 N 章”的篇幅调整严格区分；
 - `review` 已经逐章停，不重复制造同义 hold；
+- `review` 下的目标章节 hold 是用户显式签署的一次性批量授权；
 - “继续”可以取消现有 hold，但不能签发章节许可；
 - 切模式只能使用 `/review on|off`，放行只能使用 `/next`。
 

@@ -35,13 +35,54 @@ func LoadState(store *storepkg.Store) (State, error) {
 		return s, nil
 	}
 	s.Progress = progress
-
-	if n := len(progress.CompletedChapters); n > 0 {
-		s.LastCompleted = progress.CompletedChapters[n-1]
+	feedback, err := store.Outline.LoadPendingOutlineFeedback()
+	if err != nil {
+		return s, fmt.Errorf("load outline feedback: %w", err)
 	}
+	for _, item := range feedback {
+		if item.RequiresImmediateReview() {
+			s.ImmediateFeedbackCount++
+		}
+	}
+
+	s.LastCompleted = progress.LatestCompleted()
 
 	// 弧边界仅在分层模式且有已完成章节时才计算
 	if progress.Layered && s.LastCompleted > 0 {
+		boundaries, err := store.Outline.CompletedArcBoundaries(s.LastCompleted)
+		if err != nil {
+			return s, fmt.Errorf("load completed arc boundaries: %w", err)
+		}
+		for i := range boundaries {
+			boundary := &boundaries[i]
+			hasReview, err := store.World.HasArcReview(boundary.EndChapter)
+			if err != nil {
+				return s, fmt.Errorf("load arc review: %w", err)
+			}
+			if !hasReview {
+				s.AggregateRefresh = aggregateRefresh(AggregateArcReview, boundary)
+				break
+			}
+			hasArcSummary, err := store.Summaries.HasArcSummary(boundary.Volume, boundary.Arc)
+			if err != nil {
+				return s, fmt.Errorf("load arc summary: %w", err)
+			}
+			if !hasArcSummary {
+				s.AggregateRefresh = aggregateRefresh(AggregateArcSummary, boundary)
+				break
+			}
+			if boundary.IsVolumeEnd {
+				hasVolumeSummary, err := store.Summaries.HasVolumeSummary(boundary.Volume)
+				if err != nil {
+					return s, fmt.Errorf("load volume summary: %w", err)
+				}
+				if !hasVolumeSummary {
+					s.AggregateRefresh = aggregateRefresh(AggregateVolumeSummary, boundary)
+					break
+				}
+			}
+		}
+
 		boundary, err := store.Outline.CheckArcBoundary(s.LastCompleted)
 		if err != nil {
 			return s, fmt.Errorf("check arc boundary: %w", err)
@@ -69,6 +110,17 @@ func LoadState(store *storepkg.Store) (State, error) {
 
 	// 非分层全局审阅事实:仅在触发点读盘(其余组合 Route 不消费该字段)。
 	if !progress.Layered && s.LastCompleted > 0 {
+		for completed := domain.ReviewInterval; completed <= len(progress.CompletedChapters); completed += domain.ReviewInterval {
+			chapter := progress.CompletedChapters[completed-1]
+			hasReview, err := store.World.HasGlobalReview(chapter)
+			if err != nil {
+				return s, fmt.Errorf("load global review: %w", err)
+			}
+			if !hasReview {
+				s.AggregateRefresh = &AggregateRefresh{Kind: AggregateGlobalReview, EndChapter: chapter}
+				break
+			}
+		}
 		if due, _ := domain.ShouldReview(len(progress.CompletedChapters)); due {
 			s.HasGlobalReview, err = store.World.HasGlobalReview(s.LastCompleted)
 			if err != nil {
@@ -78,4 +130,11 @@ func LoadState(store *storepkg.Store) (State, error) {
 	}
 
 	return s, nil
+}
+
+func aggregateRefresh(kind AggregateKind, boundary *storepkg.ArcBoundary) *AggregateRefresh {
+	return &AggregateRefresh{
+		Kind: kind, Volume: boundary.Volume, Arc: boundary.Arc,
+		StartChapter: boundary.StartChapter, EndChapter: boundary.EndChapter,
+	}
 }

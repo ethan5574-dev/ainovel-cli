@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/voocel/ainovel-cli/internal/store"
+	"github.com/voocel/ainovel-cli/internal/utils"
 )
 
 // buildStoryStateSummary 组装一段精简的故事现状摘要，供阶段共创助手了解"已经写了什么"。
@@ -23,12 +24,22 @@ func buildStoryStateSummary(s *store.Store) string {
 		}
 	}
 
+	if book, err := s.Book.Load(); book != nil {
+		fmt.Fprintf(&b, "- 书名：《%s》\n", book.Title)
+	} else {
+		warn("book", err)
+	}
+
 	if progress, err := s.Progress.Load(); progress != nil {
-		if name := strings.TrimSpace(progress.NovelName); name != "" {
-			fmt.Fprintf(&b, "- 书名：《%s》\n", name)
-		}
 		fmt.Fprintf(&b, "- 进度：已完成 %d 章", len(progress.CompletedChapters))
-		if progress.TotalChapters > 0 {
+		if progress.Layered {
+			outline, outlineErr := s.Outline.LoadOutline()
+			if outlineErr != nil {
+				warn("outline", outlineErr)
+			} else if len(outline) > 0 {
+				fmt.Fprintf(&b, " / 当前已细化 %d 章（后续按弧动态规划）", len(outline))
+			}
+		} else if progress.TotalChapters > 0 {
 			fmt.Fprintf(&b, " / 规划 %d 章", progress.TotalChapters)
 		}
 		fmt.Fprintf(&b, "，约 %d 字，下一章为第 %d 章\n", progress.TotalWordCount, progress.NextChapter())
@@ -56,7 +67,7 @@ func buildStoryStateSummary(s *store.Store) string {
 	// 最近一卷摘要，让助手知道故事刚走到哪
 	if vols, err := s.Summaries.LoadAllVolumeSummaries(); len(vols) > 0 {
 		last := vols[len(vols)-1]
-		fmt.Fprintf(&b, "- 最近《%s》：%s\n", last.Title, truncate(last.Summary, 200))
+		fmt.Fprintf(&b, "- 最近《%s》：%s\n", last.Title, utils.TruncateRunes(last.Summary, 200))
 	} else {
 		warn("volume_summaries", err)
 	}
@@ -88,7 +99,7 @@ func buildStoryStateSummary(s *store.Store) string {
 	if fs, err := s.World.LoadActiveForeshadow(); len(fs) > 0 {
 		var items []string
 		for _, f := range fs {
-			items = append(items, truncate(f.Description, 40))
+			items = append(items, utils.TruncateRunes(f.Description, 40))
 			if len(items) >= 6 {
 				break
 			}

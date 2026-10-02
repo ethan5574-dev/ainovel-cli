@@ -19,8 +19,8 @@ const (
 // synthesisSchemaVersion 纳入 RangeDigest / synthesis InputDigest，升级综合契约时递增以失效已落盘工件。
 // synthesizePromptVersion 纳入 synthesis InputDigest，改综合 prompt 时递增，否则旧 synthesis 仍被误判有效。
 const (
-	synthesisSchemaVersion  = 2
-	synthesizePromptVersion = "synthesize-v2"
+	synthesisSchemaVersion  = 3
+	synthesizePromptVersion = "synthesize-v3"
 	rangePromptVersion      = "range-v2" // 纳入 rangeInputDigest，改 Range prompt 时递增，否则旧区间摘要仍被误判有效
 )
 
@@ -40,6 +40,8 @@ type ImportedVolumeRange struct {
 
 // BookSynthesis 是最终综合结果：全局事实 + 卷弧范围（RFC §10.3）。
 type BookSynthesis struct {
+	Title        *string               `json:"title"`
+	Synopsis     string                `json:"synopsis"`
 	Premise      string                `json:"premise"`
 	Characters   []domain.Character    `json:"characters"`
 	WorldRules   []domain.WorldRule    `json:"world_rules"`
@@ -253,7 +255,7 @@ func rangeInputDigest(facts []ImportedChapterFacts) string {
 }
 
 func synthesizeBook(ctx context.Context, m callModel, systemPrompt, payload string, n, maxTokens int, prof callProfile) (*BookSynthesis, error) {
-	prof.step(0, 0, "生成全书综合（premise/characters/大纲结构）...")
+	prof.step(0, 0, "生成全书综合（作品信息/premise/characters/大纲结构）...")
 	s, err := callStructured[BookSynthesis](ctx, m, synthesisContract, systemPrompt, buildBookPayload(payload, n), maxTokens, prof, func(s *BookSynthesis) error {
 		return validateSynthesis(s, n)
 	})
@@ -271,11 +273,14 @@ func buildRangePayload(facts []ImportedChapterFacts) string {
 }
 
 func buildBookPayload(inner string, n int) string {
-	return fmt.Sprintf("以下是全书 %d 章的紧凑事实/区间摘要。请生成 BookSynthesis：premise、characters、world_rules、卷弧范围 structure、compass、planning_tier、story_status。\n\n%s", n, inner)
+	return fmt.Sprintf("以下是全书 %d 章的紧凑事实/区间摘要。请生成 BookSynthesis：title、synopsis、premise、characters、world_rules、卷弧范围 structure、compass、planning_tier、story_status。\n\n%s", n, inner)
 }
 
 // validateSynthesis 校验综合结果的结构约束（值域/闭集/范围），不复判文学质量。
 func validateSynthesis(s *BookSynthesis, n int) error {
+	if strings.TrimSpace(s.Synopsis) == "" {
+		return fmt.Errorf("synopsis 为空")
+	}
 	if strings.TrimSpace(s.Premise) == "" {
 		return fmt.Errorf("premise 为空")
 	}
@@ -338,6 +343,7 @@ func synthesisInputDigest(facts []ImportedChapterFacts) string {
 
 // Foundation 是从 BookSynthesis + 逐章事实组装出的正式领域对象集（发布前完整校验，RFC §11）。
 type Foundation struct {
+	Book         domain.BookMetadata
 	PlanningTier domain.PlanningTier
 	Premise      string
 	Characters   []domain.Character
@@ -392,10 +398,17 @@ func AssembleFoundation(s *BookSynthesis, facts []ImportedChapterFacts, closed b
 		}
 	}
 
-	premise := ensurePremiseTitle(s.Premise, fallbackName)
+	title := ""
+	if s.Title != nil {
+		title = strings.TrimSpace(*s.Title)
+	}
+	if title == "" {
+		title = importedBookTitle(fallbackName)
+	}
 	return &Foundation{
+		Book:         (domain.BookMetadata{Title: title, Synopsis: s.Synopsis}).Normalized(),
 		PlanningTier: s.PlanningTier,
-		Premise:      premise,
+		Premise:      s.Premise,
 		Characters:   s.Characters,
 		WorldRules:   s.WorldRules,
 		Volumes:      volumes,
@@ -404,15 +417,12 @@ func AssembleFoundation(s *BookSynthesis, facts []ImportedChapterFacts, closed b
 	}, nil
 }
 
-// ensurePremiseTitle 保证 premise 以书名标题行开头；正文无法确认书名时用文件 basename 作推断标题（RFC §11.1）。
-func ensurePremiseTitle(premise, fallbackName string) string {
-	if strings.HasPrefix(strings.TrimLeft(premise, " \t\n"), "#") {
-		return premise
-	}
+// importedBookTitle 在正文无法确认书名时使用源文件名，保证作品信息仍有明确标题。
+func importedBookTitle(fallbackName string) string {
 	name := strings.TrimSuffix(fallbackName, ".txt")
 	name = strings.TrimSuffix(name, ".md")
 	if name == "" {
 		name = "未命名导入"
 	}
-	return fmt.Sprintf("# %s（书名据文件名推断）\n\n%s", name, premise)
+	return name
 }

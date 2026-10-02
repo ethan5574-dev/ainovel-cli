@@ -2,11 +2,6 @@ package models
 
 import "strings"
 
-// SameModelID reports whether two model identifiers point to the same canonical model (ignoring date suffixes, case, and dot/hyphen differences).
-func SameModelID(a, b string) bool {
-	return modelLookupMatches(normalizeModelLookupID(a), normalizeModelLookupID(b))
-}
-
 func lookupModelEntry(models []ModelEntry, providerName, modelID string) (ModelEntry, bool) {
 	providerName = strings.ToLower(strings.TrimSpace(providerName))
 	targetID := normalizeModelLookupID(modelID)

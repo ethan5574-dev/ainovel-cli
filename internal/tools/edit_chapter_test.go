@@ -19,6 +19,19 @@ func enterEditWritingPhase(t *testing.T, s *store.Store) {
 	}
 }
 
+func queueCompletedChapterForEdit(t *testing.T, s *store.Store, chapter int, wordCount int) {
+	t.Helper()
+	if err := s.Progress.MarkChapterComplete(chapter, wordCount, "mystery", "quest"); err != nil {
+		t.Fatalf("MarkChapterComplete: %v", err)
+	}
+	if err := s.Progress.SetPendingRewrites([]int{chapter}, "测试打磨"); err != nil {
+		t.Fatalf("SetPendingRewrites: %v", err)
+	}
+	if err := s.Progress.SetFlow(domain.FlowPolishing); err != nil {
+		t.Fatalf("SetFlow: %v", err)
+	}
+}
+
 // TestEditChapterAppliesEdit 正常路径：drafts 已有内容，唯一匹配替换成功。
 func TestEditChapterAppliesEdit(t *testing.T) {
 	dir := t.TempDir()
@@ -26,13 +39,14 @@ func TestEditChapterAppliesEdit(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 10); err != nil {
+	if err := s.Progress.Init(10); err != nil {
 		t.Fatalf("InitProgress: %v", err)
 	}
 	enterEditWritingPhase(t, s)
 	if err := s.Drafts.SaveDraft(2, "他握紧了拳头，指节发白。"); err != nil {
 		t.Fatalf("SaveDraft: %v", err)
 	}
+	queueCompletedChapterForEdit(t, s, 2, len([]rune("他握紧了拳头，指节发白。")))
 
 	tool := NewEditChapterTool(s)
 	args, _ := json.Marshal(map[string]any{
@@ -56,6 +70,42 @@ func TestEditChapterAppliesEdit(t *testing.T) {
 	}
 }
 
+func TestEditChapterRejectsIncompleteChapter(t *testing.T) {
+	dir := t.TempDir()
+	s := store.NewStore(dir)
+	if err := s.Init(); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	if err := s.Progress.Init(10); err != nil {
+		t.Fatalf("InitProgress: %v", err)
+	}
+	enterEditWritingPhase(t, s)
+	original := "新章初稿必须整章覆盖。"
+	if err := s.Drafts.SaveDraft(2, original); err != nil {
+		t.Fatalf("SaveDraft: %v", err)
+	}
+
+	args, _ := json.Marshal(map[string]any{
+		"chapter":    2,
+		"old_string": "必须",
+		"new_string": "应当",
+	})
+	_, err := NewEditChapterTool(s).Execute(context.Background(), args)
+	if err == nil || !errors.Is(err, errs.ErrToolPrecondition) {
+		t.Fatalf("未完成章节应被明确拒绝，got %v", err)
+	}
+	if !strings.Contains(err.Error(), `draft_chapter(mode="write"`) {
+		t.Fatalf("错误应指向初稿整章覆盖路径，got %v", err)
+	}
+	got, loadErr := s.Drafts.LoadDraft(2)
+	if loadErr != nil {
+		t.Fatalf("LoadDraft: %v", loadErr)
+	}
+	if got != original {
+		t.Fatalf("拒绝后不应修改草稿，got %q", got)
+	}
+}
+
 // TestEditChapterSeedsFromFinalChapter drafts 不存在但 chapters 有 → 自动从 chapters 播种。
 func TestEditChapterSeedsFromFinalChapter(t *testing.T) {
 	dir := t.TempDir()
@@ -63,7 +113,7 @@ func TestEditChapterSeedsFromFinalChapter(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 10); err != nil {
+	if err := s.Progress.Init(10); err != nil {
 		t.Fatalf("InitProgress: %v", err)
 	}
 	enterEditWritingPhase(t, s)
@@ -119,7 +169,7 @@ func TestEditChapterRejectsCompletedWithoutQueue(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 10); err != nil {
+	if err := s.Progress.Init(10); err != nil {
 		t.Fatalf("InitProgress: %v", err)
 	}
 	enterEditWritingPhase(t, s)
@@ -156,13 +206,14 @@ func TestEditChapterRejectsAmbiguousMatch(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 10); err != nil {
+	if err := s.Progress.Init(10); err != nil {
 		t.Fatalf("InitProgress: %v", err)
 	}
 	enterEditWritingPhase(t, s)
 	if err := s.Drafts.SaveDraft(2, "他笑了。她也笑了。"); err != nil {
 		t.Fatalf("SaveDraft: %v", err)
 	}
+	queueCompletedChapterForEdit(t, s, 2, len([]rune("他笑了。她也笑了。")))
 
 	tool := NewEditChapterTool(s)
 	args, _ := json.Marshal(map[string]any{
@@ -182,13 +233,14 @@ func TestEditChapterReplaceAll(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 10); err != nil {
+	if err := s.Progress.Init(10); err != nil {
 		t.Fatalf("InitProgress: %v", err)
 	}
 	enterEditWritingPhase(t, s)
 	if err := s.Drafts.SaveDraft(2, "他笑了。她也笑了。"); err != nil {
 		t.Fatalf("SaveDraft: %v", err)
 	}
+	queueCompletedChapterForEdit(t, s, 2, len([]rune("他笑了。她也笑了。")))
 
 	tool := NewEditChapterTool(s)
 	args, _ := json.Marshal(map[string]any{
@@ -217,7 +269,7 @@ func TestEditChapterRejectsEmptyOldString(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 10); err != nil {
+	if err := s.Progress.Init(10); err != nil {
 		t.Fatalf("InitProgress: %v", err)
 	}
 	enterEditWritingPhase(t, s)
@@ -244,10 +296,11 @@ func TestEditChapterRejectsNoDraftNoFinal(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 10); err != nil {
+	if err := s.Progress.Init(10); err != nil {
 		t.Fatalf("InitProgress: %v", err)
 	}
 	enterEditWritingPhase(t, s)
+	queueCompletedChapterForEdit(t, s, 5, 0)
 
 	tool := NewEditChapterTool(s)
 	args, _ := json.Marshal(map[string]any{
@@ -272,7 +325,7 @@ func TestEditChapterWorksWithCommitValidation(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 10); err != nil {
+	if err := s.Progress.Init(10); err != nil {
 		t.Fatalf("InitProgress: %v", err)
 	}
 	enterEditWritingPhase(t, s)
@@ -330,7 +383,7 @@ func TestEditChapterRejectsPlanningPhaseBeforeMutation(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 10); err != nil {
+	if err := s.Progress.Init(10); err != nil {
 		t.Fatalf("InitProgress: %v", err)
 	}
 	original := "规划期草稿不能被修改。"

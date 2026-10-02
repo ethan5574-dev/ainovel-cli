@@ -36,6 +36,7 @@ type Prompts struct {
 	ImportRange      string // Consecutive range digest for the map phase of long books.
 	SimulationSource string
 	SimulationMerge  string
+	RevisionAnalyze  string
 
 	// Arbiter decision prompts (LLM-as-function, without simulation-guidance wrapping).
 	ArbiterPlanStart    string
@@ -183,6 +184,7 @@ func loadPrompts() Prompts {
 		ImportRange:      mustRead(promptsFS, "prompts/import-range.md"),
 		SimulationSource: mustRead(promptsFS, "prompts/simulation-source.md"),
 		SimulationMerge:  mustRead(promptsFS, "prompts/simulation-merge.md"),
+		RevisionAnalyze:  mustRead(promptsFS, "prompts/revision-analyze.md"),
 
 		ArbiterPlanStart:    mustRead(promptsFS, "prompts/arbiter-plan-start.md"),
 		ArbiterIntervention: mustRead(promptsFS, "prompts/arbiter-intervention.md"),
@@ -228,7 +230,7 @@ var promptRole = map[string]string{
 
 const simulationGuidance = `## Simulation Profile
 
-When novel_context returns simulation_profile, treat it as a constraint on the work's simulation direction. {{role}} must read its style, lexicon, plot_design, hook_design, pacing_density, reader_engagement, and role_guidance.
+当 novel_context 的 planning_memory 或 working_memory 中存在 simulation_profile 时，必须把它视为当前作品的仿写方向约束。{{role}} 应读取其中的 style、lexicon、plot_design、hook_design、pacing_density、reader_engagement 和 role_guidance。
 
 Principles: borrow structure, pacing, hooks, information release, and reader-engagement techniques; do not copy source sentences, characters, place names, named settings, or fixed scenes. If simulation_profile conflicts with an explicit user request, follow the user request.`
 

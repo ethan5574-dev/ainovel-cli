@@ -34,7 +34,9 @@ All interactions with the file system, Progress, and Checkpoints are completed b
 
 UI, diagnostics, and event logs are passive consumers projected from the event stream / read-only artifacts. They read facts, do not produce facts, and do not affect the control flow.
 
-**`internal/diag` is the only observability subsystem of the engine**—a first-class supporting facility, but not the product core (the core is the creative engine in §6; the system still writes novels if `diag` is absent). It reads across almost all artifacts + sessions + logs + checkpoints, carrying two responsibilities: ① **creative quality diagnosis** (rules → Findings, reported on the screen via `/diag`); ② **runtime troubleshooting + desensitized export** (stripping the main body from behavior skeletons + loop aggregation → overwriting `meta/diag-export.md` for users to paste into issues; maintainers can locate infinite loop/interruption issues without local output files).
+观测数据严格分三层：`agentcore.ProgressPayload` 是传输层，错误文本必须完整且不得包含 UI 截断策略；`host.Event.Summary` 是短展示语义，`Detail` 是完整诊断；文件日志优先写完整 `Detail`，TUI 只读 `Summary` 并在最终渲染时按终端宽度截断。文件 logger 由 `Host` 持有：先取得小说目录租约，再建立日志会话，随后才装配 Store、模型和 Engine；这样既不会绕过单书独占，也能覆盖全部装配和关闭日志。所谓“完整日志”指错误链、原始非法参数和生命周期元数据不丢失，不是把成功生成的小说正文重复转录到 `tui.log`；大内容仍由 Store 工件和 `meta/sessions` 承载。
+
+**`internal/diag` 是引擎唯一的可观测性子系统**——一等支撑设施，但不是产品核心。它跨读几乎所有工件 + session + log + checkpoint，承担两职：① **创作质量诊断**（规则 → Finding，`/diag` 屏上报告）；② **运行时排错 + 脱敏导出**（行为骨架剥正文 + 循环聚合 → 覆盖式 `meta/diag-export.md`）。
 
 **Observer Discipline (unshakeable)**: `diag` can diagnose and suggest, but **never acts on its own**—it does not automatically fix, resume, or modify flows. The stronger it gets, the more people want it to "fix things along the way," but it must hold this line; otherwise, it will fall back into the deleted pitfalls of `idleResume`/`StallDetector` (see §10.5, §10.14). External structures (such as `RuntimeCapture`) are maintained as infrastructure contracts and should not be modified arbitrarily.
 
@@ -46,7 +48,7 @@ There are only three types of facts:
 - **Checkpoint** — step-level progression record (plan / draft / commit / review / arc_summary).
 - **Artifact** — chapter body, outline, characters, summaries, and other outputs.
 
-No abstractions like WorkflowInstance / TaskInstance / Command / Dispatcher are introduced.
+不引入 WorkflowInstance / TaskInstance / Command 等抽象。需要持久化的附属事实（大纲反馈池、裁定审计）同样是扁平 jsonl，各有唯一生产者与消费者；可由章节记录重建的视图不重复落盘。
 
 ### 2.5 Three Iron Rules
 
@@ -98,11 +100,21 @@ Unidirectional dependency: `entry → host → agents → tools → store → do
 
 ## 4. Data Model
 
-### 4.1 Progress (`internal/domain/runtime.go`)
+### 4.1 BookMetadata 与 Progress
+
+`BookMetadata` 是书名和面向读者简介的唯一事实源，持久化到 `meta/book.json`；`book.md` 只是可读投影。Premise 不重复保存书名，Progress 也不承载作品信息。
+
+```go
+type BookMetadata struct {
+    Title    string
+    Synopsis string
+}
+```
+
+Progress（`internal/domain/runtime.go`）只记录运行状态：
 
 ```go
 type Progress struct {
-    NovelName         string
     Phase             Phase           // init / premise / outline / writing / complete
     CurrentChapter    int
     TotalChapters     int
@@ -141,7 +153,22 @@ Storage: `meta/checkpoints.jsonl`, append-only. Writing the same `Scope+Step+Dig
 
 Artifacts are located in `store/outline.go`, `drafts.go`, `summaries.go`, `characters.go`, `world.go` — each product can be referenced by checkpoints.
 
-Signals: `PendingCommit` (recovery after commit interruption) / `PendingSteer` (user intervention during downtime). Read during startup/recovery, not read during runtime.
+- **Signals**：`PendingCommit`（commit 中断恢复）。启动/恢复时读，运行时不读。
+- **Decisions**（`meta/decisions.jsonl`）：每次 Arbiter 裁定的审计记录（facts+input+decision），可离线重放；**不是恢复数据源**（恢复只依赖 Progress/Checkpoint/RunMeta）。
+- **增长型世界事实**：时间线与角色状态变化分别以 `timeline.jsonl`、`meta/state_changes.jsonl` 追加；进程内维护去重索引，正常提交只写本章增量。旧版 JSON 数组在下一次追加时按“先原子写新日志、后删除旧文件”的幂等协议迁移，`timeline.md` 是可重建的人类可读投影。
+- **大纲反馈池**（`meta/outline_feedback.jsonl`）：writer 的普通反馈在下一次结构操作中消费；外部正文修订若影响剧情，则在继续写作前优先交给 architect，处理后清空。
+- **机械违规视图**：`novel_context(chapter=N)` 按章节接纳正文与当前 `user_rules` 即时计算，供 editor 消费；不维护可能与正文或规则失同步的独立工件。
+
+### 4.4 分层大纲与完本收敛（收官卷）
+
+滚动规划（compass 锚点 + 卷骨架 + 弧按需展开）解决"开与滚"，但让"何时结束"从一个数字变成每卷末的开放裁定——完本收敛必须显式设计，否则出现两类僵局：账面写完收不了尾（越界续写死循环，已由结构兜底修复）与叙事写完账面不让停（estimated_scale 高估 + 完结门槛硬否决 → 注水或熔断）。
+
+**收官卷是收敛的一等概念**，完本 = 一次方向裁定 + 一段确定性滑行：
+
+- **宣告（LLM 语义裁定）**：架构师在卷末三选一——append_volume（继续）/ append_volume 带 `"final": true`（收官卷）/ complete_book（条件当下全满足）。estimated_scale 在完结判定里是**证据不是否决权**。
+- **执行（代码事实查表）**：收官事实 = `domain.FinaleVolume`。终卷结构写完（`layeredStructurallyComplete`）**且卷末收尾三连齐备（弧评审/弧摘要/卷摘要）**即自动 MarkComplete——完结不抢在 editor 质量闸之前。未宣告的书仍走质量级 `layeredBookComplete`（伏笔+长线归零）。
+- **解除（数据推导，无撤销工具）**：宣告后又追加未标记新卷 → 收束态自然解除。状态永远可从 layered_outline 推导。
+- **完结判定的派发**：卷末由 Route 分支 10 派 architect_long 走完结判定清单——完结裁定权在架构师（一个 Worker），不在控制面。
 
 ---
 
@@ -151,14 +178,15 @@ Tools are the sole interaction point between the fact layer and the Agents.
 
 ### 5.1 Read Tools
 
-`novel_context(scope)` / `read_chapter(n)` —— callable at any time, do not depend on prior state, and return data sufficient for the LLM to make decisions independently.
+`novel_context(scope)` / `read_chapter(n)` —— 任何时候可调用，不依赖前置状态，返回数据足够 LLM 独立决策。`novel_context(chapter=N)` 额外注入该章机械违规（如有）；architect 路径注入已完成卷/当前卷弧摘要、角色快照、大纲反馈池与 foundation 状态。长篇规划概览只携带当前弧章节，其余卷弧保留结构骨架；用 `novel_context(volume=V, arc=A)` 精确读取时，已展开弧返回章节详情，未展开弧返回骨架目标。扩弧时，已发生内容是事实，骨架只是计划；Architect 用 `expand_next_arc` 同步修订下一骨架弧的 title/goal 并展开章节，目标位置由系统确定。
 
 ### 5.2 Write Tools (Atomic Triple-Actions)
 
-Each successful call must: save artifact to disk → advance Progress → append checkpoint. These three steps are completed within a mutual exclusion lock.
+单文件写入原子；跨文件步骤不承诺数据库式原子性。`commit_chapter` 的普通提交与返工提交共用 `PendingCommit`，按“完整意图 → artifact/状态 → Progress → checkpoint → 清除意图”推进；恢复只使用首次落盘的规范化 payload 与正文快照，禁止采用重启后模型重新生成的参数或被覆盖的 draft。`expand_next_arc` / `append_volume` 等结构操作没有持久化意图，只承诺同一参数的幂等重放、派生视图修复和错误显式返回。
 
 | Tool | Artifact | Step |
 |---|---|---|
+| `save_book` | meta/book.json + book.md | book |
 | `plan_chapter` | drafts/chXX.plan.json | plan |
 | `draft_chapter` | drafts/chXX.draft.md | draft |
 | `edit_chapter` | drafts/chXX.draft.md | edit |
@@ -167,11 +195,12 @@ Each successful call must: save artifact to disk → advance Progress → append
 | `save_review` | reviews/chXX.json (global is chXX-global.json) | review |
 | `save_arc_summary` | summaries/arc-vNNaNN.json | arc_summary |
 | `save_volume_summary` | summaries/vol-vNN.json | volume_summary |
-| `save_foundation` | foundation/*.json | premise / outline / layered_outline / characters / world_rules / expand_arc / append_volume / update_compass / complete_book |
+| `save_foundation` | foundation/*.json（append_volume/update_compass 成功即消费反馈池） | premise / outline / layered_outline / characters / world_rules / append_volume / update_compass / complete_book |
+| `expand_next_arc` | layered_outline.json（成功即消费反馈池） | 系统定位下一骨架弧；模型仅提交 title / goal / chapters |
 
 `commit_chapter` handles arc/volume/book completion checks, returning 19 fact fields (`arc_end` / `needs_expansion` / `book_complete` etc.; plus `rule_violations` if mechanical rule check is enabled). `save_review` handles verdict upgrades (scorecard gates, contract missed → rewrite). These policies, previously scattered in the policy layer, are now codified inside the tools.
 
-`edit_chapter` is a thin wrapper over `agentcore.EditTool`. Ownership checks guarantee that completed chapters must be in `PendingRewrites` to be edited.
+`edit_chapter` 是 `agentcore.EditTool` 的薄封装，仅允许编辑已完成且位于 `PendingRewrites` 的章节；新章初稿需通过 `draft_chapter(mode="write")` 整章覆盖。
 
 ### 5.3 Error Layering
 
@@ -200,19 +229,12 @@ Before executing each write-type tool, check the checkpoint: if the latest check
 
 The sole driver of the main loop. Assembled in `internal/agents/build.go`:
 
-```go
-agent := agentcore.NewAgent(
-    agentcore.WithModel(coordinatorModel),
-    agentcore.WithSystemPrompt(bundle.Prompts.Coordinator),
-    agentcore.WithTools(subagentTool, contextTool),
-    agentcore.WithMaxTurns(100_000),
-    agentcore.WithToolsAreIdempotent(true),
-    agentcore.WithMaxToolErrors(0),  // subagent does not trigger circuit breaker
-    agentcore.WithMaxRetries(subagentMaxRetries),
-    agentcore.WithContextManager(...),
-    agentcore.WithStopGuard(reminder.NewStopGuard(store, nil)),
-    agentcore.WithToolGate(completePhaseGate(store)),  // phase=complete hard intercepts subagent dispatch
-)
+Worker 进度由两类事实投影：`AgentLoop` 原始事件界定模型响应生命周期，`ToolProgress` 中继工具执行、流式正文、thinking、retry 与 context。模型生成工具参数归于 MODEL，只有真正进入 `ToolExecStart` 后才计入 TOOL。
+
+```
+Engine ── Runner.Run(agent, task) ──▶ architect_short/long · writer · editor
+                                          │ 工具调用
+                                        Store（协作媒介，Worker 之间不直接通信）
 ```
 
 Responsibilities: Select planner at startup → plan completion loop → receive `[Host issued command]` and immediately generate corresponding `subagent` tool_call → handle `[User intervention]` and adjudicate independently → output summary after `book_complete=true`.
@@ -253,10 +275,10 @@ Four layers of code constraints (acting simultaneously):
 
 | Layer | Implementation | Function |
 |---|---|---|
-| `StopAfterTools` / `StopAfterToolResult` | `agents/build.go` SubAgentConfig | The sub-agent run exits on `end_turn` as soon as the key tool succeeds. The Writer stops as soon as `commit_chapter` hits (`StopAfterTools`); Editor's `save_arc_summary`/`save_volume_summary` and Architect arc/volume endings use `StopAfterToolResult`. Editor's `save_review` does not stop hard—otherwise it bypasses StopGuard and cuts off the arc summary run, leaving closure to `NewEditorStopGuard` |
-| `CheckpointDeltaGuard` | `host/reminder/subagent_guards.go` | Based on the baseline checkpoint, a new checkpoint of the corresponding step must be seen before this round ends; otherwise, `end_turn` is rejected. Consecutive 3 interceptions trigger termination (failsafe for weak model loops) |
-| Tool Inline `next_step` | Return value fields of each tool | Each fact comes with its own "next step suggestion." For example, `plan_chapter` returns `next_step: "Immediately call draft_chapter..."`. When the LLM sees the fact, it knows the next step and doesn't need to look back at the system prompt |
-| Tool Internal Ownership/Pre-check | `edit_chapter`, `commit_chapter`, etc. | Physical intercept at the data layer: `edit_chapter` rejects modifying completed chapters not listed in `PendingRewrites` of the Progress; `commit_chapter` rejects empty submissions where draft == final; `ConcurrencySafe=false` prevents concurrency race conditions |
+| `StopAfterTools` / `StopAfterToolResult` | `agents/build.go` SubAgentConfig | 关键工具成功即退出 Worker run（终态退出仍咨询 StopGuard，见契约测试）。Writer `commit_chapter` 命中即停；Editor 的 `save_review`/`save_arc_summary`/`save_volume_summary`、Architect 弧/卷收尾走 `StopAfterToolResult` |
+| `CheckpointDeltaGuard` | `agents/guard/subagent_guards.go` | 以 baseline checkpoint 为分界，本轮结束前必须看到对应 step 的新 checkpoint，否则拒绝 `end_turn`；连续拦 3 次升级 terminate（弱模型死循环兜底）。Editor 的 guard 任务感知：被派生成摘要时仅复核不算完成 |
+| 工具内联 `next_step` | 各工具返回值字段 | 每个事实自带"下一步建议"，LLM 看到事实就知道下一步 |
+| 工具内归属/前置检查 | `edit_chapter` `commit_chapter` 等 | 数据层物理拦截：初稿定点编辑、改未入队的已完成章、空提交均被拒，`ConcurrencySafe=false` 阻止并发竞态 |
 
 In the new architecture, `writer.md` only carries: writing quality guidelines, crash-resume cognitive model, and chapter contract interpretation. **It no longer performs process orchestration** — when the LLM skips steps, the code will save the day, not the prompt. The same four-layer constraints for the architect and editor are in their respective tools/Guards.
 
@@ -266,7 +288,7 @@ In the new architecture, `writer.md` only carries: writing quality guidelines, c
 
 `../agentcore` is the project's own general-purpose Agent library (linked via `go.work`). All primitives used in the new architecture already exist: `Prompt` / `Inject` / `FollowUp` / `Subscribe` / `WithMaxTurns` / `WithStopGuard` / `WithToolGate` / `SubAgentConfig` / `WithContextManager`.
 
-**Modification Boundaries**:
+**契约测试**（`internal/agents/agentcore_contract_test.go`，6 条，全部经 `Runner.Run` 驱动）：把本项目依赖的框架行为钉成可执行断言（终态退出咨询 StopGuard、Error/Aborted 不触达 guard、Escalate 错误链可 `errors.Is` 匹配、`Run` 的类型化 `ErrUnknownAgent`、工具错误进度完整且为纯文本）。**bump agentcore 前必须全绿**——注释会过时，测试不会（这条纪律已经抓到过一次失效假设并省下一个 workaround）。
 
 - Allowed in agentcore: new ContextManager strategies, new provider adaptations, new event types, general message injection modes.
 - Forbidden in agentcore: business models like Progress/Checkpoint/Scope, business tools like `novel_context`/`commit_chapter`, and business rules like arc-end detection/review gates.
@@ -386,7 +408,16 @@ Both entries are unified through the `interventionMsg` helper to add the `[User 
 
 **Persistence of Long-term Intervention**: "Long-term requirements that only affect subsequent writing" (style/tendency types) identified during intervention classification are saved to `meta/user_directives.json` by the Coordinator calling `save_directive` (capped at 20 directives, de-duplication on add / indexing on remove). These are injected into `working_memory.user_directives` via `novel_context`—instantly visible to all sub-agents for every chapter, surviving compression and restarts, independent of the Coordinator's dialogue memory and dispatch transfers. Other classes of interventions naturally land in the store (length → compass/outline, settings → foundation, editing past chapters → PendingRewrites). Envelopes are used instead of system prompt modifications to protect the writer's cross-chapter system prefix cache.
 
-Each directive is saved with a **progress snapshot of when it was issued** (`at_chapter` / `at_total_chapters`): the directive becomes active starting from `at_chapter` (editor does not backtrack onto past chapters). If a relative directive (e.g., "add 10 chapters") is mistakenly saved as a long-term requirement, the reading party can determine it has already been satisfied based on the snapshot instead of executing it repeatedly. The correct approach for action-type directives remains writing-time translation of the corresponding route (architect/editor → absolute states of outline/compass/PendingRewrites); the snapshot is insurance for misclassification.
+### 8.4 章节推进控制
+
+`ChapterAdvanceGate` 统一执行两种不同时间尺度的用户意图：
+
+| 意图 | 来源 | 语义 |
+|---|---|---|
+| `AdvanceMode=review` + 精确 permit | `/review on`、`/next` | 持久政策：每个正向新章必须单独放行 |
+| `AdvanceHold` | Arbiter intervention | 一次性意图：当前边界、返工排空或目标章节稳定提交后暂停 |
+
+许可绑定章节号。只有目标章进入 CompletedChapters、PendingCommit 清空且 commit checkpoint 存在才消费，因此提交 saga 任一窗口崩溃都不会把同一许可用于下一章。详细不变量见 [Chapter Advance Gate](chapter-advance-gate.md)。
 
 ---
 

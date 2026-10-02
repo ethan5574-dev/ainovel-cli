@@ -3,7 +3,6 @@ package store
 import (
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/voocel/ainovel-cli/internal/domain"
@@ -88,11 +87,8 @@ func validateAdvanceControl(meta domain.RunMeta) error {
 		return fmt.Errorf("auto 模式不能保留章节许可: %d", meta.AdvancePermitChapter)
 	}
 	if meta.AdvanceHold != nil {
-		if !meta.AdvanceHold.After.Valid() {
-			return fmt.Errorf("不支持的一次性暂停条件 %q", meta.AdvanceHold.After)
-		}
-		if strings.TrimSpace(meta.AdvanceHold.Reason) == "" {
-			return fmt.Errorf("一次性暂停原因不能为空")
+		if err := meta.AdvanceHold.Validate(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -213,11 +209,8 @@ func (s *RunMetaStore) ClearAdvancePermit(chapter int) error {
 
 // SetAdvanceHold 登记一次性暂停意图；在途意图不允许被另一条静默覆盖。
 func (s *RunMetaStore) SetAdvanceHold(hold domain.AdvanceHold) error {
-	if !hold.After.Valid() {
-		return fmt.Errorf("不支持的一次性暂停条件 %q", hold.After)
-	}
-	if strings.TrimSpace(hold.Reason) == "" {
-		return fmt.Errorf("一次性暂停原因不能为空")
+	if err := hold.Validate(); err != nil {
+		return err
 	}
 	return s.io.WithWriteLock(func() error {
 		meta, err := s.loadUnlocked()

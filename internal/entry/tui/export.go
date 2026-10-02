@@ -36,7 +36,7 @@ func startExport(rt *host.Host, args []string) (tea.Cmd, error) {
 
 // parseExportArgs 解析 `/export [path] [from=N] [to=M] [--overwrite]`。
 //
-// 位置参数：最多一个，作为输出路径；缺省由 exp.Run 决定（{novelDir}/{NovelName}.txt）。
+// 位置参数：最多一个，作为输出路径；缺省由 exp.Run 决定（{novelDir}/{BookMetadata.Title}.txt）。
 func parseExportArgs(args []string) (exp.Options, error) {
 	var opts exp.Options
 	for _, a := range args {

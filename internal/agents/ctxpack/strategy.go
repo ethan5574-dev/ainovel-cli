@@ -2,6 +2,7 @@ package ctxpack
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/voocel/agentcore"
@@ -59,7 +60,7 @@ func (s *StoreSummaryCompactStrategy) apply(_ context.Context, msgs []agentcore.
 		return msgs, corecontext.StrategyResult{Name: s.Name()}, nil
 	}
 
-	summary, ok, err := buildWriterStoreSummaryText(s.store, s.summaryTokenBudget)
+	sections, ok, err := buildWriterStoreSummaryText(s.store, s.summaryTokenBudget)
 	if err != nil {
 		return nil, corecontext.StrategyResult{Name: s.Name()}, err
 	}
@@ -67,16 +68,17 @@ func (s *StoreSummaryCompactStrategy) apply(_ context.Context, msgs []agentcore.
 		return msgs, corecontext.StrategyResult{Name: s.Name()}, nil
 	}
 
-	cut := findStoreSummaryCutPoint(msgs, s.keepRecentTokens)
-	if cut.isSplitTurn && cut.turnStartIndex > 0 {
-		cut.firstKeptIndex = cut.turnStartIndex
-		cut.isSplitTurn = false
-	}
-	if cut.firstKeptIndex <= 0 || cut.firstKeptIndex >= len(msgs) {
+	cut := corecontext.FindCutPoint(msgs, s.keepRecentTokens)
+	if cut.FirstKeptIndex <= 0 {
 		return msgs, corecontext.StrategyResult{Name: s.Name()}, nil
 	}
+	summary := storeSummaryPreamble
+	if task := leadingTask(msgs); task != "" {
+		summary += "\n\n" + taskHeading + task
+	}
+	summary += "\n\n" + sections
 
-	toKeep := append([]agentcore.AgentMessage(nil), msgs[cut.firstKeptIndex:]...)
+	toKeep := append([]agentcore.AgentMessage(nil), msgs[cut.FirstKeptIndex:]...)
 	tokensBefore := corecontext.EstimateTotal(msgs)
 	result := make([]agentcore.AgentMessage, 0, 1+len(toKeep))
 	result = append(result, corecontext.ContextSummary{
@@ -96,9 +98,9 @@ func (s *StoreSummaryCompactStrategy) apply(_ context.Context, msgs []agentcore.
 		TokensAfter:    tokensAfter,
 		MessagesBefore: len(msgs),
 		MessagesAfter:  len(result),
-		CompactedCount: cut.firstKeptIndex,
+		CompactedCount: cut.FirstKeptIndex,
 		KeptCount:      len(toKeep),
-		IsSplitTurn:    cut.isSplitTurn,
+		IsSplitTurn:    cut.IsSplitTurn,
 		SummaryLen:     len([]rune(summary)),
 		Duration:       time.Millisecond,
 	}
@@ -114,70 +116,24 @@ func (s *StoreSummaryCompactStrategy) apply(_ context.Context, msgs []agentcore.
 	}, nil
 }
 
-type storeSummaryCutResult struct {
-	firstKeptIndex int
-	turnStartIndex int
-	isSplitTurn    bool
-}
+const (
+	storeSummaryPreamble = "以下内容来自小说持久化 store，用于在压缩后恢复写作上下文。"
+	taskHeading          = "## 当前任务\n"
+)
 
-func findStoreSummaryCutPoint(msgs []agentcore.AgentMessage, keepTokens int) storeSummaryCutResult {
-	if len(msgs) == 0 {
-		return storeSummaryCutResult{}
-	}
-
-	accumulated := 0
-	cutIndex := len(msgs)
-	for i := len(msgs) - 1; i >= 0; i-- {
-		accumulated += corecontext.EstimateTokens(msgs[i])
-		if accumulated >= keepTokens {
-			cutIndex = i
-			break
+// leadingTask 取回协调器下发的任务：首次压缩来自首条 user 消息，之后来自上一份摘要。
+// store 摘要与 LLM 摘要（WriterSummaryPrompt）都把"当前任务"作为固定一节，按下一个标题结束。
+func leadingTask(msgs []agentcore.AgentMessage) string {
+	switch first := msgs[0].(type) {
+	case agentcore.Message:
+		if first.Role == agentcore.RoleUser {
+			return first.TextContent()
+		}
+	case corecontext.ContextSummary:
+		if _, rest, ok := strings.Cut(first.Summary, taskHeading); ok {
+			task, _, _ := strings.Cut(rest, "\n## ")
+			return strings.TrimSpace(task)
 		}
 	}
-	if cutIndex >= len(msgs) {
-		return storeSummaryCutResult{}
-	}
-
-	for cutIndex < len(msgs) {
-		msg := msgs[cutIndex]
-		m, ok := msg.(agentcore.Message)
-		if !ok {
-			break
-		}
-		if m.Role == agentcore.RoleTool {
-			cutIndex++
-			continue
-		}
-		if m.Role == agentcore.RoleUser {
-			break
-		}
-		if m.Role == agentcore.RoleAssistant && m.HasToolCalls() {
-			cutIndex++
-			for cutIndex < len(msgs) {
-				next, ok := msgs[cutIndex].(agentcore.Message)
-				if ok && next.Role == agentcore.RoleTool {
-					cutIndex++
-					continue
-				}
-				break
-			}
-			continue
-		}
-		break
-	}
-	if cutIndex >= len(msgs) {
-		return storeSummaryCutResult{}
-	}
-
-	result := storeSummaryCutResult{firstKeptIndex: cutIndex}
-	if m, ok := msgs[cutIndex].(agentcore.Message); !ok || m.Role != agentcore.RoleUser {
-		for i := cutIndex - 1; i >= 0; i-- {
-			if um, ok := msgs[i].(agentcore.Message); ok && um.Role == agentcore.RoleUser {
-				result.turnStartIndex = i
-				result.isSplitTurn = true
-				break
-			}
-		}
-	}
-	return result
+	return ""
 }

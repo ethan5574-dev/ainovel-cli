@@ -6,11 +6,13 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/voocel/ainovel-cli/internal/domain"
 )
 
 func TestRenderEPUB_StructuralInvariants(t *testing.T) {
 	data, err := renderEPUB(
-		"光斑",
+		domain.BookMetadata{Title: "光斑", Synopsis: "少年在光影交界处追索真相。"},
 		[]int{1, 2},
 		chapterTitleIndex{1: "雨夜归人", 2: "破晓"},
 		nil,
@@ -87,6 +89,7 @@ func TestRenderEPUB_StructuralInvariants(t *testing.T) {
 		"<spine>", "</spine>",
 		"urn:uuid:",
 		"<dc:title>光斑</dc:title>",
+		"<dc:description>少年在光影交界处追索真相。</dc:description>",
 		`href="chapter001.xhtml"`,
 		`href="chapter002.xhtml"`,
 		`idref="ch001"`,
@@ -127,7 +130,7 @@ func TestRenderEPUB_StructuralInvariants(t *testing.T) {
 
 func TestRenderEPUB_HTMLEscape(t *testing.T) {
 	data, err := renderEPUB(
-		"A & B", // & must be escaped
+		domain.BookMetadata{Title: "A & B", Synopsis: "E < F & G"}, // 特殊字符必须转义
 		[]int{1},
 		chapterTitleIndex{1: "C \"D\""},
 		nil,
@@ -154,6 +157,9 @@ func TestRenderEPUB_HTMLEscape(t *testing.T) {
 	if !strings.Contains(files["OEBPS/content.opf"], "<dc:title>A &amp; B</dc:title>") {
 		t.Errorf("opf should escape & in title")
 	}
+	if !strings.Contains(files["OEBPS/content.opf"], "<dc:description>E &lt; F &amp; G</dc:description>") {
+		t.Errorf("opf should escape synopsis")
+	}
 }
 
 // TestRenderEPUB_LayeredVolume verifies that the layered outline only inserts volume separators at volume start, and arc separators never appear.
@@ -163,7 +169,7 @@ func TestRenderEPUB_LayeredVolume(t *testing.T) {
 		2: {VolumeIdx: 1, VolumeTitle: "起源"},
 	}
 	data, err := renderEPUB(
-		"X",
+		domain.BookMetadata{Title: "X", Synopsis: "简介"},
 		[]int{1, 2},
 		chapterTitleIndex{1: "A", 2: "B"},
 		locs,
@@ -197,7 +203,7 @@ func TestRenderEPUB_LayeredVolume(t *testing.T) {
 
 func TestRenderEPUB_NoCoverWhenNoTitle(t *testing.T) {
 	data, err := renderEPUB(
-		"", []int{1},
+		domain.BookMetadata{}, []int{1},
 		chapterTitleIndex{1: "唯一一章"},
 		nil,
 		map[int]string{1: "正文。"},

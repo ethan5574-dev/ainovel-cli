@@ -2,7 +2,6 @@ package web
 
 import (
 	"bytes"
-	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -18,7 +17,6 @@ import (
 	"github.com/voocel/ainovel-cli/internal/bootstrap"
 	"github.com/voocel/ainovel-cli/internal/domain"
 	"github.com/voocel/ainovel-cli/internal/host"
-	"github.com/voocel/ainovel-cli/internal/tools"
 )
 
 //go:embed webui/*
@@ -37,8 +35,6 @@ type Server struct {
 	mu      sync.Mutex
 	clients map[chan message]struct{}
 	recent  []message
-	tasks   map[string]pendingAsk
-	seq     uint64
 }
 
 type message struct {
@@ -50,20 +46,6 @@ type message struct {
 // eventReplayLimit caps how much durable history a fresh (non-resuming) connection backfills.
 const eventReplayLimit = 80
 
-type pendingAsk struct {
-	result chan askResult
-}
-
-type askResult struct {
-	response *tools.AskUserResponse
-	err      error
-}
-
-type askPayload struct {
-	ID        string           `json:"id"`
-	Questions []tools.Question `json:"questions"`
-}
-
 type textRequest struct {
 	Text      string `json:"text"`
 	Prompt    string `json:"prompt"`
@@ -72,11 +54,6 @@ type textRequest struct {
 
 type reviewRequest struct {
 	Mode string `json:"mode"`
-}
-
-type answerRequest struct {
-	Answers map[string]string `json:"answers"`
-	Notes   map[string]string `json:"notes"`
 }
 
 // NewServer builds a Server. runtime may be nil (fresh machine, setup not done yet);
@@ -89,7 +66,6 @@ func NewServer(runtime *host.Host) (*Server, error) {
 	s := &Server{
 		ui:      ui,
 		clients: make(map[chan message]struct{}),
-		tasks:   make(map[string]pendingAsk),
 	}
 	if runtime != nil {
 		s.AttachRuntime(runtime)
@@ -101,7 +77,6 @@ func NewServer(runtime *host.Host) (*Server, error) {
 // once per Server (a second call would start a duplicate fanout goroutine).
 func (s *Server) AttachRuntime(runtime *host.Host) {
 	s.runtime.Store(runtime)
-	runtime.AskUser().SetHandler(s.askUser)
 	go s.fanout(runtime)
 }
 
@@ -159,7 +134,6 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/next", s.handleNext)
 	mux.HandleFunc("POST /api/reopen", s.handleReopen)
 	mux.HandleFunc("POST /api/review", s.handleReview)
-	mux.HandleFunc("POST /api/ask/", s.handleAskAnswer)
 	return withLocalHeaders(mux)
 }
 
@@ -265,9 +239,6 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			items = items[len(items)-eventReplayLimit:]
 		}
 		for _, item := range items {
-			if item.Kind != domain.RuntimeQueueUIEvent {
-				continue
-			}
 			if !writeSSE(w, message{Event: "event", ID: strconv.FormatInt(item.Seq, 10), Data: item.Payload}) {
 				return
 			}
@@ -376,49 +347,6 @@ func (s *Server) fanout(rt *host.Host) {
 			s.publish("snapshot", rt.Snapshot(), false)
 		}
 	}
-}
-
-func (s *Server) askUser(ctx context.Context, questions []tools.Question) (*tools.AskUserResponse, error) {
-	id := fmt.Sprintf("ask-%d", atomic.AddUint64(&s.seq, 1))
-	result := make(chan askResult, 1)
-	s.mu.Lock()
-	s.tasks[id] = pendingAsk{result: result}
-	s.mu.Unlock()
-	defer func() {
-		s.mu.Lock()
-		delete(s.tasks, id)
-		s.mu.Unlock()
-	}()
-	s.publish("ask", askPayload{ID: id, Questions: questions}, true)
-
-	select {
-	case answer := <-result:
-		return answer.response, answer.err
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-}
-
-func (s *Server) handleAskAnswer(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.URL.Path, "/api/ask/")
-	if id == "" {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("ask id is required"))
-		return
-	}
-	var req answerRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-	s.mu.Lock()
-	pending, ok := s.tasks[id]
-	s.mu.Unlock()
-	if !ok {
-		writeError(w, http.StatusNotFound, fmt.Errorf("ask request not found"))
-		return
-	}
-	pending.result <- askResult{response: &tools.AskUserResponse{Answers: req.Answers, Notes: req.Notes}}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {

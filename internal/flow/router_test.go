@@ -24,6 +24,52 @@ func TestLoadStateReturnsProgressReadError(t *testing.T) {
 	}
 }
 
+func TestLoadStateOnlyPrioritizesExternalRevisionFeedback(t *testing.T) {
+	st := storepkg.NewStore(t.TempDir())
+	if err := st.Init(); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	progress := &domain.Progress{
+		Phase: domain.PhaseWriting, Flow: domain.FlowWriting,
+		TotalChapters: 10, CompletedChapters: []int{1},
+	}
+	if err := st.Progress.Save(progress); err != nil {
+		t.Fatalf("Save progress: %v", err)
+	}
+	if err := st.Outline.AppendOutlineFeedback(storepkg.ChapterFeedback{
+		Chapter: 1, Deviation: "无明显偏离", Suggestion: "下一章继续推进",
+	}); err != nil {
+		t.Fatalf("Append normal feedback: %v", err)
+	}
+
+	state, err := LoadState(st)
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	if state.ImmediateFeedbackCount != 0 {
+		t.Fatalf("normal writer feedback should not interrupt writing: %+v", state)
+	}
+	if got := Route(state); got == nil || got.Agent != "writer" {
+		t.Fatalf("normal writer feedback should continue writing, got %+v", got)
+	}
+
+	if err := st.Outline.AppendOutlineFeedback(storepkg.ChapterFeedback{
+		Chapter: 1, StoryChanged: true, ChangeSummary: "用户改写了本章结局",
+	}); err != nil {
+		t.Fatalf("Append external revision feedback: %v", err)
+	}
+	state, err = LoadState(st)
+	if err != nil {
+		t.Fatalf("LoadState after external revision: %v", err)
+	}
+	if state.ImmediateFeedbackCount != 1 {
+		t.Fatalf("external revision should interrupt writing: %+v", state)
+	}
+	if got := Route(state); got == nil || !strings.HasPrefix(got.Agent, "architect_") {
+		t.Fatalf("external revision should dispatch architect, got %+v", got)
+	}
+}
+
 // helper：构造一个处于 Writing 阶段、分层模式的 Progress。
 func writingProgress(completed []int, flow domain.FlowState) *domain.Progress {
 	return &domain.Progress{
@@ -219,6 +265,31 @@ func TestRoute_NormalContinue(t *testing.T) {
 	}
 }
 
+func TestRoute_ExternalRevisionDispatchesArchitectBeforeWriter(t *testing.T) {
+	p := writingProgress([]int{1, 2, 3}, domain.FlowWriting)
+	p.TotalChapters = 20
+	got := Route(State{
+		Progress: p, LastCompleted: 3, PlanningTier: domain.PlanningTierShort,
+		ImmediateFeedbackCount: 2,
+	})
+	if got == nil || got.Agent != "architect_short" || !strings.Contains(got.Reason, "2 条") {
+		t.Fatalf("expected architect to consume feedback, got %+v", got)
+	}
+}
+
+func TestRoute_AggregateRefreshPrecedesExternalRevision(t *testing.T) {
+	p := writingProgress([]int{1, 2}, domain.FlowWriting)
+	got := Route(State{
+		Progress: p, ImmediateFeedbackCount: 1,
+		AggregateRefresh: &AggregateRefresh{
+			Kind: AggregateArcSummary, Volume: 1, Arc: 1, StartChapter: 1, EndChapter: 2,
+		},
+	})
+	if got == nil || got.Agent != "editor" || !strings.Contains(got.Task, "save_arc_summary") {
+		t.Fatalf("expected editor aggregate refresh, got %+v", got)
+	}
+}
+
 func TestRoute_NonLayeredOutlineExhaustedDispatchesArchitect(t *testing.T) {
 	p := &domain.Progress{
 		Phase:             domain.PhaseWriting,
@@ -289,6 +360,13 @@ func TestRoute_PlanningFillDispatchesSamePlanner(t *testing.T) {
 		if !contains(got.Task, want) {
 			t.Errorf("补齐任务缺少 %q: %s", want, got.Task)
 		}
+	}
+
+	bookMissing := base
+	bookMissing.PlanningTier = domain.PlanningTierLong
+	bookMissing.FoundationMissing = []string{"book"}
+	if got := Route(bookMissing); got == nil || !contains(got.Task, "save_book") {
+		t.Fatalf("book 缺失时应指示 save_book,got %+v", got)
 	}
 
 	// 首次规划未落盘任何设定(tier 空)→ 选型是语义判断,交 LLM

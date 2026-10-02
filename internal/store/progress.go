@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"slices"
-	"strings"
 
 	"github.com/voocel/ainovel-cli/internal/domain"
 	"github.com/voocel/ainovel-cli/internal/errs"
@@ -45,15 +44,14 @@ func (s *ProgressStore) saveUnlocked(p *domain.Progress) error {
 }
 
 // Init 创建初始进度。
-func (s *ProgressStore) Init(novelName string, totalChapters int) error {
+func (s *ProgressStore) Init(totalChapters int) error {
 	return s.Save(&domain.Progress{
-		NovelName:     novelName,
 		Phase:         domain.PhaseInit,
 		TotalChapters: totalChapters,
 	})
 }
 
-// SetTotalChapters 设定总章节数。
+// SetTotalChapters 更新大纲容量：非分层模式为详细章数，分层模式为内部估算。
 func (s *ProgressStore) SetTotalChapters(n int) error {
 	return s.io.WithWriteLock(func() error {
 		p, err := s.loadUnlocked()
@@ -68,25 +66,6 @@ func (s *ProgressStore) SetTotalChapters(n int) error {
 	})
 }
 
-// SetNovelName 设置作品书名，空值会被忽略。
-func (s *ProgressStore) SetNovelName(name string) error {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return nil
-	}
-	return s.io.WithWriteLock(func() error {
-		p, err := s.loadUnlocked()
-		if err != nil {
-			return err
-		}
-		if p == nil {
-			p = &domain.Progress{}
-		}
-		p.NovelName = name
-		return s.saveUnlocked(p)
-	})
-}
-
 // UpdatePhase 更新创作阶段。
 func (s *ProgressStore) UpdatePhase(phase domain.Phase) error {
 	return s.io.WithWriteLock(func() error {
@@ -96,6 +75,28 @@ func (s *ProgressStore) UpdatePhase(phase domain.Phase) error {
 		}
 		if p == nil {
 			p = &domain.Progress{}
+		}
+		if err := domain.ValidatePhaseTransition(p.Phase, phase); err != nil {
+			return err
+		}
+		p.Phase = phase
+		return s.saveUnlocked(p)
+	})
+}
+
+// AdvancePhase 将创作阶段至少推进到 phase；已经到达更后阶段时保持不变。
+// 适用于可重复保存的阶段工件，避免修订旧工件被误判为阶段回退。
+func (s *ProgressStore) AdvancePhase(phase domain.Phase) error {
+	return s.io.WithWriteLock(func() error {
+		p, err := s.loadUnlocked()
+		if err != nil {
+			return err
+		}
+		if p == nil {
+			p = &domain.Progress{}
+		}
+		if domain.CanTransitionPhase(phase, p.Phase) {
+			return nil
 		}
 		if err := domain.ValidatePhaseTransition(p.Phase, phase); err != nil {
 			return err

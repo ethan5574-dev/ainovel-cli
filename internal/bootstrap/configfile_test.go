@@ -119,6 +119,7 @@ func TestLoadConfig_ValidMergeWorks(t *testing.T) {
 	writeProjectConfig(t, `{
   "model": "google/gemini-2.5-pro",
   "reasoning_effort": "high",
+  "disable_update_check": true,
   "roles": {
     "writer": {
       "provider": "openrouter",
@@ -143,6 +144,9 @@ func TestLoadConfig_ValidMergeWorks(t *testing.T) {
 	}
 	if got := cfg.Roles["writer"].ReasoningEffort; got != "low" {
 		t.Errorf("roles.writer.reasoning_effort 应被项目级覆盖，得到 %q", got)
+	}
+	if !cfg.DisableUpdateCheck {
+		t.Error("项目级 disable_update_check=true 应生效")
 	}
 }
 
@@ -207,6 +211,19 @@ func TestMergeConfig_ProviderExtraFields(t *testing.T) {
 	}
 	if got := headers["X-Custom-Client"]; got != "ainovel" {
 		t.Fatalf("Extra.headers[X-Custom-Client] = %#v, want ainovel", got)
+	}
+}
+
+func TestMergeConfig_DisableUpdateCheck(t *testing.T) {
+	cfg := mergeConfig(Config{}, Config{DisableUpdateCheck: true})
+	if !cfg.DisableUpdateCheck {
+		t.Fatal("项目级 disable_update_check=true 应关闭更新检查")
+	}
+
+	// 禁用属于隐私偏好，较高层省略或写 false 都不应隐式重新开启。
+	cfg = mergeConfig(Config{DisableUpdateCheck: true}, Config{})
+	if !cfg.DisableUpdateCheck {
+		t.Fatal("项目层未声明时应保留全局禁用偏好")
 	}
 }
 

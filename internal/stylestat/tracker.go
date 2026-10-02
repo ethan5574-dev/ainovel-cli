@@ -4,6 +4,8 @@ import (
 	"slices"
 	"sort"
 	"sync"
+
+	"github.com/voocel/ainovel-cli/internal/utils"
 )
 
 // Tracker 按章节维护全书风格统计。首次载入每章一次；新增或重写时只分析变化章节。
@@ -185,7 +187,7 @@ func (t *Tracker) snapshot(titles, stopwords []string) *Stats {
 			continue
 		}
 		stats.RepeatedSentences = append(stats.RepeatedSentences, SentenceStat{
-			Text:     truncateRunes(sentence, 40),
+			Text:     utils.TruncateRunes(sentence, 40),
 			Chapters: aggregate.chapters,
 			Count:    aggregate.count,
 		})

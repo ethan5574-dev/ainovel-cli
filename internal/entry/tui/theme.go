@@ -71,6 +71,7 @@ var statusDisplay = map[string]struct {
 // Event category color mapping
 var categoryColors = map[string]lipgloss.AdaptiveColor{
 	"DISPATCH": colorAccent,
+	"MODEL":    colorContext,
 	"DECISION": colorContext,
 	"TOOL":     colorTool,
 	"SYSTEM":   colorAccent,
@@ -114,9 +115,6 @@ var (
 	highlightValueStyle = lipgloss.NewStyle().
 				Foreground(colorAccent).
 				Bold(true)
-
-	contextUsageMetaStyle = lipgloss.NewStyle().
-				Foreground(colorDim)
 
 	cardTitleStyle = lipgloss.NewStyle().
 			Foreground(colorMuted).

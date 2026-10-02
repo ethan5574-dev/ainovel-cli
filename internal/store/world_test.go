@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/voocel/ainovel-cli/internal/domain"
-	"github.com/voocel/ainovel-cli/internal/rules"
 )
 
 func newTestStore(t *testing.T) *Store {
@@ -100,6 +99,121 @@ func TestTimeline_AppendIsIdempotent(t *testing.T) {
 	}
 	if len(loaded) != 1 {
 		t.Fatalf("duplicate timeline event should be ignored, got %d: %+v", len(loaded), loaded)
+	}
+
+	// 跨重启仍从 JSONL 重建去重索引，commit Saga 重放不能产生重复记录。
+	s2 := NewStore(s.Dir())
+	if err := s2.World.AppendTimelineEvents([]domain.TimelineEvent{event}); err != nil {
+		t.Fatalf("append duplicate after restart: %v", err)
+	}
+	loaded, err = s2.World.LoadTimeline()
+	if err != nil || len(loaded) != 1 {
+		t.Fatalf("restart idempotency: got (%+v, %v)", loaded, err)
+	}
+}
+
+func TestTimeline_DedupKeyDoesNotCollideOnContent(t *testing.T) {
+	s := newTestStore(t)
+	events := []domain.TimelineEvent{
+		{Chapter: 1, Time: "a|b", Event: "c"},
+		{Chapter: 1, Time: "a", Event: "b|c"},
+	}
+	if err := s.World.AppendTimelineEvents(events); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	loaded, err := s.World.LoadTimeline()
+	if err != nil || len(loaded) != 2 {
+		t.Fatalf("delimiter-bearing events must remain distinct: got (%+v, %v)", loaded, err)
+	}
+}
+
+func TestTimeline_MigratesLegacyAndAppendsProjection(t *testing.T) {
+	dir := t.TempDir()
+	legacyStore := NewStore(dir)
+	legacy := []domain.TimelineEvent{{Chapter: 1, Time: "清晨", Event: "旧事件"}}
+	if err := legacyStore.World.io.WriteJSON("timeline.json", legacy); err != nil {
+		t.Fatalf("write legacy: %v", err)
+	}
+	if err := legacyStore.World.io.WriteMarkdown("timeline.md", "stale projection"); err != nil {
+		t.Fatalf("write stale projection: %v", err)
+	}
+
+	s := NewStore(dir)
+	if err := s.World.AppendTimelineEvents([]domain.TimelineEvent{
+		{Chapter: 2, Time: "午后", Event: "新事件"},
+	}); err != nil {
+		t.Fatalf("append with migration: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "timeline.json")); !os.IsNotExist(err) {
+		t.Fatalf("legacy timeline.json should be removed, err=%v", err)
+	}
+	before, err := os.ReadFile(filepath.Join(dir, "timeline.jsonl"))
+	if err != nil {
+		t.Fatalf("read timeline.jsonl: %v", err)
+	}
+
+	if err := s.World.AppendTimelineEvents([]domain.TimelineEvent{
+		{Chapter: 3, Time: "傍晚", Event: "追加事件"},
+	}); err != nil {
+		t.Fatalf("append jsonl: %v", err)
+	}
+	after, err := os.ReadFile(filepath.Join(dir, "timeline.jsonl"))
+	if err != nil {
+		t.Fatalf("read appended timeline.jsonl: %v", err)
+	}
+	if !strings.HasPrefix(string(after), string(before)) || len(after) <= len(before) {
+		t.Fatal("timeline.jsonl should preserve old bytes and append new records")
+	}
+
+	loaded, err := s.World.LoadTimeline()
+	if err != nil || len(loaded) != 3 {
+		t.Fatalf("load migrated timeline: got (%+v, %v)", loaded, err)
+	}
+	markdown, err := os.ReadFile(filepath.Join(dir, "timeline.md"))
+	if err != nil {
+		t.Fatalf("read timeline.md: %v", err)
+	}
+	if string(markdown) != renderTimeline(loaded) {
+		t.Fatalf("timeline projection not synchronized:\n%s", markdown)
+	}
+}
+
+func TestTimeline_RepairsUncommittedJSONLTail(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.World.AppendTimelineEvents([]domain.TimelineEvent{{Chapter: 1, Event: "完整记录"}}); err != nil {
+		t.Fatalf("append first: %v", err)
+	}
+	path := filepath.Join(s.Dir(), "timeline.jsonl")
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatalf("open jsonl: %v", err)
+	}
+	if _, err := f.WriteString(`{"chapter":2,"event":"未提交`); err != nil {
+		_ = f.Close()
+		t.Fatalf("write partial tail: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("close jsonl: %v", err)
+	}
+
+	s2 := NewStore(s.Dir())
+	if err := s2.World.AppendTimelineEvents([]domain.TimelineEvent{{Chapter: 2, Event: "重放记录"}}); err != nil {
+		t.Fatalf("append after partial tail: %v", err)
+	}
+	loaded, err := s2.World.LoadTimeline()
+	if err != nil || len(loaded) != 2 || loaded[1].Event != "重放记录" {
+		t.Fatalf("tail recovery: got (%+v, %v)", loaded, err)
+	}
+}
+
+func TestTimeline_RejectsCorruptCommittedJSONLRecord(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "timeline.jsonl"), []byte("{broken}\n"), 0o644); err != nil {
+		t.Fatalf("write corrupt jsonl: %v", err)
+	}
+	s := NewStore(dir)
+	if _, err := s.World.LoadTimeline(); err == nil {
+		t.Fatal("committed corrupt record must fail loudly")
 	}
 }
 
@@ -279,6 +393,71 @@ func TestStateChanges_AppendIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestStateChanges_DedupKeyDoesNotCollideOnContent(t *testing.T) {
+	s := newTestStore(t)
+	changes := []domain.StateChange{
+		{Chapter: 1, Entity: "a|b", Field: "c", OldValue: "d", NewValue: "e"},
+		{Chapter: 1, Entity: "a", Field: "b|c", OldValue: "d", NewValue: "e"},
+	}
+	if err := s.World.AppendStateChanges(changes); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	loaded, err := s.World.LoadStateChanges()
+	if err != nil || len(loaded) != 2 {
+		t.Fatalf("delimiter-bearing changes must remain distinct: got (%+v, %v)", loaded, err)
+	}
+}
+
+func TestStateChanges_MigratesLegacyAndRemainsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	legacyStore := NewStore(dir)
+	legacy := []domain.StateChange{{
+		Chapter: 1, Entity: "张三", Field: "realm", NewValue: "练气期",
+	}}
+	if err := legacyStore.World.io.WriteJSON("meta/state_changes.json", legacy); err != nil {
+		t.Fatalf("write legacy: %v", err)
+	}
+
+	change := domain.StateChange{
+		Chapter: 2, Entity: "张三", Field: "realm", OldValue: "练气期", NewValue: "筑基期",
+	}
+	s := NewStore(dir)
+	if err := s.World.AppendStateChanges([]domain.StateChange{change}); err != nil {
+		t.Fatalf("append with migration: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "meta", "state_changes.json")); !os.IsNotExist(err) {
+		t.Fatalf("legacy state_changes.json should be removed, err=%v", err)
+	}
+	before, err := os.ReadFile(filepath.Join(dir, "meta", "state_changes.jsonl"))
+	if err != nil {
+		t.Fatalf("read state_changes.jsonl: %v", err)
+	}
+
+	next := domain.StateChange{
+		Chapter: 3, Entity: "张三", Field: "realm", OldValue: "筑基期", NewValue: "金丹期",
+	}
+	if err := s.World.AppendStateChanges([]domain.StateChange{next}); err != nil {
+		t.Fatalf("append jsonl: %v", err)
+	}
+	after, err := os.ReadFile(filepath.Join(dir, "meta", "state_changes.jsonl"))
+	if err != nil {
+		t.Fatalf("read appended state_changes.jsonl: %v", err)
+	}
+	if !strings.HasPrefix(string(after), string(before)) || len(after) <= len(before) {
+		t.Fatal("state_changes.jsonl should preserve old bytes and append new records")
+	}
+
+	// 新 Store 从日志恢复索引后重放相同 change，条目数仍保持不变。
+	s2 := NewStore(dir)
+	if err := s2.World.AppendStateChanges([]domain.StateChange{next}); err != nil {
+		t.Fatalf("restart duplicate: %v", err)
+	}
+	loaded, err := s2.World.LoadStateChanges()
+	if err != nil || len(loaded) != 3 {
+		t.Fatalf("load migrated state changes: got (%+v, %v)", loaded, err)
+	}
+}
+
 // ── StyleRules ──
 
 func TestStyleRules_SaveAndLoad(t *testing.T) {
@@ -381,40 +560,5 @@ func TestRenderWorldRules(t *testing.T) {
 	// without boundary should not output empty boundary line
 	if strings.Contains(md, "Boundary:\n") {
 		t.Error("empty boundary rendered")
-	}
-}
-
-// TestRuleViolationsContract 违规事实存储契约(第五轮评审):
-// 同章最新覆盖旧记录;重写后空列表视为已清;跨重启可读。
-func TestRuleViolationsContract(t *testing.T) {
-	dir := t.TempDir()
-	s := NewStore(dir)
-	if err := s.World.SaveRuleViolations(3, []rules.Violation{
-		{Rule: "fatigue_words", Target: "不禁", Actual: 9, Severity: rules.SeverityWarning},
-	}); err != nil {
-		t.Fatalf("save: %v", err)
-	}
-	if got := s.World.LoadRuleViolations(3); len(got) != 1 || got[0].Target != "不禁" {
-		t.Fatalf("首次读取: %+v", got)
-	}
-
-	// 同章重写:最新记录(空列表=已清)覆盖旧违规
-	if err := s.World.SaveRuleViolations(3, nil); err != nil {
-		t.Fatalf("save empty: %v", err)
-	}
-	if got := s.World.LoadRuleViolations(3); len(got) != 0 {
-		t.Fatalf("重写后旧违规应被清除: %+v", got)
-	}
-
-	// 其他章不受影响 + 跨重启(新 Store 实例)可读
-	if err := s.World.SaveRuleViolations(5, []rules.Violation{{Rule: "forbidden_phrases", Target: "某种程度上", Actual: 2, Severity: rules.SeverityWarning}}); err != nil {
-		t.Fatalf("save ch5: %v", err)
-	}
-	s2 := NewStore(dir)
-	if got := s2.World.LoadRuleViolations(5); len(got) != 1 || got[0].Rule != "forbidden_phrases" {
-		t.Fatalf("跨重启读取: %+v", got)
-	}
-	if got := s2.World.LoadRuleViolations(99); got != nil {
-		t.Fatalf("无记录章节应返回 nil: %+v", got)
 	}
 }

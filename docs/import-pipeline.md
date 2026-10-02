@@ -494,6 +494,8 @@ BookSynthesis
 
 ```go
 type BookSynthesis struct {
+	Title         *string                `json:"title"`    // 正文无法确认时为 null，由文件名推断
+	Synopsis      string                 `json:"synopsis"` // 面向读者的无剧透简介
 	Premise       string                 `json:"premise"`
 	Characters    []domain.Character     `json:"characters"`
 	WorldRules    []domain.WorldRule     `json:"world_rules"`

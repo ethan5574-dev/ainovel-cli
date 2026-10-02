@@ -5,6 +5,7 @@ import (
 
 	"github.com/voocel/agentcore"
 	corecontext "github.com/voocel/agentcore/context"
+	"github.com/voocel/ainovel-cli/internal/bootstrap"
 )
 
 // contextManagerConfig aggregates all configuration parameters of ContextManager.
@@ -12,9 +13,8 @@ type contextManagerConfig struct {
 	Model            agentcore.ChatModel
 	ContextWindow    int
 	ReserveTokens    int
-	KeepRecentTokens int
 	Agent            string
-	CommitOnProject  bool
+	CommitProjected  bool
 	Summary          *corecontext.FullSummaryConfig
 	ToolMicrocompact *corecontext.ToolResultMicrocompactConfig
 	ExtraStrategies  []corecontext.Strategy
@@ -26,9 +26,6 @@ func newContextManager(cfg contextManagerConfig) *corecontext.ContextEngine {
 		sc = *cfg.Summary
 	}
 	sc.Model = cfg.Model
-	if sc.KeepRecentTokens <= 0 {
-		sc.KeepRecentTokens = cfg.KeepRecentTokens
-	}
 
 	var tc corecontext.ToolResultMicrocompactConfig
 	if cfg.ToolMicrocompact != nil {
@@ -37,16 +34,23 @@ func newContextManager(cfg contextManagerConfig) *corecontext.ContextEngine {
 
 	strategies := []corecontext.Strategy{
 		corecontext.NewToolResultMicrocompact(tc),
-		corecontext.NewLightTrim(corecontext.LightTrimConfig{}),
 	}
 	strategies = append(strategies, cfg.ExtraStrategies...)
 	strategies = append(strategies, corecontext.NewFullSummary(sc))
 
+	var commitStrategies []string
+	if cfg.CommitProjected {
+		commitStrategies = make([]string, len(strategies))
+		for i, strategy := range strategies {
+			commitStrategies[i] = strategy.Name()
+		}
+	}
+
 	engine := corecontext.NewEngine(corecontext.EngineConfig{
-		ContextWindow:   cfg.ContextWindow,
-		ReserveTokens:   cfg.ReserveTokens,
-		CommitOnProject: cfg.CommitOnProject,
-		Strategies:      strategies,
+		ContextWindow:    cfg.ContextWindow,
+		ReserveTokens:    cfg.ReserveTokens,
+		CommitStrategies: commitStrategies,
+		Strategies:       strategies,
 	})
 
 	callback := contextRewriteCallback(cfg.Agent)
@@ -55,8 +59,35 @@ func newContextManager(cfg contextManagerConfig) *corecontext.ContextEngine {
 	return engine
 }
 
-// contextRewriteCallback creates a log callback for context rewriting.
-// The new architecture is simplified to only write slog, no longer writing runtime queue and UIEvent.
+// roleContextProfile 描述 Architect / Editor 这类"单任务、多次读取"Worker 的压缩档案：
+// 只清理旧的 novel_context 结果（落盘数据可随时重读），写工具结果与章节原文保留；
+// 仍超限时用角色专属提示词做全量摘要。
+type roleContextProfile struct {
+	Agent           string
+	KeepRecentReads int // 保留最近几次 novel_context 结果不清理
+	Summary         corecontext.FullSummaryConfig
+}
+
+// newRoleContextManager 按当前模型窗口构建该档案的 ContextManager。
+func newRoleContextManager(p roleContextProfile, model agentcore.ChatModel, window int, contextToolName string) *corecontext.ContextEngine {
+	summary := p.Summary
+	return newContextManager(contextManagerConfig{
+		Model:           model,
+		ContextWindow:   window,
+		ReserveTokens:   bootstrap.CompactReserveTokens(window),
+		Agent:           p.Agent,
+		CommitProjected: true,
+		ToolMicrocompact: &corecontext.ToolResultMicrocompactConfig{
+			KeepRecent:      p.KeepRecentReads,
+			MinResultTokens: 200,
+			Classifier:      func(toolName string) bool { return toolName == contextToolName },
+		},
+		Summary: &summary,
+	})
+}
+
+// contextRewriteCallback 创建上下文重写的日志回调。
+// 新架构简化为只写 slog,不再写 runtime queue 和 UIEvent。
 func contextRewriteCallback(agent string) func(corecontext.RewriteEvent) {
 	return func(ev corecontext.RewriteEvent) {
 		attrs := []any{

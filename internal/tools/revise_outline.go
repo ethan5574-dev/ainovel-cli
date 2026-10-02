@@ -68,12 +68,26 @@ func (t *ReviseOutlineTool) Execute(_ context.Context, args json.RawMessage) (js
 		return nil, fmt.Errorf("revise outline: %w", err)
 	}
 	artifact := "outline.json"
+	result := map[string]any{
+		"revised":      true,
+		"from_chapter": input.FromChapter,
+		"replacement":  len(input.Replacement),
+		"reason":       strings.TrimSpace(input.Reason),
+	}
 	progress, err := t.store.Progress.Load()
 	if err != nil {
 		return nil, fmt.Errorf("load progress after revise: %w: %w", errs.ErrStoreRead, err)
 	}
 	if progress != nil && progress.Layered {
 		artifact = "layered_outline.json"
+		outline, outlineErr := t.store.Outline.LoadOutline()
+		if outlineErr != nil {
+			return nil, fmt.Errorf("load outlined chapters after revise: %w: %w", errs.ErrStoreRead, outlineErr)
+		}
+		result["dynamic_planning"] = true
+		result["outlined_chapters"] = len(outline)
+	} else {
+		result["total_chapters"] = total
 	}
 	if _, err := t.store.Checkpoints.AppendArtifact(domain.GlobalScope(), "revise_outline", artifact); err != nil {
 		return nil, fmt.Errorf("checkpoint revise_outline: %w: %w", errs.ErrStoreWrite, err)
@@ -82,11 +96,5 @@ func (t *ReviseOutlineTool) Execute(_ context.Context, args json.RawMessage) (js
 		return nil, fmt.Errorf("clear outline feedback: %w: %w", errs.ErrStoreWrite, err)
 	}
 
-	return json.Marshal(map[string]any{
-		"revised":        true,
-		"from_chapter":   input.FromChapter,
-		"replacement":    len(input.Replacement),
-		"total_chapters": total,
-		"reason":         strings.TrimSpace(input.Reason),
-	})
+	return json.Marshal(result)
 }

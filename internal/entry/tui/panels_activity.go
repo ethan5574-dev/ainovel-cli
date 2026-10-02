@@ -26,7 +26,7 @@ func renderEventContent(events []host.Event, width, spinnerFrame int) string {
 }
 
 // 进行中的调用类事件使用的 spinner 帧（bubbles.Spinner.Dot，独立于顶栏 MiniDot）。
-var eventRunningFrames = toolSpinnerFrames
+var eventRunningFrames = eventSpinnerFrames
 
 func runningSpinner(frame int) string {
 	return eventRunningFrames[frame%len(eventRunningFrames)]
@@ -104,19 +104,29 @@ func renderEventLine(ev host.Event, width, spinnerFrame int) string {
 		}
 		return line
 
+	case ev.Category == "MODEL":
+		var icon, sum string
+		if running {
+			icon = lipgloss.NewStyle().Foreground(colorContext).Bold(true).Render(runningSpinner(spinnerFrame))
+			sum = lipgloss.NewStyle().Foreground(colorContext).Bold(true).Render(truncate(ev.Summary, maxSumW))
+			durStr = renderEventDuration(time.Since(ev.Time))
+		} else if ev.Failed {
+			icon = lipgloss.NewStyle().Foreground(colorError).Render("✕")
+			sum = lipgloss.NewStyle().Foreground(colorError).Render(truncate(ev.Summary, maxSumW))
+		} else {
+			icon = lipgloss.NewStyle().Foreground(colorDim).Render("├")
+			sum = lipgloss.NewStyle().Foreground(colorContext).Render(truncate(ev.Summary, maxSumW))
+		}
+		return tsStr + " " + indent + icon + " " + sum + durStr
+
 	case ev.Category == "ERROR":
 		icon := lipgloss.NewStyle().Foreground(colorError).Bold(true).Render("✕")
 		errStyle := lipgloss.NewStyle().Foreground(colorError)
-		lines := wrapStreamText(ev.Summary, maxSumW)
-		first := tsStr + " " + indent + icon + " " + errStyle.Render(lines[0])
-		pad := strings.Repeat(" ", 10+len(indent))
-		for _, l := range lines[1:] {
-			first += "\n" + pad + errStyle.Render(l)
-		}
+		line := tsStr + " " + indent + icon + " " + errStyle.Render(truncate(ev.Summary, maxSumW))
 		if durStr != "" {
-			first += durStr
+			line += durStr
 		}
-		return first
+		return line
 
 	case ev.Category == "SYSTEM":
 		icon := lipgloss.NewStyle().Foreground(colorAccent).Render("⚙")

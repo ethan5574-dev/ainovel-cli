@@ -65,6 +65,15 @@ func (g *ChapterAdvanceGate) handleHold(hold domain.AdvanceHold) bool {
 	if err != nil {
 		return g.fail(err)
 	}
+	if hold.After == domain.AdvanceHoldAtChapter && progress.LatestCompleted() >= hold.TargetChapter {
+		stable, err := g.targetChapterCommitted(progress, hold.TargetChapter)
+		if err != nil {
+			return g.fail(err)
+		}
+		if !stable {
+			return false
+		}
+	}
 	switch resolution {
 	case flow.AdvanceHoldKeep:
 		return false
@@ -79,14 +88,34 @@ func (g *ChapterAdvanceGate) handleHold(hold domain.AdvanceHold) bool {
 			return g.fail(fmt.Errorf("消费一次性暂停: %w", err))
 		}
 		msg := "已按用户要求在当前工作边界暂停"
-		if hold.After == domain.AdvanceHoldAfterRewritesDrained {
+		switch hold.After {
+		case domain.AdvanceHoldAfterRewritesDrained:
 			msg = "返工队列已排空，已暂停等待验收"
+		case domain.AdvanceHoldAtChapter:
+			msg = fmt.Sprintf("已写到第 %d 章，按用户要求暂停", hold.TargetChapter)
 		}
 		g.pauseNow(withAdvanceReason(msg, hold.Reason))
 		return true
 	default:
 		return g.fail(fmt.Errorf("未知一次性暂停解析结果 %d", resolution))
 	}
+}
+
+func (g *ChapterAdvanceGate) targetChapterCommitted(progress *domain.Progress, chapter int) (bool, error) {
+	pending, err := g.store.Signals.LoadPendingCommit()
+	if err != nil {
+		return false, fmt.Errorf("读取 PendingCommit 对账目标章节: %w", err)
+	}
+	if pending != nil {
+		return false, nil
+	}
+	if !slices.Contains(progress.CompletedChapters, chapter) {
+		return false, fmt.Errorf("目标第 %d 章未出现在已完成章节中", chapter)
+	}
+	if g.store.Checkpoints.LatestByStep(domain.ChapterScope(chapter), "commit") == nil {
+		return false, fmt.Errorf("目标第 %d 章已标记完成但缺少 commit checkpoint", chapter)
+	}
+	return true, nil
 }
 
 func (g *ChapterAdvanceGate) reconcilePermit(permit int) bool {
@@ -170,6 +199,9 @@ func (g *ChapterAdvanceGate) Allow(inst *flow.Instruction) (bool, error) {
 	}
 	if meta.AdvancePermitChapter != 0 {
 		return false, fmt.Errorf("第 %d 章派发与第 %d 章许可不一致", target, meta.AdvancePermitChapter)
+	}
+	if hold := meta.AdvanceHold; hold != nil && hold.After == domain.AdvanceHoldAtChapter && target <= hold.TargetChapter {
+		return true, nil
 	}
 	latest := progress.LatestCompleted()
 	message := fmt.Sprintf("已完成至第 %d 章，逐章验收等待放行第 %d 章；使用 /next 生成，或输入修改意见", latest, target)

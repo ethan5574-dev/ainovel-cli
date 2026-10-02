@@ -94,20 +94,23 @@ func (n *Notifier) allows(kind string) bool {
 	return n.events == nil || n.events[kind]
 }
 
-// deliver 同步执行一次发送（goroutine 内运行；测试可直接调用以同步断言）。
+// deliver 同步执行一次发送并记录失败，由 Send 在 goroutine 中调用。
 func (n *Notifier) deliver(nt Notification) {
+	if err := n.deliverError(nt); err != nil {
+		slog.Warn("通知发送失败", "module", "notify", "kind", nt.Kind, "err", err)
+	}
+}
+
+// deliverError 同步执行一次发送并返回原始错误。Send 在 goroutine
+// 中调用 deliver 记录失败；测试直接调用本方法，避免错误被二次症状掩盖。
+func (n *Notifier) deliverError(nt Notification) error {
 	ctx, cancel := context.WithTimeout(context.Background(), n.timeout)
 	defer cancel()
 
-	var err error
 	if n.command != "" {
-		err = runCommand(ctx, n.command, nt)
-	} else {
-		err = runSystem(ctx, nt)
+		return runCommand(ctx, n.command, nt)
 	}
-	if err != nil {
-		slog.Warn("通知发送失败", "module", "notify", "kind", nt.Kind, "err", err)
-	}
+	return runSystem(ctx, nt)
 }
 
 // runCommand 执行用户配置的命令：字段经环境变量传入（一行 curl 零依赖、无注入
@@ -126,7 +129,13 @@ func runCommand(ctx context.Context, command string, nt Notification) error {
 	cmd.Env = notificationEnv(nt)
 	payload, _ := json.Marshal(nt)
 	cmd.Stdin = strings.NewReader(string(payload))
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return fmt.Errorf("通知命令超时: %w", ctxErr)
+		}
+		return err
+	}
+	return nil
 }
 
 func notificationEnv(nt Notification) []string {
@@ -173,7 +182,9 @@ func runWindowsNotification(ctx context.Context, nt Notification) error {
 }
 
 func findPowerShell() (string, error) {
-	for _, name := range []string{"powershell.exe", "pwsh.exe", "powershell", "pwsh"} {
+	// 优先 PowerShell 7：GitHub Windows runner 和现代 Windows 环境中 pwsh
+	// 对重定向 stdin 的行为更稳定；Windows PowerShell 5.1 仅作兼容后备。
+	for _, name := range []string{"pwsh.exe", "pwsh", "powershell.exe", "powershell"} {
 		if path, err := exec.LookPath(name); err == nil {
 			return path, nil
 		}

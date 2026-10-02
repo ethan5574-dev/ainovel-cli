@@ -17,6 +17,20 @@ func (s *spyCommitter) Execute(context.Context, json.RawMessage) (json.RawMessag
 	return json.RawMessage(`{}`), nil
 }
 
+func TestCheckFoundationConflictsNormalizesBookMetadata(t *testing.T) {
+	st := store.NewStore(t.TempDir())
+	if err := st.Init(); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Book.Save(domain.BookMetadata{Title: "测试书", Synopsis: "测试简介"}); err != nil {
+		t.Fatal(err)
+	}
+	f := &Foundation{Book: domain.BookMetadata{Title: " 测试书 ", Synopsis: " 测试简介 "}}
+	if err := checkFoundationConflicts(st, f); err != nil {
+		t.Fatalf("规范化后相同的作品信息不应冲突: %v", err)
+	}
+}
+
 // TestPublishChapterHandlesStalePendingCommit 守护发布崩溃窗口的恢复：崩溃落在
 // MarkChapterComplete 与 ClearPendingCommit 之间会残留指向本章的 pending_commit。
 // 已完成章若直接跳过会绕开 commit 工具的清理分支，下一章 Execute 以 ErrToolConflict
@@ -26,7 +40,7 @@ func TestPublishChapterHandlesStalePendingCommit(t *testing.T) {
 	if err := st.Init(); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Progress.Init("test", 1); err != nil {
+	if err := st.Progress.Init(1); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.Progress.UpdatePhase(domain.PhaseWriting); err != nil {

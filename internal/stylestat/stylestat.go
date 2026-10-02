@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/voocel/ainovel-cli/internal/utils"
 )
 
 // minChapters 少于此章数不出统计——样本太小，频率没有意义。
@@ -254,7 +256,7 @@ func repeatedSentences(chapters []string) []SentenceStat {
 		if len(r.chapters) < 3 {
 			continue
 		}
-		out = append(out, SentenceStat{Text: truncateRunes(sent, 40), Chapters: len(r.chapters), Count: r.count})
+		out = append(out, SentenceStat{Text: utils.TruncateRunes(sent, 40), Chapters: len(r.chapters), Count: r.count})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Count != out[j].Count {
@@ -349,14 +351,6 @@ func firstParagraph(text string) string {
 		return line
 	}
 	return ""
-}
-
-func truncateRunes(s string, n int) string {
-	runes := []rune(s)
-	if len(runes) <= n {
-		return s
-	}
-	return string(runes[:n]) + "…"
 }
 
 func round1(f float64) float64 { return float64(int(f*10+0.5)) / 10 }

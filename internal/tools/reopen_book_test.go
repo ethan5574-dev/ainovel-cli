@@ -1,8 +1,6 @@
 package tools
 
 import (
-	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/voocel/ainovel-cli/internal/domain"
@@ -16,7 +14,7 @@ func completedBook(t *testing.T, n int) *store.Store {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", n); err != nil {
+	if err := s.Progress.Init(n); err != nil {
 		t.Fatalf("InitProgress: %v", err)
 	}
 	for ch := 1; ch <= n; ch++ {
@@ -32,19 +30,9 @@ func completedBook(t *testing.T, n int) *store.Store {
 
 func TestReopenBookReopensCompletedBook(t *testing.T) {
 	s := completedBook(t, 3)
-	tool := NewReopenBookTool(s)
 
-	args, _ := json.Marshal(map[string]any{"chapters": []int{3, 1}, "reason": "clean special characters"})
-	raw, err := tool.Execute(context.Background(), args)
-	if err != nil {
-		t.Fatalf("Execute: %v", err)
-	}
-	var payload map[string]any
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		t.Fatalf("Unmarshal: %v", err)
-	}
-	if payload["reopened"] != true || payload["phase"] != string(domain.PhaseWriting) {
-		t.Fatalf("unexpected payload: %v", payload)
+	if err := ReopenBook(s, []int{3, 1}, "清理特殊字符"); err != nil {
+		t.Fatalf("ReopenBook: %v", err)
 	}
 
 	p, _ := s.Progress.Load()
@@ -69,31 +57,26 @@ func TestReopenBookRejectsNonCompleteBook(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 5); err != nil {
+	if err := s.Progress.Init(5); err != nil {
 		t.Fatalf("InitProgress: %v", err)
 	}
 	if err := s.Progress.MarkChapterComplete(1, 100, "", ""); err != nil { // phase→writing
 		t.Fatalf("MarkChapterComplete: %v", err)
 	}
-	tool := NewReopenBookTool(s)
-	args, _ := json.Marshal(map[string]any{"chapters": []int{1}})
-	if _, err := tool.Execute(context.Background(), args); err == nil {
+	if err := ReopenBook(s, []int{1}, ""); err == nil {
 		t.Fatal("expected reopen to be rejected when phase != complete")
 	}
 }
 
 func TestReopenBookRejectsUnwrittenChapters(t *testing.T) {
 	s := completedBook(t, 3)
-	tool := NewReopenBookTool(s)
 
-	// Chapter 5 does not exist -> reject (it is an addition/out-of-bounds, size adjustment should be used instead)
-	args, _ := json.Marshal(map[string]any{"chapters": []int{2, 5}})
-	if _, err := tool.Execute(context.Background(), args); err == nil {
+	// 第 5 章不存在 → 拒绝（属续写/越界，应走篇幅调整）
+	if err := ReopenBook(s, []int{2, 5}, ""); err == nil {
 		t.Fatal("expected reopen to be rejected for unwritten chapter")
 	}
-	// Empty chapters -> reject
-	args, _ = json.Marshal(map[string]any{"chapters": []int{}})
-	if _, err := tool.Execute(context.Background(), args); err == nil {
+	// 空 chapters → 拒绝
+	if err := ReopenBook(s, nil, ""); err == nil {
 		t.Fatal("expected reopen to be rejected for empty chapters")
 	}
 }

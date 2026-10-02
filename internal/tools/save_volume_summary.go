@@ -4,9 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
+	"strings"
 
 	"github.com/voocel/agentcore/schema"
 	"github.com/voocel/ainovel-cli/internal/domain"
+	"github.com/voocel/ainovel-cli/internal/errs"
+	"github.com/voocel/ainovel-cli/internal/flow"
 	"github.com/voocel/ainovel-cli/internal/store"
 )
 
@@ -51,15 +55,30 @@ func (t *SaveVolumeSummaryTool) Execute(_ context.Context, args json.RawMessage)
 	if a.Volume <= 0 {
 		return nil, fmt.Errorf("volume must be > 0")
 	}
-
+	if strings.TrimSpace(a.Title) == "" || strings.TrimSpace(a.Summary) == "" {
+		return nil, fmt.Errorf("title and summary are required: %w", errs.ErrToolArgs)
+	}
 	volSummary := domain.VolumeSummary{
 		Volume:    a.Volume,
 		Title:     a.Title,
 		Summary:   a.Summary,
 		KeyEvents: a.KeyEvents,
 	}
-	if err := t.store.Summaries.SaveVolumeSummary(volSummary); err != nil {
-		return nil, fmt.Errorf("save volume summary: %w", err)
+	existing, err := t.store.Summaries.LoadVolumeSummary(a.Volume)
+	if err != nil {
+		return nil, fmt.Errorf("load volume summary: %w: %w", errs.ErrStoreRead, err)
+	}
+	if existing != nil {
+		if !reflect.DeepEqual(*existing, volSummary) {
+			return nil, fmt.Errorf("卷 %d 摘要已存在且内容不同，拒绝覆盖: %w", a.Volume, errs.ErrToolConflict)
+		}
+	} else {
+		if err := requireAggregateTarget(t.store, flow.AggregateVolumeSummary, a.Volume, 0, 0); err != nil {
+			return nil, err
+		}
+		if err := t.store.Summaries.SaveVolumeSummary(volSummary); err != nil {
+			return nil, fmt.Errorf("save volume summary: %w: %w", errs.ErrStoreWrite, err)
+		}
 	}
 
 	if _, err := t.store.Checkpoints.AppendArtifact(
@@ -69,27 +88,17 @@ func (t *SaveVolumeSummaryTool) Execute(_ context.Context, args json.RawMessage)
 		return nil, fmt.Errorf("checkpoint volume summary: %w", err)
 	}
 
-	result := map[string]any{
-		"saved": true, "type": "volume_summary", "volume": a.Volume,
-	}
+	result := map[string]any{"saved": true, "type": "volume_summary", "volume": a.Volume}
 	// 收官主路径的完结触发点：卷末收尾三连的最后一块拼图是卷摘要，落盘后若全书已
 	// 满足完结条件则就地 MarkComplete（完结检查始终发生在最后一块事实落地的工具里，
 	// 与 commit_chapter 同一模式；谓词见 commit_chapter.go 的 layeredComplete）。
-	p, err := t.store.Progress.Load()
+	complete, err := ReconcileLayeredCompletion(t.store)
 	if err != nil {
-		return nil, fmt.Errorf("load progress: %w", err)
+		return nil, fmt.Errorf("reconcile book completion: %w", err)
 	}
-	if p != nil && p.Layered && p.Phase == domain.PhaseWriting {
-		complete, err := layeredComplete(t.store, p)
-		if err != nil {
-			return nil, fmt.Errorf("evaluate book completion: %w", err)
-		}
-		if complete {
-			if err := t.store.Progress.MarkComplete(); err != nil {
-				return nil, fmt.Errorf("mark book complete: %w", err)
-			}
-			result["book_complete"] = true
-		}
+	if complete {
+		result["book_complete"] = true
 	}
+
 	return json.Marshal(result)
 }

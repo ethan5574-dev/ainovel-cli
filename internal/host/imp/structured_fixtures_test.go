@@ -42,7 +42,9 @@ func rangeDigestJSON(start, end int, plot string) string {
 
 func synthesisFixtureJSON(endChapter int, status string) string {
 	data, err := json.Marshal(map[string]any{
-		"premise": "# 测试书\n前提",
+		"title":    "测试书",
+		"synopsis": "甲踏上旅程，寻找改变命运的答案。",
+		"premise":  "# 故事前提\n前提",
 		"characters": []any{map[string]any{
 			"name": "甲", "aliases": []string{}, "role": "protagonist", "description": "d",
 			"arc": "a", "traits": []string{"坚韧"}, "tier": nil,

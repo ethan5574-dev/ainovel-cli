@@ -38,9 +38,10 @@ const (
 
 // Progress 进度追踪，持久化到 meta/progress.json。
 type Progress struct {
-	NovelName         string      `json:"novel_name"`
-	Phase             Phase       `json:"phase"`
-	CurrentChapter    int         `json:"current_chapter"`
+	Phase          Phase `json:"phase"`
+	CurrentChapter int   `json:"current_chapter"`
+	// TotalChapters 在非分层模式是详细大纲章数；在分层模式仅是包含骨架估算的
+	// 内部容量值，用于上下文策略，不代表全书固定总章数。
 	TotalChapters     int         `json:"total_chapters"`
 	CompletedChapters []int       `json:"completed_chapters"`
 	TotalWordCount    int         `json:"total_word_count"`
@@ -88,28 +89,6 @@ func (p *Progress) LatestCompleted() int {
 	return max
 }
 
-// ExtractNovelNameFromPremise 从 premise 第一行 `# 书名`（可带《》包裹）提取书名。
-// 模型偶尔会照抄提示词里的占位符而非生成真名，这些值视同未提取返回空，
-// 交由上层兜底（UI 显示"未定书名"），避免界面直接显示"书名"二字。
-func ExtractNovelNameFromPremise(premise string) string {
-	for raw := range strings.SplitSeq(strings.ReplaceAll(premise, "\r\n", "\n"), "\n") {
-		line := strings.TrimSpace(raw)
-		if line == "" {
-			continue
-		}
-		if !strings.HasPrefix(line, "# ") {
-			return ""
-		}
-		name := strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, "# ")), "《》\"")
-		switch name {
-		case "书名", "实际书名", "示例书名":
-			return "" // 提示词占位符，非真实书名
-		}
-		return name
-	}
-	return ""
-}
-
 // ContextProfile 上下文加载策略，根据总章节数自适应。
 type ContextProfile struct {
 	SummaryWindow  int  // 加载最近 N 章摘要
@@ -135,7 +114,6 @@ type MemoryPolicy struct {
 	ChapterPlanEnabled  bool   `json:"chapter_plan_enabled,omitempty"`
 	RelatedLookup       bool   `json:"related_chapter_lookup,omitempty"`
 	CurrentOutlineBound bool   `json:"current_outline_bound,omitempty"`
-	TotalChapters       int    `json:"total_chapters,omitempty"`
 	HandoffPreferred    bool   `json:"handoff_preferred,omitempty"`
 	ReadOnlyThreshold   int    `json:"read_only_threshold,omitempty"`
 }
@@ -172,7 +150,6 @@ func NewChapterMemoryPolicy(progress *Progress, profile ContextProfile, currentO
 		policy.SummaryStrategy = "最近章节摘要"
 	}
 	if progress != nil {
-		policy.TotalChapters = progress.TotalChapters
 		if progress.TotalChapters > 30 {
 			policy.RelatedLookup = true
 		}
@@ -253,17 +230,37 @@ type AdvanceHoldAfter string
 const (
 	AdvanceHoldAtBoundary           AdvanceHoldAfter = "boundary"
 	AdvanceHoldAfterRewritesDrained AdvanceHoldAfter = "rewrites_drained"
+	AdvanceHoldAtChapter            AdvanceHoldAfter = "chapter"
 )
 
 // Valid 报告暂停条件是否受当前版本支持。
 func (a AdvanceHoldAfter) Valid() bool {
-	return a == AdvanceHoldAtBoundary || a == AdvanceHoldAfterRewritesDrained
+	return a == AdvanceHoldAtBoundary || a == AdvanceHoldAfterRewritesDrained || a == AdvanceHoldAtChapter
 }
 
 // AdvanceHold 是当前干预签署的一次性暂停意图，由 Host 边界消费。
 type AdvanceHold struct {
-	After  AdvanceHoldAfter `json:"after"`
-	Reason string           `json:"reason"`
+	After         AdvanceHoldAfter `json:"after"`
+	TargetChapter int              `json:"target_chapter,omitempty"`
+	Reason        string           `json:"reason"`
+}
+
+// Validate 校验一次性暂停意图自身的结构约束。
+func (h AdvanceHold) Validate() error {
+	if !h.After.Valid() {
+		return fmt.Errorf("不支持的一次性暂停条件 %q", h.After)
+	}
+	if h.After == AdvanceHoldAtChapter {
+		if h.TargetChapter <= 0 {
+			return fmt.Errorf("目标章节必须大于 0")
+		}
+	} else if h.TargetChapter != 0 {
+		return fmt.Errorf("暂停条件 %q 不能设置目标章节", h.After)
+	}
+	if strings.TrimSpace(h.Reason) == "" {
+		return fmt.Errorf("一次性暂停原因不能为空")
+	}
+	return nil
 }
 
 // PlanStartRecord 启动裁定的持久化事实(裁定先落事实,再起执行;恢复不重新裁定)。

@@ -35,11 +35,28 @@ type Instruction struct {
 	Chapter int    // writer 任务涉及的章节号（续写/重写/打磨）；0 表示不涉及（editor/architect 任务）
 }
 
+type AggregateKind string
+
+const (
+	AggregateArcReview     AggregateKind = "arc_review"
+	AggregateArcSummary    AggregateKind = "arc_summary"
+	AggregateVolumeSummary AggregateKind = "volume_summary"
+	AggregateGlobalReview  AggregateKind = "global_review"
+)
+
+type AggregateRefresh struct {
+	Kind         AggregateKind
+	Volume       int
+	Arc          int
+	StartChapter int
+	EndChapter   int
+}
+
 // State 是 Route 的输入：所有事实必须在此显式声明，禁止 Route 内部读 Store。
 type State struct {
 	Progress *domain.Progress
 
-	// 上一个已完成章节（Progress.CompletedChapters 末尾）；为 0 表示尚未开始写作。
+	// 已完成章节中的最大章节号；为 0 表示尚未开始写作。
 	LastCompleted int
 
 	// 上一章的弧边界信息；IsArcEnd=false 时其他字段无意义。
@@ -61,6 +78,13 @@ type State struct {
 	// 非分层书：最近完成章是否已有 scope=global 的全局审阅
 	//（仅在 ShouldReview 触发点有意义；分层书恒 false）。
 	HasGlobalReview bool
+
+	// 必须在续写前由 Architect 处理的外部修订影响。普通 Writer 反馈留到下一次
+	// 自然结构操作统一吸收，不为每章额外派发规划师。
+	ImmediateFeedbackCount int
+
+	// 外部修订后最早一个需要由 Editor 重新生成的弧/卷工件。
+	AggregateRefresh *AggregateRefresh
 }
 
 // Route 根据事实返回下一步确定性指令；返回 nil 由 Engine 按调用上下文处理。
@@ -71,15 +95,13 @@ type State struct {
 //  3. PendingRewrites 非空  → writer 按队列重写/打磨
 //  4. Flow=Reviewing        → nil（dormant：当前无写入者，评审期 Flow 实为 writing）
 //  5. Flow=Steering         → nil（用户干预处理中）
-//  6. 弧末评审缺失           → editor(arc review)
-//  7. 弧末评审有但弧摘要缺失  → editor(arc summary)
-//  8. 卷末弧摘要有但卷摘要缺失 → editor(volume summary)
-//  9. 下一弧是骨架           → architect_long(expand_arc)
+//  6. 外部修订导致聚合工件失效 → editor 重建
+//  7. 外部修订影响后续规划     → architect 处理
+//  8. 分层书到达弧末          → 评审、摘要、扩弧或续卷
+//  9. 非分层全局审阅到期       → editor(global review)
 //
-// 10. 卷末需决策下一卷       → architect_long(append_volume / complete_book)
-// 11. 非分层全局审阅到期      → editor(global review)
-// 12. 非分层大纲已耗尽       → architect(决定完结或续接大纲)
-// 13. 其它                  → writer(写 next_chapter)
+// 10. 非分层大纲已耗尽        → architect(决定完结或续接大纲)
+// 11. 其它                   → writer(写 next_chapter)
 func Route(s State) *Instruction {
 	p := s.Progress
 	if p == nil {
@@ -96,7 +118,7 @@ func Route(s State) *Instruction {
 	//    尚未落盘任何设定（选型是语义判断），由 Engine 的 planStartFallback 补裁。
 	if p.Phase != domain.PhaseWriting {
 		if len(s.FoundationMissing) > 0 && s.PlanningTier != "" {
-			task := fmt.Sprintf("补齐基础设定缺项：%s（用 save_foundation 落盘对应 type）", strings.Join(s.FoundationMissing, "、"))
+			task := fmt.Sprintf("补齐基础设定与作品信息缺项：%s；book 使用 save_book，其余基础设定使用 save_foundation 落盘", strings.Join(s.FoundationMissing, "、"))
 			if len(s.FoundationMissing) == 1 && s.FoundationMissing[0] == "foundation_audit" {
 				task = "基础设定已齐全：重新调用 novel_context 读取全部已落盘工件与 foundation_status.fingerprint，审查跨文件语义一致性后调用 audit_foundation；有问题先修正并重新审查"
 			}
@@ -136,8 +158,47 @@ func Route(s State) *Instruction {
 	if p.Flow == domain.FlowSteering {
 		return nil
 	}
+	if refresh := s.AggregateRefresh; refresh != nil {
+		switch refresh.Kind {
+		case AggregateArcReview:
+			return &Instruction{
+				Agent: "editor",
+				Task: fmt.Sprintf(
+					"审阅第 %d 卷第 %d 弧（第 %d-%d 章）：调用 novel_context(chapter=%d)，save_review 使用 scope=arc、chapter=%d",
+					refresh.Volume, refresh.Arc, refresh.StartChapter, refresh.EndChapter, refresh.EndChapter, refresh.EndChapter,
+				),
+				Reason: "弧级审阅缺失",
+			}
+		case AggregateArcSummary:
+			return &Instruction{
+				Agent:  "editor",
+				Task:   fmt.Sprintf("生成第 %d 卷第 %d 弧摘要、角色快照与写作规则（save_arc_summary）", refresh.Volume, refresh.Arc),
+				Reason: "弧级摘要缺失",
+			}
+		case AggregateVolumeSummary:
+			return &Instruction{
+				Agent:  "editor",
+				Task:   fmt.Sprintf("生成第 %d 卷卷摘要（save_volume_summary）", refresh.Volume),
+				Reason: "卷摘要缺失",
+			}
+		case AggregateGlobalReview:
+			return &Instruction{
+				Agent:  "editor",
+				Task:   fmt.Sprintf("审阅前 %d 章：调用 novel_context(chapter=%d)，save_review 使用 scope=global、chapter=%d", refresh.EndChapter, refresh.EndChapter, refresh.EndChapter),
+				Reason: "全局审阅缺失",
+			}
+		}
+	}
 
-	// 6-10. 分层模式的弧末后处理
+	if s.ImmediateFeedbackCount > 0 {
+		return &Instruction{
+			Agent:  plannerForTier(s.PlanningTier),
+			Task:   "仅处理 novel_context 中的外部修订 writer_feedback：核对已发生剧情与后续计划，需要调整时调用 revise_outline 或相应结构工具，无需调整时调用 resolve_outline_feedback；不得处理 foundation_status 或其它规划，落盘后用一句话结束",
+			Reason: fmt.Sprintf("有 %d 条外部修订影响尚未传播到后续规划", s.ImmediateFeedbackCount),
+		}
+	}
+
+	// 8. 分层模式的弧末后处理
 	if p.Layered && s.ArcBoundary != nil && s.ArcBoundary.IsArcEnd {
 		b := s.ArcBoundary
 		switch {
@@ -153,7 +214,7 @@ func Route(s State) *Instruction {
 		case !s.HasArcSummary:
 			return &Instruction{
 				Agent:  "editor",
-				Task:   fmt.Sprintf("生成第 %d 卷第 %d 弧摘要（save_arc_summary）", b.Volume, b.Arc),
+				Task:   fmt.Sprintf("生成第 %d 卷第 %d 弧摘要、角色快照与写作规则（save_arc_summary）", b.Volume, b.Arc),
 				Reason: "弧摘要未完成",
 			}
 		case b.IsVolumeEnd && !s.HasVolumeSummary:
@@ -165,7 +226,7 @@ func Route(s State) *Instruction {
 		case b.NeedsExpansion && b.NextArc > 0:
 			return &Instruction{
 				Agent:  "architect_long",
-				Task:   fmt.Sprintf("展开第 %d 卷第 %d 弧（save_foundation type=expand_arc）", b.NextVolume, b.NextArc),
+				Task:   fmt.Sprintf("展开第 %d 卷第 %d 弧（expand_next_arc）", b.NextVolume, b.NextArc),
 				Reason: "下一弧骨架待展开",
 			}
 		case b.NeedsNewVolume:

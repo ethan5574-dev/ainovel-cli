@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -13,10 +14,56 @@ func TestRenderTopBarShowsVersion(t *testing.T) {
 	out := renderTopBar(host.UISnapshot{
 		Provider:  "openrouter",
 		ModelName: "test-model",
-		NovelName: "Test Novel",
+		BookTitle: "测试小说",
 	}, 120, "", "v1.2.3")
 	if !strings.Contains(out, "ainovel-cli v1.2.3") {
 		t.Fatalf("top bar missing version: %q", out)
+	}
+}
+
+func TestRenderDetailContentShowsSynopsis(t *testing.T) {
+	out := ansi.Strip(renderDetailContent(host.UISnapshot{Synopsis: "少年在永夜中寻找黎明。"}, 40))
+	if !strings.Contains(out, "简介") || !strings.Contains(out, "少年在永夜中寻找黎明。") {
+		t.Fatalf("detail panel missing synopsis: %q", out)
+	}
+}
+
+func TestSameDetailSnapshotDetectsOutlineStateChanges(t *testing.T) {
+	base := host.UISnapshot{Outline: []host.OutlineSnapshot{{Chapter: 1, Title: "第一章"}}}
+	if !sameDetailSnapshot(base, base) {
+		t.Fatal("相同详情不应触发重建")
+	}
+	changed := base
+	changed.InProgressChapter = 1
+	if sameDetailSnapshot(base, changed) {
+		t.Fatal("章节状态变化必须触发详情重建")
+	}
+}
+
+func TestRenderErrorEventKeepsOneLineSummary(t *testing.T) {
+	out := ansi.Strip(renderEventLine(host.Event{
+		Time:     time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC),
+		Category: "ERROR",
+		Summary:  "commit_chapter 参数错误：" + strings.Repeat("秦越在材料中发现线索", 20),
+	}, 60, 0))
+	if strings.Contains(out, "\n") {
+		t.Fatalf("ERROR 事件应保持单行摘要，got %q", out)
+	}
+	if !strings.HasSuffix(out, "...") {
+		t.Fatalf("超宽 ERROR 摘要应在 TUI 截断，got %q", out)
+	}
+}
+
+func TestRenderRunningModelShowsStateAndElapsed(t *testing.T) {
+	out := ansi.Strip(renderEventLine(host.Event{
+		ID:       "model-1",
+		Time:     time.Now().Add(-65 * time.Second),
+		Category: "MODEL",
+		Summary:  "思考中",
+		Depth:    1,
+	}, 60, 0))
+	if !strings.Contains(out, "思考中") || !strings.Contains(out, "(1m5s)") {
+		t.Fatalf("进行中的模型响应应显示状态与实时耗时，got %q", out)
 	}
 }
 

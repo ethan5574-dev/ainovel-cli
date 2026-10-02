@@ -2,18 +2,24 @@ package startup
 
 import (
 	"fmt"
+	"os"
 	"strings"
 )
 
-// PrepareQuick turns direct user input into a plan ready for the Engine.
-func PrepareQuick(req Request) (Plan, error) {
-	prompt := strings.TrimSpace(req.UserPrompt)
-	if prompt == "" {
-		return Plan{}, fmt.Errorf("prompt is required")
+// LoadPromptFile 读取文件作为初始创作要求。
+func LoadPromptFile(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("读取 prompt 失败: %w", err)
 	}
-	return Plan{
-		Mode:        ModeQuick,
-		DisplayName: "Quick Start",
-		RawPrompt:   prompt,
-	}, nil
+	return strings.TrimSpace(string(data)), nil
+}
+
+// PrepareQuick 整理快速启动提示词。
+func PrepareQuick(rawPrompt string) (string, error) {
+	prompt := strings.TrimSpace(rawPrompt)
+	if prompt == "" {
+		return "", fmt.Errorf("prompt is required")
+	}
+	return prompt, nil
 }

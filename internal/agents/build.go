@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/voocel/agentcore"
 	corecontext "github.com/voocel/agentcore/context"
@@ -97,9 +96,12 @@ func resolvedRoleThinking(model agentcore.ChatModel, cfg bootstrap.Config, role 
 	return resolved
 }
 
-// BuildWorkers assembles architect_short/long, writer, and editor into a programmable
-// subagent.Runner. Engine calls typed entry points directly without an LLM tool layer.
-// It returns the runner, AskUserTool, WriterRestorePack, and ApplyThinking callback.
+// BuildWorkers 组装三个 Worker(architect_short/long、writer、editor)为可程序化
+// 调用的 subagent.Runner。Engine 直接调用其类型化入口，无 LLM 工具层
+// (docs/engine-rfc.md §1)。
+// 返回 Runner、WriterRestorePack 与 ApplyThinking(运行时 /model 联动各角色推理强度;
+// 各 Worker 的 ContextManager 走工厂自动重建)。
+// onGuardBlock 可选(nil 安全):各 Worker StopGuard 的拦截/升级审计回调。
 func BuildWorkers(
 	cfg bootstrap.Config,
 	store *store.Store,
@@ -108,18 +110,21 @@ func BuildWorkers(
 	bundle assets.Bundle,
 	recordUsage UsageRecorder,
 	onGuardBlock guard.BlockHook,
-) (*subagent.Runner, *tools.AskUserTool, *ctxpack.WriterRestorePack, ApplyThinking) {
-	// Shared tools.
+) (*subagent.Runner, *ctxpack.WriterRestorePack, ApplyThinking) {
+	// 共享工具
 	contextTool := tools.NewContextTool(store, bundle.References, cfg.Style, styleStats)
 	readChapter := tools.NewReadChapterTool(store)
-	askUser := tools.NewAskUserTool()
 
 	architectTools := []agentcore.Tool{
 		contextTool,
+		tools.NewSaveBookTool(store),
 		tools.NewSaveFoundationTool(store),
 		tools.NewReviseOutlineTool(store),
+		tools.NewResolveOutlineFeedbackTool(store),
 		tools.NewAuditFoundationTool(store),
 	}
+	architectLongTools := append([]agentcore.Tool(nil), architectTools...)
+	architectLongTools = append(architectLongTools, tools.NewExpandNextArcTool(store))
 	writerTools := []agentcore.Tool{
 		contextTool,
 		readChapter,
@@ -153,13 +158,20 @@ func BuildWorkers(
 	writerModel := models.ForRoleWithFailover("writer", reportFailover)
 	editorModel := models.ForRoleWithFailover("editor", reportFailover)
 
-	// The writer ContextManager is rebuilt by the factory for each call so its window follows model swaps.
+	// ContextManager 由工厂每次调用重建，窗口随模型 swap 动态跟随（见下方工厂）。
+	architectProvider, architectModelName, _ := models.CurrentSelection("architect")
+	architectContextWindow, architectSource := cfg.ResolveContextWindow(architectProvider, architectModelName)
+	bootstrap.LogContextWindowChoice("architect", architectModelName, architectContextWindow, architectSource)
 	writerProvider, writerModelName, _ := models.CurrentSelection("writer")
 	writerContextWindow, writerSource := cfg.ResolveContextWindow(writerProvider, writerModelName)
 	bootstrap.LogContextWindowChoice("writer", writerModelName, writerContextWindow, writerSource)
 
-	// modelLookup adds _meta:{provider,model} to each assistant message in the session.
-// This lets replay calculate historical cost accurately even after runtime model switches.
+	editorProvider, editorModelName, _ := models.CurrentSelection("editor")
+	editorContextWindow, editorSource := cfg.ResolveContextWindow(editorProvider, editorModelName)
+	bootstrap.LogContextWindowChoice("editor", editorModelName, editorContextWindow, editorSource)
+
+	// modelLookup 写入 session 时给每条 assistant 消息附 _meta:{provider,model}，
+	// 让 replay 不再依赖"当前 ModelSet"来反推历史 cost，运行中切换模型也能精确算。
 	modelLookup := func(agentName string) (string, string) {
 		role := agentToRole(agentName)
 		provider, name, _ := models.CurrentSelection(role)
@@ -181,38 +193,47 @@ func BuildWorkers(
 	architectStopGuardFactory := func(_, _ string) agentcore.StopGuard {
 		return guard.NewArchitectStopGuard(store, onGuardBlock)
 	}
+	// Architect / Editor 的 ContextManager 每次运行按当前模型重建，窗口随模型 swap 跟随。
+	roleContextFactory := func(profile roleContextProfile) func(agentcore.ChatModel) agentcore.ContextManager {
+		return func(model agentcore.ChatModel) agentcore.ContextManager {
+			window, _ := models.ResolveContextWindow(bootstrap.ModelProvider(model), bootstrap.ModelName(model))
+			return newRoleContextManager(profile, model, window, contextTool.Name())
+		}
+	}
 	architectThinking, _ := ResolveThinkingForModel(architectModel, roleThinking(cfg, "architect"))
 	architectShort := subagent.Config{
-		Name:             "architect_short",
-		Description:      "Short planner: generates compact foundations and a flat outline for a single-volume, high-density story",
-		Model:            architectModel,
-		SystemPrompt:     bundle.Prompts.ArchitectShort,
-		Tools:            architectTools,
-		MaxTurns:         15,
-		MaxRetries:       subagentMaxRetries,
-		ThinkingLevel:    architectThinking,
-		OnMessage:        onMsg,
-		CacheLastMessage: "ephemeral",
-		PromptCacheKey:   cacheBase + "-architect_short",
+		Name:                  "architect_short",
+		Description:           "短篇规划师：为单卷、单冲突、高密度故事生成紧凑设定与扁平大纲",
+		Model:                 architectModel,
+		SystemPrompt:          bundle.Prompts.ArchitectShort,
+		Tools:                 architectTools,
+		MaxTurns:              15,
+		MaxRetries:            subagentMaxRetries,
+		ThinkingLevel:         architectThinking,
+		OnMessage:             onMsg,
+		CacheLastMessage:      "ephemeral",
+		PromptCacheKey:        cacheBase + "-architect_short",
+		ContextManagerFactory: roleContextFactory(architectContextProfile),
 		StopAfterToolResult: func(toolName string, result json.RawMessage) bool {
 			return foundationReadyResult(toolName, result)
 		},
 		StopGuardFactory: architectStopGuardFactory,
 	}
 	architectLong := subagent.Config{
-		Name:                "architect_long",
-		Description:         "Long planner: generates layered foundations and volume arcs for a serialized, continuously escalating story",
-		Model:               architectModel,
-		SystemPrompt:        bundle.Prompts.ArchitectLong,
-		Tools:               architectTools,
-		MaxTurns:            20,
-		MaxRetries:          subagentMaxRetries,
-		ThinkingLevel:       architectThinking,
-		OnMessage:           onMsg,
-		CacheLastMessage:    "ephemeral",
-		PromptCacheKey:      cacheBase + "-architect_long",
-		StopAfterToolResult: architectLongShouldStopAfterToolResult,
-		StopGuardFactory:    architectStopGuardFactory,
+		Name:                  "architect_long",
+		Description:           "长篇规划师：为连载型、可持续升级的故事生成分层设定与卷弧大纲",
+		Model:                 architectModel,
+		SystemPrompt:          bundle.Prompts.ArchitectLong,
+		Tools:                 architectLongTools,
+		MaxTurns:              20,
+		MaxRetries:            subagentMaxRetries,
+		ThinkingLevel:         architectThinking,
+		OnMessage:             onMsg,
+		CacheLastMessage:      "ephemeral",
+		PromptCacheKey:        cacheBase + "-architect_long",
+		ContextManagerFactory: roleContextFactory(architectContextProfile),
+		StopAfterToolResult:   architectLongShouldStopAfterToolResult,
+		StopGuardFactory:      architectStopGuardFactory,
 	}
 
 	// One assembly path: fill the {{VOICE}} placeholder in the protocol template, then append the style preset.
@@ -239,21 +260,17 @@ func BuildWorkers(
 			return guard.NewWriterStopGuard(store, onGuardBlock)
 		},
 		ContextManagerFactory: func(model agentcore.ChatModel) agentcore.ContextManager {
-			// Rebuilt for every subagent(writer) call; reads the current model name.
-			// After /model switches writer, the next chapter automatically uses the new window.
+			// 每章按当前 writer 模型重建上下文管理器。
 			window, _ := models.ResolveContextWindow(bootstrap.ModelProvider(model), bootstrap.ModelName(model))
 			return newContextManager(contextManagerConfig{
-				Model:            model,
-				ContextWindow:    window,
-				ReserveTokens:    bootstrap.CompactReserveTokens(window),
-				KeepRecentTokens: 20000,
-				Agent:            "writer",
-				// Commit the projection as the new baseline. After crossing the threshold,
-				// each transient projection rewrites the request prefix and invalidates the cache;
-				// after commit, return to append-only mode until the next threshold.
-				CommitOnProject: true,
+				Model:         model,
+				ContextWindow: window,
+				ReserveTokens: bootstrap.CompactReserveTokens(window),
+				Agent:         "writer",
+				// 提交投影，避免后续轮次反复改写请求前缀。
+				CommitProjected: true,
 				ToolMicrocompact: &corecontext.ToolResultMicrocompactConfig{
-					IdleThreshold: 5 * time.Minute,
+					MinResultTokens: 200,
 				},
 				ExtraStrategies: []corecontext.Strategy{
 					ctxpack.NewStoreSummaryCompact(ctxpack.StoreSummaryCompactConfig{
@@ -273,19 +290,21 @@ func BuildWorkers(
 	}
 
 	editor := subagent.Config{
-		Name:             "editor",
-		Description:      "Editor: reads the draft and finds structural and aesthetic issues",
-		Model:            editorModel,
-		SystemPrompt:     bundle.Prompts.Editor,
-		Tools:            editorTools,
-		MaxTurns:         20,
-		MaxRetries:       subagentMaxRetries,
-		ThinkingLevel:    resolvedRoleThinking(editorModel, cfg, "editor"),
-		OnMessage:        onMsg,
-		CacheLastMessage: "ephemeral",
-		PromptCacheKey:   cacheBase + "-editor",
-		// Stop when a terminal artifact is produced. Terminal exits still consult StopGuard;
-		// NewEditorStopGuard rejects premature exits that only review when a summary was requested.
+		Name:                  "editor",
+		Description:           "审阅者：阅读原文，从结构和审美两个层面发现问题",
+		Model:                 editorModel,
+		SystemPrompt:          bundle.Prompts.Editor,
+		Tools:                 editorTools,
+		MaxTurns:              20,
+		MaxRetries:            subagentMaxRetries,
+		ThinkingLevel:         resolvedRoleThinking(editorModel, cfg, "editor"),
+		OnMessage:             onMsg,
+		CacheLastMessage:      "ephemeral",
+		PromptCacheKey:        cacheBase + "-editor",
+		ContextManagerFactory: roleContextFactory(editorContextProfile),
+		// 终态产物命中即停。终态退出仍会咨询 StopGuard（契约测试 TestContract_
+		// TerminalToolExitConsultsStopGuard），任务感知的 NewEditorStopGuard 负责
+		// 否决"被派生成摘要却只做了复核"的提前退出，所以 save_review 可以安全硬停。
 		StopAfterToolResult: func(toolName string, _ json.RawMessage) bool {
 			return toolName == "save_review" || toolName == "save_arc_summary" || toolName == "save_volume_summary"
 		},
@@ -309,7 +328,7 @@ func BuildWorkers(
 		}
 	}
 
-	return runner, askUser, restore, applyThinking
+	return runner, restore, applyThinking
 }
 
 type saveFoundationResult struct {
@@ -330,9 +349,12 @@ func architectLongShouldStopAfterToolResult(toolName string, result json.RawMess
 	if foundationReadyResult(toolName, result) {
 		return true
 	}
+	if toolName == "expand_next_arc" {
+		return true
+	}
 	r := decodeSaveFoundationResult(toolName, result)
 	switch r.Type {
-	case "expand_arc", "complete_book":
+	case "complete_book":
 		return true
 	default:
 		return false

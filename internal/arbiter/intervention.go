@@ -10,29 +10,32 @@ import (
 	"github.com/voocel/ainovel-cli/internal/domain"
 	"github.com/voocel/ainovel-cli/internal/llmcontract"
 	storepkg "github.com/voocel/ainovel-cli/internal/store"
+	"github.com/voocel/ainovel-cli/internal/utils"
 )
 
 // InterventionFacts 干预分诊的事实包(Collect 时刻快照)。
 // Engine 在边界执行 Dispatch 前用 Phase/QueueHead 做对账(咨询与执行之间隔着
 // worker 运行,事实可能已推进;不符 → 丢弃并以新事实重询)。
 type InterventionFacts struct {
-	Phase             string           `json:"phase,omitempty"`
-	Flow              string           `json:"flow,omitempty"`
-	NovelName         string           `json:"novel_name,omitempty"`
-	CompletedChapters int              `json:"completed_chapters"`
-	TotalChapters     int              `json:"total_chapters,omitempty"`
-	NextChapter       int              `json:"next_chapter,omitempty"`
-	PendingRewrites   []int            `json:"pending_rewrites,omitempty"`
-	ReopenCount       int              `json:"reopen_count,omitempty"` // 用户显式 /reopen 重开完结书的累计次数
-	FoundationMissing []string         `json:"foundation_missing,omitempty"`
-	PlanningTier      string           `json:"planning_tier,omitempty"`
-	AdvanceMode       string           `json:"advance_mode,omitempty"`
-	HasAdvanceHold    bool             `json:"has_advance_hold"`
-	AdvanceHoldAfter  string           `json:"advance_hold_after,omitempty"`
-	AdvanceHoldReason string           `json:"advance_hold_reason,omitempty"`
-	Running           bool             `json:"running"`                  // 干预到达时是否有 run 在进行
-	CheckpointSeq     int64            `json:"checkpoint_seq,omitempty"` // Collect 时刻最新 checkpoint;Engine 对账用
-	RecentDecisions   []RecentDecision `json:"recent_decisions,omitempty"`
+	Phase                    string           `json:"phase,omitempty"`
+	Flow                     string           `json:"flow,omitempty"`
+	Title                    string           `json:"title,omitempty"`
+	CompletedChapters        int              `json:"completed_chapters"`
+	OutlinedChapters         int              `json:"outlined_chapters,omitempty"`
+	DynamicPlanning          bool             `json:"dynamic_planning"`
+	NextChapter              int              `json:"next_chapter,omitempty"`
+	PendingRewrites          []int            `json:"pending_rewrites,omitempty"`
+	ReopenCount              int              `json:"reopen_count,omitempty"` // 用户显式 /reopen 重开完结书的累计次数
+	FoundationMissing        []string         `json:"foundation_missing,omitempty"`
+	PlanningTier             string           `json:"planning_tier,omitempty"`
+	AdvanceMode              string           `json:"advance_mode,omitempty"`
+	HasAdvanceHold           bool             `json:"has_advance_hold"`
+	AdvanceHoldAfter         string           `json:"advance_hold_after,omitempty"`
+	AdvanceHoldTargetChapter int              `json:"advance_hold_target_chapter,omitempty"`
+	AdvanceHoldReason        string           `json:"advance_hold_reason,omitempty"`
+	Running                  bool             `json:"running"`                  // 干预到达时是否有 run 在进行
+	CheckpointSeq            int64            `json:"checkpoint_seq,omitempty"` // Collect 时刻最新 checkpoint;Engine 对账用
+	RecentDecisions          []RecentDecision `json:"recent_decisions,omitempty"`
 }
 
 // RecentDecision 是干预记忆:最近几次裁定的摘要,覆盖"上次改的怎么样了"类跨干预引用。
@@ -62,6 +65,13 @@ func CollectInterventionFacts(st *storepkg.Store) (InterventionFacts, error) {
 		return f, fmt.Errorf("读取基础设定状态: %w", err)
 	}
 	f.FoundationMissing = missing
+	book, err := st.Book.Load()
+	if err != nil {
+		return f, fmt.Errorf("读取作品信息: %w", err)
+	}
+	if book != nil {
+		f.Title = book.Title
+	}
 	p, err := st.Progress.Load()
 	if err != nil {
 		return f, fmt.Errorf("读取进度: %w", err)
@@ -69,9 +79,17 @@ func CollectInterventionFacts(st *storepkg.Store) (InterventionFacts, error) {
 	if p != nil {
 		f.Phase = string(p.Phase)
 		f.Flow = string(p.Flow)
-		f.NovelName = p.NovelName
 		f.CompletedChapters = len(p.CompletedChapters)
-		f.TotalChapters = p.TotalChapters
+		f.DynamicPlanning = p.Layered
+		if p.Layered {
+			outline, outlineErr := st.Outline.LoadOutline()
+			if outlineErr != nil {
+				return f, fmt.Errorf("读取当前详细大纲: %w", outlineErr)
+			}
+			f.OutlinedChapters = len(outline)
+		} else {
+			f.OutlinedChapters = p.TotalChapters
+		}
 		f.NextChapter = p.NextChapter()
 		f.PendingRewrites = append([]int(nil), p.PendingRewrites...)
 		f.ReopenCount = p.ReopenCount
@@ -86,6 +104,7 @@ func CollectInterventionFacts(st *storepkg.Store) (InterventionFacts, error) {
 		if meta.AdvanceHold != nil {
 			f.HasAdvanceHold = true
 			f.AdvanceHoldAfter = string(meta.AdvanceHold.After)
+			f.AdvanceHoldTargetChapter = meta.AdvanceHold.TargetChapter
 			f.AdvanceHoldReason = meta.AdvanceHold.Reason
 		}
 	}
@@ -101,17 +120,18 @@ func CollectInterventionFacts(st *storepkg.Store) (InterventionFacts, error) {
 			continue
 		}
 		f.RecentDecisions = append(f.RecentDecisions, RecentDecision{
-			At: r.At, Input: truncateRunes(r.Input, 80), Reason: r.Reason,
+			At: r.At, Input: utils.TruncateRunes(r.Input, 80), Reason: r.Reason,
 		})
 	}
 	return f, nil
 }
 
-// AdvanceHoldOp 一次性暂停动作：在 Worker 边界或返工排空后暂停，也可取消。
+// AdvanceHoldOp 一次性暂停动作：在工作边界、返工排空或目标章节完成后暂停，也可取消。
 type AdvanceHoldOp struct {
-	Cancel bool                    `json:"cancel,omitempty"`
-	After  domain.AdvanceHoldAfter `json:"after,omitempty"`
-	Reason string                  `json:"reason,omitempty"`
+	Cancel        bool                    `json:"cancel,omitempty"`
+	After         domain.AdvanceHoldAfter `json:"after,omitempty"`
+	TargetChapter int                     `json:"target_chapter,omitempty"`
+	Reason        string                  `json:"reason,omitempty"`
 }
 
 // ReopenOp 完本返工:把全书重开进返工态并把目标章入队(仅 phase=complete 合法)。
@@ -139,7 +159,8 @@ var interventionContract = llmcontract.Contract{
 		schema.Property("rules", llmcontract.Nullable(schema.String("要落盘的长效写作规则原文；无则为 null"))).Required(),
 		schema.Property("hold", llmcontract.Nullable(schema.Object(
 			schema.Property("cancel", schema.Bool("是否取消既有一次性暂停")).Required(),
-			schema.Property("after", llmcontract.Nullable(schema.Enum("暂停触发点；取消时为 null", string(domain.AdvanceHoldAtBoundary), string(domain.AdvanceHoldAfterRewritesDrained)))).Required(),
+			schema.Property("after", llmcontract.Nullable(schema.Enum("暂停触发点；取消时为 null", string(domain.AdvanceHoldAtBoundary), string(domain.AdvanceHoldAfterRewritesDrained), string(domain.AdvanceHoldAtChapter)))).Required(),
+			schema.Property("target_chapter", llmcontract.Nullable(schema.Int("after=chapter 时的目标章节；其他情况为 null"))).Required(),
 			schema.Property("reason", llmcontract.Nullable(schema.String("用户诉求摘要；取消时可为 null"))).Required(),
 		))).Required(),
 		schema.Property("reopen", llmcontract.Nullable(schema.Object(
@@ -186,11 +207,16 @@ func (d *InterventionDecision) ValidateAgainst(f InterventionFacts) error {
 		if f.Phase != string(domain.PhaseWriting) {
 			return fmt.Errorf("一次性暂停仅限写作期（当前 phase=%s）", f.Phase)
 		}
-		if !d.Hold.After.Valid() {
-			return fmt.Errorf("hold.after 必须是 boundary 或 rewrites_drained")
+		hold := domain.AdvanceHold{After: d.Hold.After, TargetChapter: d.Hold.TargetChapter, Reason: d.Hold.Reason}
+		if err := hold.Validate(); err != nil {
+			return fmt.Errorf("hold 无效: %w", err)
 		}
-		if strings.TrimSpace(d.Hold.Reason) == "" {
-			return fmt.Errorf("设置一次性暂停必须带 reason（用户诉求摘要）")
+		nextChapter := f.NextChapter
+		if nextChapter == 0 {
+			nextChapter = f.CompletedChapters + 1
+		}
+		if hold.After == domain.AdvanceHoldAtChapter && hold.TargetChapter < nextChapter {
+			return fmt.Errorf("目标章节 %d 早于当前下一章 %d", hold.TargetChapter, nextChapter)
 		}
 	}
 	return nil
@@ -230,12 +256,4 @@ func DecideIntervention(ctx context.Context, model agentcore.ChatModel, systemPr
 	return decide(ctx, model, interventionContract, systemPrompt, payload, func(d *InterventionDecision) error {
 		return d.ValidateAgainst(facts)
 	})
-}
-
-func truncateRunes(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n]) + "…"
 }

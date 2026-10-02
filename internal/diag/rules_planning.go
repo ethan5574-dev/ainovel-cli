@@ -116,7 +116,7 @@ func OutlineExhausted(snap *Snapshot) []Finding {
 		Target:     "runtime.recovery",
 		Title:      fmt.Sprintf("Outline exhausted: completed %d chapters >= planned %d chapters", completed, outlinedCount),
 		Evidence:   fmt.Sprintf("phase=%s, completed=%d, outlined=%d", p.Phase, completed, outlinedCount),
-		Suggestion: "Expansion/new volume signal might not have triggered. Check host-side commit strategy and recovery logic, confirming whether arc boundary detection, expand_arc, or append_volume are executed normally.",
+		Suggestion: "展开/新卷信号可能未触发。检查宿主侧提交策略和恢复逻辑，确认弧边界检测、expand_next_arc 或 append_volume 是否正常执行。",
 	}}
 }
 

@@ -6,7 +6,7 @@ Everything reaching you is a residue that deterministic code could not resolve (
 
 ## worker_failure (worker execution failed)
 
-Read the `error` text first: it usually states the correct next step (for example, "expand_arc or append_volume must be called first" or "the chapter is not queued").
+先读 `error` 文本：错误里通常写明了正确出路（如「必须先 expand_next_arc 或 append_volume」「章节未入队」）。
 
 - If the error says that **another** worker must do something first → `reroute` + `dispatch` (write the next step as a clear task).
 - If the error appears transient or environmental and the original task is valid → `retry`.

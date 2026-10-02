@@ -17,7 +17,10 @@ func completeShortFoundation(t *testing.T) *store.Store {
 	if err := s.Init(); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Progress.Init("审查测试", 1); err != nil {
+	if err := s.Progress.Init(1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Book.Save(domain.BookMetadata{Title: "审查测试", Synopsis: "林舟在夜禁之城寻找生路。"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Outline.SavePremise("# 审查测试\n\n## 主角目标\n林舟求生"); err != nil {
@@ -86,7 +89,10 @@ func TestSaveFoundationWaitsForSemanticAudit(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Progress.Init("test", 1); err != nil {
+	if err := s.Progress.Init(1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Book.Save(domain.BookMetadata{Title: "测试书", Synopsis: "林舟冒险进入夜禁之城。"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Outline.SavePremise("# test"); err != nil {

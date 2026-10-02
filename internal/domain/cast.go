@@ -1,32 +1,99 @@
 package domain
 
-// CastEntry is a supporting character record in the cast ledger.
+import (
+	"slices"
+	"strings"
+)
+
+// CastEntry 是从章节接纳记录投影出的配角信息。
 //
-// Decoupled from Character (characters.json, maintained by Architect):
-//   - CastEntry is automatically accumulated by the commit_chapter tool, recording "named minor characters that appeared"
-//   - Character is explicitly designed by the Architect, recording personality arcs/traits/tiers of main and key supporting characters
+// 与 Character（characters.json，Architect 维护的核心档案）解耦：
+//   - CastEntry 由 ChapterRecord 确定性计算，记录"出现过的有名字的次要角色"
+//   - Character 由 Architect 显式设计，记录主角和关键配角的人格弧线/特质/tier
 //
-// When names duplicate, Character takes precedence (core characters do not enter the cast_ledger) to avoid duplication.
+// 同名时以 Character 为准，避免重复。
 type CastEntry struct {
-	Name string `json:"name"`
-	// Aliases is currently not used; reserved for future "user steer merge alias" tool
-	// (e.g. declaring 'Manager Li' and 'Old Li' as the same person). MergeAppearances already supports alias lookup.
-	Aliases          []string `json:"aliases,omitempty"`
-	BriefRole        string   `json:"brief_role,omitempty"` // One-line description (initially filled by Writer on first appearance, can be completed later; won't be overwritten)
-	FirstSeenChapter int      `json:"first_seen_chapter"`
-	LastSeenChapter  int      `json:"last_seen_chapter"`
-	// AppearanceCount is derived from len(AppearanceChapters), synchronized during merge.
-	// Keep as an explicit field for easy UI/JSON reading without recalculating every time.
+	Name             string `json:"name"`
+	BriefRole        string `json:"brief_role,omitempty"` // 一句话定位（首次出场由 Writer 填，可后续补全；不被覆盖）
+	FirstSeenChapter int    `json:"first_seen_chapter"`
+	LastSeenChapter  int    `json:"last_seen_chapter"`
+	// AppearanceCount 派生自 len(AppearanceChapters)。
 	AppearanceCount    int   `json:"appearance_count"`
 	AppearanceChapters []int `json:"appearance_chapters"`
-	// Promoted marks that this entry has been promoted to characters.json. RecentActive will skip these entries
-	// to avoid duplicate recall with the core ledger. Currently, the promotion pipeline is not implemented; this field is a reserved hook.
-	Promoted bool `json:"promoted,omitempty"`
 }
 
-// CastIntro is the brief description declared by the Writer when committing a chapter for a newly appearing character.
-// Adopted only when the name appears for the first time or when BriefRole in the ledger is still empty.
+// CastIntro 是 Writer 在 commit_chapter 时对新出场角色的简介声明。
+// 投影采用该角色最早的非空简介。
 type CastIntro struct {
 	Name      string `json:"name"`
 	BriefRole string `json:"brief_role"`
+}
+
+// ProjectCast 从接纳记录重建配角视图。records 的输入顺序不影响结果。
+func ProjectCast(records []ChapterRecord, characters []Character) []CastEntry {
+	records = slices.Clone(records)
+	slices.SortFunc(records, func(a, b ChapterRecord) int { return a.Chapter - b.Chapter })
+
+	core := make(map[string]bool)
+	for _, character := range characters {
+		core[character.Name] = true
+		for _, alias := range character.Aliases {
+			core[alias] = true
+		}
+	}
+
+	entries := make(map[string]*CastEntry)
+	for _, record := range records {
+		intros := make(map[string]string)
+		for _, intro := range record.Facts.CastIntros {
+			intros[intro.Name] = intro.BriefRole
+		}
+		seen := make(map[string]bool)
+		for _, name := range record.Facts.Characters {
+			if name == "" || core[name] || seen[name] {
+				continue
+			}
+			seen[name] = true
+			entry := entries[name]
+			if entry == nil {
+				entry = &CastEntry{Name: name, BriefRole: intros[name], FirstSeenChapter: record.Chapter}
+				entries[name] = entry
+			} else if entry.BriefRole == "" {
+				entry.BriefRole = intros[name]
+			}
+			entry.LastSeenChapter = record.Chapter
+			entry.AppearanceChapters = append(entry.AppearanceChapters, record.Chapter)
+			entry.AppearanceCount = len(entry.AppearanceChapters)
+		}
+	}
+
+	out := make([]CastEntry, 0, len(entries))
+	for _, entry := range entries {
+		out = append(out, *entry)
+	}
+	slices.SortFunc(out, func(a, b CastEntry) int {
+		if a.FirstSeenChapter != b.FirstSeenChapter {
+			return a.FirstSeenChapter - b.FirstSeenChapter
+		}
+		return strings.Compare(a.Name, b.Name)
+	})
+	return out
+}
+
+// RecentCast 返回最近活跃的前 limit 位配角，不修改输入。
+func RecentCast(entries []CastEntry, limit int) []CastEntry {
+	if limit <= 0 {
+		return nil
+	}
+	entries = slices.Clone(entries)
+	slices.SortFunc(entries, func(a, b CastEntry) int {
+		if a.LastSeenChapter != b.LastSeenChapter {
+			return b.LastSeenChapter - a.LastSeenChapter
+		}
+		if a.AppearanceCount != b.AppearanceCount {
+			return b.AppearanceCount - a.AppearanceCount
+		}
+		return strings.Compare(a.Name, b.Name)
+	})
+	return entries[:min(limit, len(entries))]
 }

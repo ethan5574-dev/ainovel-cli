@@ -1,8 +1,11 @@
 package notify
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -61,7 +64,9 @@ func TestCommandChannelEnvAndStdin(t *testing.T) {
 	}
 	n := New(command, nil)
 	nt := Notification{Kind: KindBudget, Level: "warn", Title: "ainovel: 预算", Body: "已花费 $8.00"}
-	n.deliver(nt) // 同步调用以便断言
+	if err := n.deliverError(nt); err != nil {
+		t.Fatalf("command 执行失败: %v", err)
+	}
 
 	env, err := os.ReadFile(envFile)
 	if err != nil {
@@ -93,9 +98,29 @@ func TestCommandChannelTimeoutKill(t *testing.T) {
 	n.timeout = 200 * time.Millisecond
 
 	start := time.Now()
-	n.deliver(Notification{Kind: KindRunEnd})
+	err := n.deliverError(Notification{Kind: KindRunEnd})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("超时命令应返回 context deadline exceeded，got %v", err)
+	}
 	if elapsed := time.Since(start); elapsed > 5*time.Second {
 		t.Fatalf("超时未强杀, 阻塞 %v", elapsed)
+	}
+}
+
+func TestFindPowerShellPrefersPwsh(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("PowerShell 选择仅适用于 Windows")
+	}
+	want, err := exec.LookPath("pwsh.exe")
+	if err != nil {
+		t.Skip("pwsh.exe 未安装，仅验证 Windows PowerShell 兼容路径")
+	}
+	got, err := findPowerShell()
+	if err != nil {
+		t.Fatalf("findPowerShell: %v", err)
+	}
+	if !strings.EqualFold(filepath.Clean(got), filepath.Clean(want)) {
+		t.Fatalf("应优先 pwsh.exe，got %q, want %q", got, want)
 	}
 }
 

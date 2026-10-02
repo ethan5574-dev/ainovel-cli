@@ -1,9 +1,34 @@
 package domain
 
-// Novel 小说元信息。
-type Novel struct {
-	Name          string `json:"name"`
-	TotalChapters int    `json:"total_chapters"`
+import (
+	"fmt"
+	"strings"
+)
+
+// BookMetadata 是面向读者和出版物的作品信息。
+// 创作设定属于 Foundation，运行进度属于 Progress，二者都不承载这份数据。
+type BookMetadata struct {
+	Title    string `json:"title"`
+	Synopsis string `json:"synopsis"`
+}
+
+// Normalized 返回可持久化、可比较的规范值。
+func (b BookMetadata) Normalized() BookMetadata {
+	b.Title = strings.TrimSpace(b.Title)
+	b.Synopsis = strings.TrimSpace(b.Synopsis)
+	return b
+}
+
+// Validate 检查作品信息的必填字段。
+func (b BookMetadata) Validate() error {
+	b = b.Normalized()
+	if b.Title == "" {
+		return fmt.Errorf("book title is required")
+	}
+	if b.Synopsis == "" {
+		return fmt.Errorf("book synopsis is required")
+	}
+	return nil
 }
 
 // OutlineEntry 大纲条目，对应一章。
@@ -78,10 +103,10 @@ type ArcExpansion struct {
 	Chapters []OutlineEntry `json:"chapters"`
 }
 
-// TotalChapters 计算分层大纲的当前规划总章数。
-// 已展开弧按真实章节数计，骨架弧按 EstimatedChapters 计。
-// Progress.TotalChapters 用它判断长篇上下文策略；真正可写章节仍来自 FlattenOutline。
-func TotalChapters(volumes []VolumeOutline) int {
+// EstimatedChapterCapacity 计算分层大纲的内部容量估算：已展开弧按真实章节数，
+// 骨架弧按 EstimatedChapters。它只用于上下文策略，不是全书总章数；真正已细化、
+// 可写的章节始终来自 FlattenOutline，禁止把本值暴露给用户或模型。
+func EstimatedChapterCapacity(volumes []VolumeOutline) int {
 	n := 0
 	for _, v := range volumes {
 		for _, a := range v.Arcs {

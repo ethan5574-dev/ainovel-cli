@@ -103,10 +103,6 @@ func renderStateContent(snap host.UISnapshot, contentW int) string {
 		sections = append(sections, renderSidebarSection("Cache", body, contentW))
 	}
 
-	if body := renderContextSidebar(snap, contentW); body != "" {
-		sections = append(sections, renderSidebarSection("Context", body, contentW))
-	}
-
 	return strings.Join(sections, "\n\n")
 }
 
@@ -264,6 +260,8 @@ func snapshotPhaseLabel(phase string) string {
 
 func snapshotRuntimeStateLabel(state string) string {
 	switch state {
+	case "starting":
+		return "启动中"
 	case "running":
 		return "Running"
 	case "pausing":
@@ -565,30 +563,6 @@ func formatTokensCompact(n int) string {
 		return fmt.Sprintf("%.1fk", float64(n)/1000)
 	}
 	return fmt.Sprintf("%d", n)
-}
-
-func renderContextSidebar(snap host.UISnapshot, width int) string {
-	if snap.ContextWindow <= 0 && snap.ContextStrategy == "" && snap.ContextScope == "" {
-		return ""
-	}
-	var b strings.Builder
-	b.WriteString(renderContextUsageField("Main context", snap.ContextPercent, snap.ContextTokens, snap.ContextWindow))
-	if strategy := contextStrategyLabel(snap.ContextStrategy); strategy != "" {
-		b.WriteString(renderField("Latest strategy", truncate(strategy, max(8, width-12))))
-	}
-	if scope := contextScopeLabel(snap.ContextScope); scope != "" {
-		b.WriteString(renderField("Current view", scope))
-	}
-	if snap.ContextSummaryCount > 0 {
-		b.WriteString(renderField("Summaries", fmt.Sprintf("%d", snap.ContextSummaryCount)))
-	}
-	if snap.ContextActiveMessages > 0 {
-		b.WriteString(renderField("Messages", fmt.Sprintf("%d", snap.ContextActiveMessages)))
-	}
-	if snap.ContextCompactedCount > 0 || snap.ContextKeptCount > 0 {
-		b.WriteString(renderField("Recent rewrite", fmt.Sprintf("%d → %d", snap.ContextCompactedCount, snap.ContextKeptCount)))
-	}
-	return b.String()
 }
 
 func contextScopeLabel(scope string) string {

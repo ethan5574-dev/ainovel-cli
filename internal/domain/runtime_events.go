@@ -10,21 +10,10 @@ const (
 	RuntimePriorityBackground RuntimeQueuePriority = "background"
 )
 
-// RuntimeQueueKind represents runtime queue item type.
-type RuntimeQueueKind string
-
-const (
-	RuntimeQueueUIEvent     RuntimeQueueKind = "ui_event"
-	RuntimeQueueStreamDelta RuntimeQueueKind = "stream_delta"
-	RuntimeQueueStreamClear RuntimeQueueKind = "stream_clear"
-	RuntimeQueueControl     RuntimeQueueKind = "control"
-)
-
-// RuntimeQueueItem is the persistent record of a unified runtime queue item.
+// RuntimeQueueItem 是统一运行时队列的持久化记录。
 type RuntimeQueueItem struct {
 	Seq      int64                `json:"seq"`
 	Time     time.Time            `json:"time"`
-	Kind     RuntimeQueueKind     `json:"kind"`
 	Priority RuntimeQueuePriority `json:"priority"`
 	TaskID   string               `json:"task_id,omitempty"`
 	Agent    string               `json:"agent,omitempty"`

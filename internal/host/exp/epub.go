@@ -8,6 +8,8 @@ import (
 	"html"
 	"strings"
 	"time"
+
+	"github.com/voocel/ainovel-cli/internal/domain"
 )
 
 // renderEPUB packs a collection of chapters into an EPUB 3 byte stream.
@@ -22,7 +24,7 @@ import (
 //	OEBPS/cover.xhtml           (book title, optional)
 //	OEBPS/chapterNNN.xhtml      (one file per chapter)
 func renderEPUB(
-	novelName string,
+	book domain.BookMetadata,
 	chapters []int,
 	titleIdx chapterTitleIndex,
 	locations map[int]chapterLocation,
@@ -50,9 +52,9 @@ func renderEPUB(
 		return nil, err
 	}
 
-	hasCover := strings.TrimSpace(novelName) != ""
+	hasCover := strings.TrimSpace(book.Title) != ""
 	if hasCover {
-		if err := zipDeflate(zw, "OEBPS/cover.xhtml", renderCoverXHTML(novelName)); err != nil {
+		if err := zipDeflate(zw, "OEBPS/cover.xhtml", renderCoverXHTML(book.Title)); err != nil {
 			return nil, err
 		}
 	}
@@ -71,7 +73,7 @@ func renderEPUB(
 		return nil, err
 	}
 
-	if err := zipDeflate(zw, "OEBPS/content.opf", renderOPF(novelName, hasCover, chapters)); err != nil {
+	if err := zipDeflate(zw, "OEBPS/content.opf", renderOPF(book, hasCover, chapters)); err != nil {
 		return nil, err
 	}
 
@@ -229,11 +231,11 @@ func renderNavXHTML(hasCover bool, chapters []int, titleIdx chapterTitleIndex) s
 
 // content.opf ────────────────────────────────────────────
 
-func renderOPF(novelName string, hasCover bool, chapters []int) string {
-	bookID := bookIdentifier(novelName)
+func renderOPF(book domain.BookMetadata, hasCover bool, chapters []int) string {
+	bookID := bookIdentifier(book.Title)
 	modified := time.Now().UTC().Format("2006-01-02T15:04:05Z")
 
-	title := strings.TrimSpace(novelName)
+	title := strings.TrimSpace(book.Title)
 	if title == "" {
 		title = "Untitled"
 	}
@@ -246,12 +248,13 @@ func renderOPF(novelName string, hasCover bool, chapters []int) string {
     <dc:title>%s</dc:title>
     <dc:language>en</dc:language>
     <dc:creator>ainovel-cli</dc:creator>
+    <dc:description>%s</dc:description>
     <meta property="dcterms:modified">%s</meta>
   </metadata>
   <manifest>
     <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
     <item id="css" href="style.css" media-type="text/css"/>
-`, html.EscapeString(bookID), html.EscapeString(title), modified)
+`, html.EscapeString(bookID), html.EscapeString(title), html.EscapeString(book.Synopsis), modified)
 
 	if hasCover {
 		b.WriteString(`    <item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>` + "\n")

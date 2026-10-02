@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/voocel/ainovel-cli/internal/domain"
+	"github.com/voocel/ainovel-cli/internal/utils"
 )
 
 // InvalidPendingRewrites 检测返工队列里混入未完成章节。
@@ -64,7 +65,7 @@ func RewritePendingPressure(snap *Snapshot) []Finding {
 		Title:      fmt.Sprintf("待改写章节: [%s]", chapters),
 		Evidence:   fmt.Sprintf("flow=%s, pending_rewrites=[%s]", p.Flow, chapters),
 		Suggestion: "检查 Editor 评审标准是否过严，或 Writer 改写 prompt 是否有效。" +
-			"如需人工打断，请在输入框提交干预指令。",
+			"某章返工反复失败时引擎会自动将其移出队列并继续后续创作，无需人工清理。",
 	}}
 }
 
@@ -84,7 +85,7 @@ func OrphanedSteer(snap *Snapshot) []Finding {
 		AutoLevel:  AutoSafe,
 		Target:     "runtime.recovery",
 		Title:      "存在未消费的转向指令",
-		Evidence:   fmt.Sprintf("pending_steer=%q, flow=%s", truncStr(snap.RunMeta.PendingSteer, 60), flowStr(snap.Progress)),
+		Evidence:   fmt.Sprintf("pending_steer=%q, flow=%s", utils.TruncateRunes(snap.RunMeta.PendingSteer, 60), flowStr(snap.Progress)),
 		Suggestion: "该 steer 被持久化但未被干预裁定流程消费。检查中断恢复逻辑，或通过重新提交覆盖。",
 	}}
 }
@@ -149,14 +150,6 @@ func flowStr(p *domain.Progress) string {
 		return "<nil>"
 	}
 	return string(p.Flow)
-}
-
-func truncStr(s string, max int) string {
-	r := []rune(s)
-	if len(r) <= max {
-		return s
-	}
-	return string(r[:max-3]) + "..."
 }
 
 func intsToStr(nums []int) string {

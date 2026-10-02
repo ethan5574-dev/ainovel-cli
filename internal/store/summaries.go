@@ -3,23 +3,32 @@ package store
 import (
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/voocel/ainovel-cli/internal/domain"
 )
 
 // SummaryStore 管理章节、弧、卷摘要。
 type SummaryStore struct {
-	io      *IO
-	outline *OutlineStore // 只读依赖，用于获取弧/卷数量
+	io         *IO
+	outline    *OutlineStore // 只读依赖，用于获取弧/卷数量
+	titleMu    sync.RWMutex
+	titleCache map[int]string
 }
 
 func NewSummaryStore(io *IO, outline *OutlineStore) *SummaryStore {
-	return &SummaryStore{io: io, outline: outline}
+	return &SummaryStore{io: io, outline: outline, titleCache: make(map[int]string)}
 }
 
 // SaveSummary 保存章节摘要到 summaries/{ch}.json。
 func (s *SummaryStore) SaveSummary(sum domain.ChapterSummary) error {
-	return s.io.WriteJSON(fmt.Sprintf("summaries/%02d.json", sum.Chapter), sum)
+	if err := s.io.WriteJSON(fmt.Sprintf("summaries/%02d.json", sum.Chapter), sum); err != nil {
+		return err
+	}
+	s.titleMu.Lock()
+	s.titleCache[sum.Chapter] = sum.Title
+	s.titleMu.Unlock()
+	return nil
 }
 
 // LoadSummary 读取指定章节的摘要。
@@ -32,6 +41,28 @@ func (s *SummaryStore) LoadSummary(chapter int) (*domain.ChapterSummary, error) 
 		return nil, err
 	}
 	return &sum, nil
+}
+
+// LoadSummaryTitle 读取章节标题并在进程内缓存。标题仅在 SaveSummary 时变化，
+// 无需重复解码同一份章节摘要。
+func (s *SummaryStore) LoadSummaryTitle(chapter int) (string, error) {
+	s.titleMu.RLock()
+	title, ok := s.titleCache[chapter]
+	s.titleMu.RUnlock()
+	if ok {
+		return title, nil
+	}
+	s.titleMu.Lock()
+	defer s.titleMu.Unlock()
+	if title, ok := s.titleCache[chapter]; ok {
+		return title, nil
+	}
+	sum, err := s.LoadSummary(chapter)
+	if err != nil || sum == nil {
+		return "", err
+	}
+	s.titleCache[chapter] = sum.Title
+	return sum.Title, nil
 }
 
 // LoadRecentSummaries 加载 current 章之前最近 count 章的摘要。
@@ -135,7 +166,7 @@ func (s *SummaryStore) LoadAllVolumeSummaries() ([]domain.VolumeSummary, error) 
 }
 
 // FindCharacterAppearances 批量查找多个角色的最后出场章节号。
-func (s *SummaryStore) FindCharacterAppearances(names []string, endChapter, recentWindow int) map[string]int {
+func (s *SummaryStore) FindCharacterAppearances(names []string, endChapter, recentWindow int) (map[string]int, error) {
 	result := make(map[string]int, len(names))
 	remaining := make(map[string]struct{}, len(names))
 	for _, n := range names {
@@ -146,7 +177,10 @@ func (s *SummaryStore) FindCharacterAppearances(names []string, endChapter, rece
 			break
 		}
 		sum, err := s.LoadSummary(ch)
-		if err != nil || sum == nil {
+		if err != nil {
+			return nil, err
+		}
+		if sum == nil {
 			continue
 		}
 		for _, c := range sum.Characters {
@@ -156,7 +190,7 @@ func (s *SummaryStore) FindCharacterAppearances(names []string, endChapter, rece
 			}
 		}
 	}
-	return result
+	return result, nil
 }
 
 func (s *SummaryStore) volumeCount() int {

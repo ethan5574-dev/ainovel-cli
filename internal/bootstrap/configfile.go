@@ -210,6 +210,10 @@ func mergeConfig(base, overlay Config) Config {
 	if overlay.Notify.Enabled != nil || overlay.Notify.Command != "" || len(overlay.Notify.Events) > 0 {
 		base.Notify = overlay.Notify
 	}
+	// 更新检查是隐私偏好：任一配置层显式禁用后，较高层不应隐式重新开启。
+	if overlay.DisableUpdateCheck {
+		base.DisableUpdateCheck = true
+	}
 
 	return base
 }

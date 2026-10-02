@@ -220,6 +220,12 @@ func TestAdvanceControlRejectsConflictingIntent(t *testing.T) {
 	if err := store.RunMeta.SetAdvanceHold(domain.AdvanceHold{After: domain.AdvanceHoldAtBoundary, Reason: "另一条"}); err == nil {
 		t.Fatal("conflicting hold must fail")
 	}
+	if err := (domain.AdvanceHold{After: domain.AdvanceHoldAtChapter, Reason: "缺目标"}).Validate(); err == nil {
+		t.Fatal("chapter hold without target must fail")
+	}
+	if err := (domain.AdvanceHold{After: domain.AdvanceHoldAtBoundary, TargetChapter: 3, Reason: "错误目标"}).Validate(); err == nil {
+		t.Fatal("non-chapter hold with target must fail")
+	}
 	if err := store.RunMeta.ClearAdvanceHold(domain.AdvanceHold{After: domain.AdvanceHoldAtBoundary, Reason: "旧值"}); err == nil {
 		t.Fatal("compare-and-clear must reject changed hold")
 	}

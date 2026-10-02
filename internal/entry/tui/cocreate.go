@@ -69,18 +69,19 @@ func errorText(err error) string {
 }
 
 type cocreateState struct {
-	session    *startup.CoCreateSession
-	stage      bool // true=mid-stage co-creation (plan next steps during execution); false=cold start co-creation (clarify requirements before startup)
-	awaiting   bool
-	reqID      int
-	cancel     context.CancelFunc // cancels current LLM request
-	deltaCh    chan cocreateStreamItem
-	doneCh     chan cocreateDoneMsg
-	convVP     viewport.Model
-	promptVP   viewport.Model
-	convFollow bool // true: auto-scroll new streaming content to bottom; set to false when user scrolls up
-	// focusPrompt decides which pane ↑↓/PgUp/PgDn/Home/End scrolls: false=left conversation pane (default),
-	// true=right prompt pane. Mouse reporting is disabled on the welcome page (retaining native copy), so overflow in the right pane is scrolled by keyboard after pressing Tab to switch focus.
+	session             *startup.CoCreateSession
+	stage               bool // true=阶段共创（运行中规划后续走向）；false=冷启动共创（启动前澄清需求）
+	awaiting            bool
+	reqID               int
+	cancel              context.CancelFunc // 取消当前 LLM 请求
+	deltaCh             chan cocreateStreamItem
+	doneCh              chan cocreateDoneMsg
+	convVP              viewport.Model
+	promptVP            viewport.Model
+	convFollow          bool // true: 流式新内容自动滚到底；用户上滚后置 false 停止跟随
+	selectedSuggestions []string
+	// focusPrompt 决定 ↑↓/PgUp/PgDn/Home/End 滚哪一栏：false=左对话栏（默认），
+	// true=右创作指令栏。欢迎页已关鼠标上报（保留原生复制），右栏溢出靠 Tab 切焦点后键盘滚。
 	focusPrompt bool
 }
 
@@ -118,11 +119,13 @@ func newStageCoCreateState() *cocreateState {
 }
 
 func (s *cocreateState) appendUser(text string) {
+	s.resetSuggestionInput()
 	s.session.AppendUser(text)
 }
 
 func (s *cocreateState) apply(reply host.CoCreateReply) {
 	s.awaiting = false
+	s.resetSuggestionInput()
 	s.session.ApplyReply(reply)
 }
 
@@ -154,8 +157,39 @@ func (s *cocreateState) suggestions() []string {
 	return s.session.Suggestions()
 }
 
-func (s *cocreateState) buildPlan() (startup.Plan, error) {
-	return s.session.BuildPlan()
+// appendSuggestion 把数字键对应的建议追加到由快捷键生成的输入。
+// 用户一旦手动修改输入，current 与已选建议的组合不再相等，数字键即恢复为普通输入。
+func (s *cocreateState) appendSuggestion(index int, current string) (string, bool) {
+	suggestions := s.suggestions()
+	if index < 0 || index >= len(suggestions) {
+		return "", false
+	}
+	if len(s.selectedSuggestions) == 0 {
+		if strings.TrimSpace(current) != "" {
+			return "", false
+		}
+	} else if current != strings.Join(s.selectedSuggestions, "；") {
+		s.resetSuggestionInput()
+		return "", false
+	}
+
+	suggestion := strings.TrimSpace(suggestions[index])
+	for _, selected := range s.selectedSuggestions {
+		if selected == suggestion {
+			return current, true
+		}
+	}
+
+	s.selectedSuggestions = append(s.selectedSuggestions, suggestion)
+	return strings.Join(s.selectedSuggestions, "；"), true
+}
+
+func (s *cocreateState) resetSuggestionInput() {
+	s.selectedSuggestions = nil
+}
+
+func (s *cocreateState) buildPrompt() (string, error) {
+	return s.session.BuildPrompt()
 }
 
 func renderStartupModeBar(width int, mode startupMode) string {
@@ -293,7 +327,7 @@ func renderCoCreateSuggestions(width int, state *cocreateState) string {
 	bodyStyle := lipgloss.NewStyle().Foreground(colorMuted)
 	hintStyle := lipgloss.NewStyle().Foreground(colorDim).Italic(true)
 
-	lines := []string{hintStyle.Render("AI Suggestions (press numeric keys to fill input):")}
+	lines := []string{hintStyle.Render("AI 建议（按 1/2/3 组合，可编辑后发送）：")}
 	for i, s := range sugs {
 		lines = append(lines, digitStyle.Render(digits[i]+" ")+bodyStyle.Render(strings.TrimSpace(s)))
 	}
@@ -312,13 +346,13 @@ func coCreateModalSize(width, height int) (boxW, boxH int) {
 	if height <= 0 {
 		height = 24
 	}
-	boxW = minInt(maxInt(width*76/100, 88), width-4)
-	boxH = minInt(maxInt(height*72/100, 22), height-4)
+	boxW = min(max(width*76/100, 88), width-4)
+	boxH = min(max(height*72/100, 22), height-4)
 	if boxW < 64 {
-		boxW = maxInt(width-2, 42)
+		boxW = max(width-2, 42)
 	}
 	if boxH < 14 {
-		boxH = maxInt(height-2, 12)
+		boxH = max(height-2, 12)
 	}
 	return boxW, boxH
 }

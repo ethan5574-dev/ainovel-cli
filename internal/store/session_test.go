@@ -93,7 +93,11 @@ func TestSessionStore_NilLookup(t *testing.T) {
 	logger := s.SubAgentLogger(nil)
 	logger("writer", "写第 1 章", makeAssistantWithUsage())
 
-	entries := readJSONL(t, filepath.Join(dir, s.subAgentPath("writer", "写第 1 章")))
+	rel, err := s.subAgentPath("writer", "写第 1 章")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := readJSONL(t, filepath.Join(dir, rel))
 	if len(entries) != 1 {
 		t.Fatalf("entries=%d want 1", len(entries))
 	}
@@ -103,6 +107,22 @@ func TestSessionStore_NilLookup(t *testing.T) {
 	// 但其他字段（role/usage）必须正常
 	if entries[0]["role"] != "assistant" {
 		t.Errorf("role lost: %v", entries[0]["role"])
+	}
+}
+
+func TestSessionStoreContinuesAgentSequenceAcrossRestarts(t *testing.T) {
+	dir := t.TempDir()
+	first := NewSessionStore(newIO(dir)).SubAgentLogger(nil)
+	first("architect_long", "处理反馈", makeAssistantWithUsage())
+
+	second := NewSessionStore(newIO(dir)).SubAgentLogger(nil)
+	second("architect_long", "扩展大纲", makeAssistantWithUsage())
+
+	if got := len(readJSONL(t, filepath.Join(dir, "meta/sessions/agents/architect_long-001.jsonl"))); got != 1 {
+		t.Fatalf("first session entries = %d, want 1", got)
+	}
+	if got := len(readJSONL(t, filepath.Join(dir, "meta/sessions/agents/architect_long-002.jsonl"))); got != 1 {
+		t.Fatalf("second session entries = %d, want 1", got)
 	}
 }
 

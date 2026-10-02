@@ -1,8 +1,11 @@
 package userrules
 
 import (
+	"context"
 	"testing"
+	"time"
 
+	"github.com/voocel/agentcore"
 	"github.com/voocel/ainovel-cli/internal/rules"
 	"github.com/voocel/ainovel-cli/internal/store"
 )
@@ -87,5 +90,49 @@ func TestService_AddRuntimeRule_PersistsAndReturnsCandidate(t *testing.T) {
 	}
 	if reloaded.Status != rules.StatusDegraded {
 		t.Fatalf("含降级来源，status 应为 degraded，got %q", reloaded.Status)
+	}
+}
+
+// alwaysRetryableModel 恒返回 retryable 错误：llmretry 会一直退避重试，
+// 只有 context 能终止它——这正是 issue #125 的卡死形态。
+type alwaysRetryableModel struct{ scriptedModel }
+
+func (m *alwaysRetryableModel) Generate(context.Context, []agentcore.Message, []agentcore.ToolSpec, ...agentcore.CallOption) (*agentcore.LLMResponse, error) {
+	m.calls++
+	return nil, retryableTestError{}
+}
+
+// issue #125 回归：provider 持续限流/不可用时，Build 必须由 context 终止并降级，
+// 不得无限重试卡死开书流程。
+func TestService_BuildStopsAtContextDeadline(t *testing.T) {
+	st := store.NewStore(t.TempDir())
+	svc := NewService(st, &alwaysRetryableModel{}, rules.LoadOptions{})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	type result struct {
+		snap *rules.Snapshot
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		snap, err := svc.Build(ctx, "每章1200字，主角冷静克制")
+		done <- result{snap, err}
+	}()
+
+	select {
+	case got := <-done:
+		if got.err != nil {
+			t.Fatalf("超时应降级而非阻断开书：%v", got.err)
+		}
+		if got.snap.Status != rules.StatusDegraded {
+			t.Fatalf("归一化超时应降级，status=%q", got.snap.Status)
+		}
+		if got.snap.Preferences == "" {
+			t.Fatal("降级应保留启动 prompt 原文")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Build 未受 context 约束，已卡死（issue #125）")
 	}
 }

@@ -45,6 +45,13 @@ func Run(ctx context.Context, deps Deps, opts Options) (*Result, error) {
 	if progress == nil || len(progress.CompletedChapters) == 0 {
 		return nil, fmt.Errorf("no completed chapters yet, nothing to export")
 	}
+	book, err := deps.Store.Book.Load()
+	if err != nil {
+		return nil, fmt.Errorf("加载作品信息失败：%w", err)
+	}
+	if book == nil {
+		return nil, fmt.Errorf("作品信息不存在，无法导出")
+	}
 
 	completed := make(map[int]struct{}, len(progress.CompletedChapters))
 	maxCh := 0
@@ -99,11 +106,7 @@ func Run(ctx context.Context, deps Deps, opts Options) (*Result, error) {
 
 	outPath := opts.OutPath
 	if outPath == "" {
-		name := strings.TrimSpace(progress.NovelName)
-		if name == "" {
-			name = filepath.Base(deps.Store.Dir())
-		}
-		outPath = filepath.Join(deps.Store.Dir(), sanitizeFileName(name)+"."+string(opts.Format))
+		outPath = filepath.Join(deps.Store.Dir(), sanitizeFileName(book.Title)+"."+string(opts.Format))
 	}
 
 	if !opts.Overwrite {
@@ -132,9 +135,9 @@ func Run(ctx context.Context, deps Deps, opts Options) (*Result, error) {
 	var data []byte
 	switch opts.Format {
 	case FormatTXT:
-		data = []byte(renderTXT(progress.NovelName, chapters, titleIdx, locations, bodies))
+		data = []byte(renderTXT(book.Title, chapters, titleIdx, locations, bodies))
 	case FormatEPUB:
-		buf, err := renderEPUB(progress.NovelName, chapters, titleIdx, locations, bodies)
+		buf, err := renderEPUB(*book, chapters, titleIdx, locations, bodies)
 		if err != nil {
 			return nil, fmt.Errorf("failed to render EPUB: %w", err)
 		}

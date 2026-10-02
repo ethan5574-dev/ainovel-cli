@@ -51,7 +51,8 @@ func TestValidateStructure(t *testing.T) {
 func TestAssembleFoundationHappyClosed(t *testing.T) {
 	facts := factsN(3)
 	s := &BookSynthesis{
-		Premise:      "# 测试书\n\n前提",
+		Synopsis:     "无剧透简介",
+		Premise:      "# 故事前提\n\n前提",
 		Characters:   []domain.Character{{Name: "甲"}},
 		PlanningTier: domain.PlanningTierShort,
 		StoryStatus:  storyClosed,
@@ -68,6 +69,9 @@ func TestAssembleFoundationHappyClosed(t *testing.T) {
 	if !f.Volumes[len(f.Volumes)-1].Final {
 		t.Fatal("closed 时末卷应 Final")
 	}
+	if f.Book.Title != "book" || f.Book.Synopsis != "无剧透简介" {
+		t.Fatalf("作品信息组装错误: %+v", f.Book)
+	}
 }
 
 func TestAssembleFoundationTitleMismatch(t *testing.T) {
@@ -75,7 +79,7 @@ func TestAssembleFoundationTitleMismatch(t *testing.T) {
 	facts[1].Title = "" // 破坏标题一致性会在 FlattenOutline 校验失败？标题空但结构取自 facts，故一致。
 	// 用结构覆盖不到的章制造真实不一致：章数不符。
 	s := &BookSynthesis{
-		Premise: "# 书", Characters: []domain.Character{{Name: "甲"}},
+		Synopsis: "无剧透简介", Premise: "# 故事前提", Characters: []domain.Character{{Name: "甲"}},
 		PlanningTier: domain.PlanningTierShort, StoryStatus: storyOpen,
 		Compass:   domain.StoryCompass{EndingDirection: "x"},
 		Structure: []ImportedVolumeRange{{Arcs: []ImportedArcRange{{StartChapter: 1, EndChapter: 1}}}},
@@ -85,12 +89,9 @@ func TestAssembleFoundationTitleMismatch(t *testing.T) {
 	}
 }
 
-func TestEnsurePremiseTitle(t *testing.T) {
-	if got := ensurePremiseTitle("正文无标题", "我的小说.txt"); got[0] != '#' {
-		t.Fatalf("应补书名标题：%q", got)
-	}
-	if got := ensurePremiseTitle("# 已有书名\n正文", "x.txt"); got != "# 已有书名\n正文" {
-		t.Fatal("已有标题不应改写")
+func TestImportedBookTitle(t *testing.T) {
+	if got := importedBookTitle("我的小说.txt"); got != "我的小说" {
+		t.Fatalf("应从文件名推断书名：%q", got)
 	}
 }
 

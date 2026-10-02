@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
-	"unicode/utf8"
 
 	"github.com/voocel/agentcore/schema"
 	"github.com/voocel/ainovel-cli/internal/domain"
@@ -44,11 +43,7 @@ func (t *DraftChapterTool) Schema() map[string]any {
 	)
 }
 
-// StrictSchema 启用 OpenAI 的 strict tool calling，让模型必须严格遵守
-// schema：所有 required 字段必填，arguments 不能"提前 EOT"出现空对象。
-// litellm 透传 strict 字段；OpenAI / xAI 等支持的后端会强制执行，其他后端
-// 按 HTTP/JSON 惯例忽略未知字段。Anthropic/Gemini/Bedrock 走各自的转换链路
-// 自然不会看到这个字段。
+// StrictSchema 要求 Provider 保证工具参数符合 schema。
 func (t *DraftChapterTool) StrictSchema() bool { return true }
 
 func (t *DraftChapterTool) Execute(_ context.Context, args json.RawMessage) (json.RawMessage, error) {
@@ -115,7 +110,7 @@ func (t *DraftChapterTool) Execute(_ context.Context, args json.RawMessage) (jso
 			"written":    true,
 			"chapter":    a.Chapter,
 			"mode":       "append",
-			"word_count": utf8.RuneCountInString(full),
+			"word_count": domain.WordCount(full),
 			"next_step":  "先 read_chapter(source=draft) 回读草稿，再调用 check_consistency，最后 commit_chapter",
 		})
 	default: // write
@@ -132,7 +127,7 @@ func (t *DraftChapterTool) Execute(_ context.Context, args json.RawMessage) (jso
 			"written":    true,
 			"chapter":    a.Chapter,
 			"mode":       "write",
-			"word_count": utf8.RuneCountInString(a.Content),
+			"word_count": domain.WordCount(a.Content),
 			"next_step":  "先 read_chapter(source=draft) 回读草稿，再调用 check_consistency，最后 commit_chapter",
 		})
 	}

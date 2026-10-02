@@ -4,11 +4,11 @@ Before adding "a piece of text / a reference guide / a rule" to the system, sear
 
 | Directory | What to store | Consumer | Wiring Method |
 |---|---|---|---|
-| `prompts/` | Permanent role system prompts (`coordinator` / `writer` / `editor` / `architect` × 2) and one-off task prompts (`import` × 2 / `simulation` × 2) | `agents/build.go` assembly; `imp` / `sim` runner | `load.go` Prompts fields. Note: `simulation_guidance` is injected during load by `load.go` and is not visible in md files. |
-| `references/` | Genre-independent writing knowledge materials. Do not enter system prompts; instead, injected into `reference_pack` by `novel_context` cropped by role / chapter. | writer / editor / architect | **Three-way wiring**: add fields in `tools.References` + read via `load.go` `loadReferences` + inject in `novel_context.go` `writerReferences` / `architectReferences`. Dropping it in the folder will not load it automatically. |
-| `references/genres/<style>/` | Genre-specific knowledge (`style-references` / `arc-templates`) | Same as above, loaded when `style != default` | `load.go` `loadReferences` |
-| `rules/` | Default mechanical rules (word count / forbidden words / fatigue words), checked by code during commit. | Rules loader three-level merge: built-in → `~/.ainovel/rules/` → project `./.ainovel/rules/` | `rules/default.md`; user-level format is shown in `rules.md.example` at root. Only store fixed-length strings; patterns with variables should be left to editor semantic judgment. |
-| `styles/<style>.md` | Genre writing style instructions | Appended to **writer's** system prompt (`agents/build.go`) | Suffix of the filename is the value of `config.style`. Together with `references/genres/<style>/`, they represent two carriers of the same genre concept: the former is style instructions, the latter is knowledge materials. |
+| `prompts/` | Worker system prompt（writer / editor / architect×2）、Arbiter 裁定 prompt 与一次性任务 prompt（import / simulation / revision） | `agents/build.go`、`internal/arbiter`、imp / sim / revision runner | `load.go` Prompts 字段。注意：simulation_guidance 由 `load.go` 加载时注入，md 文件里看不到 |
+| `references/` | 题材无关的写作知识材料。不进 system prompt，由 novel_context 按角色 / 章节裁剪后注入 `reference_pack` | writer / editor / architect | **三处接线**：`tools.References` 加字段 + `load.go` loadReferences 读取 + `novel_context.go` writerReferences / architectReferences 注入。放进目录不会自动加载 |
+| `references/genres/<style>/` | 题材专属知识（style-references / arc-templates） | 同上，`style != default` 时加载 | `load.go` loadReferences |
+| `rules/` | 已废弃的旧内置规则目录；机械基线已迁到代码，用户规则来自 `~/.ainovel/rules/*.md` / `./.ainovel/rules/*.md` 的自然语言快照 | `userrules.Service` 归一化为 `meta/user_rules.json`；`novel_context` 注入；`commit_chapter` 检查 | 内置基线见 `internal/rules/snapshot.go` 的 `SystemDefaults()`；用户 `.md` 零格式、零 YAML，按自然语言归一化 |
+| `styles/<style>.md` | 题材写作风格指令 | 拼进 **writer** 的 system prompt（`agents/build.go`） | 文件名即 `config.style` 取值。与 `references/genres/<style>/` 是同一题材概念的两种载体：前者是风格指令，后者是知识材料 |
 
 ## New Content Ownership Judgment (Five Questions)
 

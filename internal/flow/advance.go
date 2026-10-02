@@ -37,8 +37,8 @@ func ResolveAdvanceHold(hold *domain.AdvanceHold, progress *domain.Progress) (Ad
 	if hold == nil {
 		return AdvanceHoldKeep, nil
 	}
-	if !hold.After.Valid() {
-		return AdvanceHoldKeep, fmt.Errorf("不支持的一次性暂停条件 %q", hold.After)
+	if err := hold.Validate(); err != nil {
+		return AdvanceHoldKeep, err
 	}
 	if progress == nil {
 		return AdvanceHoldKeep, fmt.Errorf("缺少 Progress，无法解析一次性暂停")
@@ -54,6 +54,11 @@ func ResolveAdvanceHold(hold *domain.AdvanceHold, progress *domain.Progress) (Ad
 		return AdvanceHoldConsumeAndStop, nil
 	case domain.AdvanceHoldAfterRewritesDrained:
 		if len(progress.PendingRewrites) > 0 {
+			return AdvanceHoldKeep, nil
+		}
+		return AdvanceHoldConsumeAndStop, nil
+	case domain.AdvanceHoldAtChapter:
+		if progress.LatestCompleted() < hold.TargetChapter {
 			return AdvanceHoldKeep, nil
 		}
 		return AdvanceHoldConsumeAndStop, nil

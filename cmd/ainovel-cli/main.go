@@ -10,6 +10,7 @@ import (
 	"github.com/voocel/ainovel-cli/assets"
 	"github.com/voocel/ainovel-cli/internal/bootstrap"
 	"github.com/voocel/ainovel-cli/internal/entry/headless"
+	"github.com/voocel/ainovel-cli/internal/entry/startup"
 	"github.com/voocel/ainovel-cli/internal/entry/tui"
 	"github.com/voocel/ainovel-cli/internal/eval"
 	"github.com/voocel/ainovel-cli/internal/host"
@@ -126,7 +127,7 @@ func runWithConfig(cfg bootstrap.Config, opts cliOptions, args []string) {
 	if opts.Prompt != "" || opts.PromptFile != "" {
 		die("error: --prompt/--prompt-file can only be used with --headless")
 	}
-	if err := tui.Run(cfg, bundle, versionInfo().Version); err != nil {
+	if err := tui.Run(cfg, bundle, versionInfo()); err != nil {
 		die("error: %v", err)
 	}
 }
@@ -258,7 +259,7 @@ func versionInfo() buildversion.Info {
 func runSelfUpdate(target string) error {
 	info := versionInfo()
 	result, err := buildversion.Update(context.Background(), buildversion.UpdateOptions{
-		Repo:           "voocel/ainovel-cli",
+		Repo:           buildversion.DefaultRepo,
 		BinaryName:     "ainovel-cli",
 		TargetVersion:  target,
 		CurrentVersion: info.Version,
@@ -284,15 +285,12 @@ func loadPromptFrom(opts cliOptions, stdin io.Reader) (string, error) {
 		return strings.TrimSpace(opts.Prompt), nil
 	}
 
-	var data []byte
-	var err error
 	if opts.PromptFile == "-" {
-		data, err = io.ReadAll(stdin)
-	} else {
-		data, err = os.ReadFile(opts.PromptFile)
+		data, err := io.ReadAll(stdin)
+		if err != nil {
+			return "", fmt.Errorf("读取 prompt 失败: %w", err)
+		}
+		return strings.TrimSpace(string(data)), nil
 	}
-	if err != nil {
-		return "", fmt.Errorf("failed to read prompt: %w", err)
-	}
-	return strings.TrimSpace(string(data)), nil
+	return startup.LoadPromptFile(opts.PromptFile)
 }

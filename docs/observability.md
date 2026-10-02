@@ -28,14 +28,14 @@ Ordered by the most common troubleshooting path when something goes wrong:
 
 | Artifact | Path | What to inspect | Healthy | Unhealthy |
 |---|---|---|---|---|
-| Progress | `meta/progress.json` | `phase` / `flow` / `completed_chapters` | `phase` advances monotonically; `flow` is in the legal set | `phase` regresses / `flow` is stuck in a state |
-| Compass | `meta/compass.json` | Gap between `last_updated` and latest chapter | gap < 15 chapters | gap > 15 chapters (CompassDrift hit) |
-| Cast Ledger | `meta/cast_ledger.json` | Item count / brief_role fill rate / name consistency | See §4 | See §4 |
-| Foreshadow | `meta/foreshadow.json` | Longest stagnated chapters of `status="planted"` | < total_chapters/3 | > total_chapters/3 (StaleForeshadow hit) |
-| Outline | `meta/layered_outline.json` | Remaining unwritten chapters in the current volume | Expanded 1-2 chapters in advance | Current chapter is reached but next has no outline (OutlineExhausted) |
-| Characters | `meta/characters.json` | Whether core/important characters are in recent N chapter summaries | All can be found | Absent (GhostCharacter hit) |
-| Checkpoint | `meta/checkpoints.jsonl` | Whether the last line's `step` corresponds to progress | Consistent | Inconsistent (crash recovery failed to self-heal) |
-| Coordinator Session | `meta/sessions/coordinator.jsonl` | tool_call pattern of recent 5-10 turns | Single turn fast progression | Same tool called empty multiple times (infinite loop) |
+| 进度 | `meta/progress.json` | `phase` / `flow` / `completed_chapters` | phase 单调前进，flow 在合法集合内 | phase 倒退 / flow 卡在某状态 |
+| 指南针 | `meta/compass.json` | `last_updated` 与最新章节差距 | gap < 15 章 | gap > 15 章（CompassDrift 命中） |
+| 配角视图 | `meta/chapter_records/*.json` | `facts.characters` / `facts.cast_intros` | 有名字的次要角色稳定复用 | 同一角色反复换名 |
+| 伏笔台账 | `meta/foreshadow.json` | `status="planted"` 的最长停滞章数 | < 章数/3 | > 章数/3（StaleForeshadow 命中） |
+| 大纲 | `meta/layered_outline.json` | 当前卷剩余未写章数 | 提前 1-2 章已展开 | 写到当前章但下一章无 outline（OutlineExhausted） |
+| 角色档案 | `meta/characters.json` | 是否能在最近 N 章摘要里找到 core/important 角色 | 都能找到 | 缺席（GhostCharacter 命中） |
+| 检查点 | `meta/checkpoints.jsonl` | 最近一行的 `step` 是否对应 progress | 一致 | 不一致（崩溃恢复未自愈） |
+| 裁定审计 | `meta/decisions.jsonl` | 最近若干条裁定的 facts/decision | 分诊准确、动作合理 | 同类干预反复裁定失败 |
 
 ---
 
@@ -72,50 +72,17 @@ Compare before and after running long-form:
 
 ---
 
-## 4. Cast Ledger Observability
+## 4. 配角视图观测
 
-**Feature Landed**: 2026-05-08 (commit `feat: cast ledger automatically tracks minor characters`)
+配角视图由已完成章节的接纳记录实时投影，不再维护独立的 `cast_ledger.json`。`facts.characters` 决定角色在哪些章节出现，`facts.cast_intros` 提供最早的非空简介；`characters.json` 中的核心角色与别名会自动排除。
 
-### What to inspect
+跑 5 章后，查看最近的 Writer 会话：
 
 ```bash
-cat output/{novel}/meta/cast_ledger.json | jq 'length'                     # Total entries
-cat output/{novel}/meta/cast_ledger.json | jq '[.[] | select(.brief_role == "" or .brief_role == null)] | length'  # Missing brief_role count
-cat output/{novel}/meta/cast_ledger.json | jq '[.[] | select(.appearance_count >= 3)] | length'   # High frequency appearances (≥3 times) count
-cat output/{novel}/meta/cast_ledger.json | jq 'sort_by(-.appearance_count) | .[:10]'  # Top 10 most frequent characters
+tail -50 output/{novel}/meta/sessions/agents/writer-*.jsonl
 ```
 
-### Health checks
-
-| Dimension | Healthy | Abnormal | Action |
-|---|---|---|---|
-| **Entries vs Completed Chapters** | ledger entries ≈ completed_chapters × 0.3-0.6 | > chapters × 0.8 (passing/trivial characters incorrectly registered) | Check if the `cast_intros` section in `writer.md` is clear enough |
-| **brief_role fill rate** | missing < 30% | missing > 50% | Writer missed filling severely—insufficient prompt guidance |
-| **Name similarity** | No suspected multiple names for same person | "Li X", "Old Li", "X Shopkeeper" co-existing | LLM name drift—add constraint "use consistent names" in prompt or add user steer merge tool |
-| **Frequent appearance characters** | Few entries with `appearance_count >= 5` | Large number of entries appearing high-frequency across arcs | Consider promoting to core character profiles (Phase 3 promotion path) |
-| **Recall consumed** | When Writer writes about an old character, the characters field in commit_chapter contains ledger's existing name | Writer reinvents the same name (e.g. "Old Zhou A" and "Old Zhou B" appear) | recent_cast recall not consumed—check "minor character continuity" section in `writer.md` |
-
-### Data Flow Verification (End-to-End)
-
-After running 5 chapters:
-1. `cat meta/cast_ledger.json` should not be empty (unless only core characters are used in every chapter).
-2. If Writer introduces "Old Zhou" in Chapter 1:
-   - There should be an `Old Zhou` entry in `cast_ledger`, with `appearance_count=1`.
-3. If Old Zhou is written again in Chapter 5:
-   - `Old Zhou.appearance_count=2`, `last_seen_chapter=5`.
-4. In the `novel_context` return value of Chapter 5 in `meta/sessions/agents/writer-*.jsonl`, Old Zhou should be visible under `episodic_memory.recent_cast`.
-5. If seen in the previous step but not consumed by Writer (the written Old Zhou does not match Chapter 1) — this is a prompt issue.
-
-### Currently No Automated Diagnosis (but snapshot loaded)
-
-`diag.Snapshot.CastLedger` is already loaded in `Load()` and can be consumed by rules directly—but no rules have been written yet. Verification still relies on manual checking via the `jq` command above.
-
-Future diagnostic rules (candidates):
-- `CastBriefRoleMissing`: Alarm on missing rate > 50%
-- `CastBloat`: Alarm on entries > chapters × 0.8
-- `CastPromotionCandidate`: Suggest promotion when appearance_count ≥ 5 and spans multiple arcs
-
-Do not set thresholds now—wait for long-form data to see the real distribution first. Rule code itself only requires 30-50 lines.
+如果第 1 章引入“老周”、第 5 章再次使用，后一次 `novel_context` 返回的 `episodic_memory.recent_cast` 应包含老周及其首次简介。看到了但正文仍换名或定位漂移，属于 Writer 没有消费上下文；视图缺失则检查对应 `meta/chapter_records/*.json` 的 `facts.characters` 与 `facts.cast_intros`。
 
 ---
 
@@ -145,16 +112,11 @@ If the jsonl shows Writer repeatedly calling `novel_context` empty or calling ot
 
 When running a 100+ chapter novel, if any of the following items are hit, stop and investigate:
 
-- [ ] `CompassDrift` hit and persists for 2 arcs without clearing
-- [ ] `cast_ledger` entries count > completed chapters × 0.8
-- [ ] `cast_ledger` brief_role fill rate < 30%
-- [ ] Suspected multiple names for the same character ("Old Li" / "Shopkeeper Li" co-existing)
-- [ ] Writer does not read existing old characters from `recent_cast` when writing new chapters (reinvention)
-- [ ] Coordinator session shows consecutive ≥ 5 empty `novel_context` calls
-- [ ] `meta/checkpoints.jsonl` lacks the corresponding `commit_chapter` step after any chapter commit
-
-The first 4 items are health indicators of the new mechanisms; the last 3 items are the stability of existing mechanisms.
-
+- [ ] CompassDrift 命中且持续 2 个弧未消除
+- [ ] 同一角色出现疑似多名（"老李" / "李掌柜" 共存）
+- [ ] Writer 写新章时不读 recent_cast 中已有的旧角色（重复发明）
+- [ ] Worker session 中出现连续 ≥ 5 次空调 novel_context
+- [ ] 任意章节 commit 后 `meta/checkpoints.jsonl` 没有对应 `commit_chapter` step
 ---
 
 ## 7. Document Maintenance Standards

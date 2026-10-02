@@ -19,7 +19,7 @@ func TestSaveReviewPersistsContractAssessment(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 10); err != nil {
+	if err := s.Progress.Init(10); err != nil {
 		t.Fatalf("Progress.Init: %v", err)
 	}
 	if err := s.Progress.MarkChapterComplete(3, 3000, "", ""); err != nil {
@@ -78,7 +78,7 @@ func TestSaveReviewRejectsMissingDimensions(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 10); err != nil {
+	if err := s.Progress.Init(10); err != nil {
 		t.Fatalf("Progress.Init: %v", err)
 	}
 	if err := s.Progress.MarkChapterComplete(3, 3000, "", ""); err != nil {
@@ -108,7 +108,7 @@ func TestSaveReviewRejectsDimensionWithoutComment(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 10); err != nil {
+	if err := s.Progress.Init(10); err != nil {
 		t.Fatalf("Progress.Init: %v", err)
 	}
 	if err := s.Progress.MarkChapterComplete(3, 3000, "", ""); err != nil {
@@ -146,7 +146,7 @@ func TestSaveReviewRejectsIssueOutsideChapterScope(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 80); err != nil {
+	if err := s.Progress.Init(80); err != nil {
 		t.Fatalf("Progress.Init: %v", err)
 	}
 	for ch := 1; ch <= 58; ch++ {
@@ -208,7 +208,7 @@ func TestSaveReviewKeepsModelDefinedDimension(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 10); err != nil {
+	if err := s.Progress.Init(10); err != nil {
 		t.Fatalf("Progress.Init: %v", err)
 	}
 	if err := s.Progress.MarkChapterComplete(3, 3000, "", ""); err != nil {
@@ -318,7 +318,7 @@ func TestSaveReviewDoesNotDirtyQueueOnIllegalFlowTransition(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 10); err != nil {
+	if err := s.Progress.Init(10); err != nil {
 		t.Fatalf("Progress.Init: %v", err)
 	}
 	for _, ch := range []int{8, 9} {
@@ -379,7 +379,7 @@ func TestSaveReviewKeepsOutcomeWhenReviewArtifactWriteFails(t *testing.T) {
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if err := s.Progress.Init("test", 3); err != nil {
+	if err := s.Progress.Init(3); err != nil {
 		t.Fatalf("Progress.Init: %v", err)
 	}
 	if err := s.Progress.MarkChapterComplete(3, 3000, "", ""); err != nil {
@@ -428,7 +428,7 @@ func setupArcReviewStore(t *testing.T) *store.Store {
 	if err := s.Init(); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Progress.Init("arc", 4); err != nil {
+	if err := s.Progress.Init(4); err != nil {
 		t.Fatal(err)
 	}
 	volumes := []domain.VolumeOutline{{
@@ -451,6 +451,13 @@ func setupArcReviewStore(t *testing.T) *store.Store {
 		if err := s.Progress.MarkChapterComplete(chapter, 100, "", ""); err != nil {
 			t.Fatal(err)
 		}
+	}
+	// 第一弧已经完整收尾，因此 Router 当前唯一待补工件是第二弧评审。
+	if err := s.World.SaveReview(domain.ReviewEntry{Chapter: 2, Scope: "arc", Verdict: "accept", Summary: "第一弧评审"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Summaries.SaveArcSummary(domain.ArcSummary{Volume: 1, Arc: 1, Title: "第一弧", Summary: "完成", KeyEvents: []string{"事件"}}); err != nil {
+		t.Fatal(err)
 	}
 	return s
 }
@@ -500,5 +507,91 @@ func TestSaveReviewDerivesAffectedChaptersFromIssues(t *testing.T) {
 	}
 	if p, _ := s.Progress.Load(); !slices.Equal(p.PendingRewrites, []int{3}) {
 		t.Fatalf("rewrite queue = %v, want [3]", p.PendingRewrites)
+	}
+}
+
+func TestSaveReviewRetriesCheckpointWithoutReapplyingOutcome(t *testing.T) {
+	s := setupArcReviewStore(t)
+	checkpointPath := filepath.Join(s.Dir(), "meta", "checkpoints.jsonl")
+	if err := os.MkdirAll(checkpointPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tool := NewSaveReviewTool(s)
+	args := arcReviewArgs(t, 3)
+
+	if _, err := tool.Execute(context.Background(), args); err == nil || !strings.Contains(err.Error(), "checkpoint review") {
+		t.Fatalf("expected checkpoint failure, got %v", err)
+	}
+	if err := os.Remove(checkpointPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tool.Execute(context.Background(), args); err != nil {
+		t.Fatalf("idempotent checkpoint retry: %v", err)
+	}
+	progress, err := s.Progress.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(progress.PendingRewrites, []int{3}) {
+		t.Fatalf("review outcome must not be duplicated or changed, queue=%v", progress.PendingRewrites)
+	}
+	if cp := s.Checkpoints.LatestByStep(domain.ArcScope(1, 2), "review"); cp == nil {
+		t.Fatal("checkpoint retry must finish the review write")
+	}
+}
+
+func TestSaveArcReviewCanReplaceChapterReviewAtEndpoint(t *testing.T) {
+	s := setupArcReviewStore(t)
+	if err := s.World.SaveReview(domain.ReviewEntry{Chapter: 4, Scope: "chapter", Verdict: "accept", Summary: "末章单章评审"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := NewSaveReviewTool(s).Execute(context.Background(), arcReviewArgs(t, 3)); err != nil {
+		t.Fatalf("arc review should replace chapter-scope artifact at the same endpoint: %v", err)
+	}
+	review, err := s.World.LoadReview(4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if review == nil || review.Scope != "arc" {
+		t.Fatalf("stored review = %+v, want scope=arc", review)
+	}
+}
+
+func TestSaveReviewRejectsFutureArc(t *testing.T) {
+	s := store.NewStore(t.TempDir())
+	if err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Progress.Init(4); err != nil {
+		t.Fatal(err)
+	}
+	volumes := []domain.VolumeOutline{{
+		Index: 1,
+		Arcs: []domain.ArcOutline{
+			{Index: 1, Chapters: []domain.OutlineEntry{{Title: "一"}, {Title: "二"}}},
+			{Index: 2, Chapters: []domain.OutlineEntry{{Title: "三"}, {Title: "四"}}},
+		},
+	}}
+	if err := s.Outline.SaveLayeredOutline(volumes); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Outline.SaveOutline(domain.FlattenOutline(volumes)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Progress.SetLayered(true); err != nil {
+		t.Fatal(err)
+	}
+	for chapter := 1; chapter <= 2; chapter++ {
+		if err := s.Progress.MarkChapterComplete(chapter, 100, "", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := NewSaveReviewTool(s).Execute(context.Background(), arcReviewArgs(t, 3)); err == nil || !strings.Contains(err.Error(), "must be completed") {
+		t.Fatalf("expected future arc rejection, got %v", err)
+	}
+	if review, err := s.World.LoadReview(4); err != nil || review != nil {
+		t.Fatalf("future review must not be persisted, review=%+v err=%v", review, err)
 	}
 }

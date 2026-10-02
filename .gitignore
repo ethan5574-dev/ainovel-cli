@@ -34,6 +34,7 @@ go.work.sum
 .idea/
 .vscode/
 .cache
+.DS_Store
 
 # GoReleaser artifacts
 dist/
@@ -44,3 +45,4 @@ tasks
 refer/
 output*
 workspace/
+ainovel.db

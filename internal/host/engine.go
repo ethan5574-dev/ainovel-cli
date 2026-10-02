@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -62,6 +63,9 @@ type engine struct {
 	repeats int
 	// 失败重试:同指令键仅重试一次,再败问 Arbiter。
 	failedKey string
+	// 保留同指令最近一次 Worker 错误，让僵局裁定看到真实失败原因。
+	lastWorkerErrorKey string
+	lastWorkerError    error
 }
 
 // deadlockConsultAt / deadlockAbortAt:repeats 达到前者问 Arbiter,达到后者硬熔断。
@@ -100,6 +104,7 @@ func (e *engine) start(initial *flow.Instruction) bool {
 		e.deferGateForNext = false
 	}
 	e.lastKey, e.repeats, e.failedKey = "", 0, ""
+	e.lastWorkerErrorKey, e.lastWorkerError = "", nil
 	e.wg.Add(1)
 	go func() {
 		defer e.wg.Done()
@@ -195,6 +200,20 @@ func (e *engine) run(ctx context.Context) {
 				e.pauseWithNotify(notify.KindWorkerFailure, "路由事实读取失败，已暂停: "+err.Error())
 				return
 			}
+			// 卷摘要可能已落盘而进程尚未来得及 MarkComplete。聚合工件全部齐备时
+			// 先按事实补做完结判定，再交给 Router，避免收官卷被误派去续卷。
+			if state.AggregateRefresh == nil && state.Progress != nil && state.Progress.Layered &&
+				state.Progress.Phase == domain.PhaseWriting && state.ArcBoundary != nil &&
+				state.ArcBoundary.IsVolumeEnd && state.HasArcReview && state.HasArcSummary && state.HasVolumeSummary {
+				complete, reconcileErr := tools.ReconcileLayeredCompletion(e.store)
+				if reconcileErr != nil {
+					e.pauseWithNotify(notify.KindWorkerFailure, "完结状态恢复失败，已暂停: "+reconcileErr.Error())
+					return
+				}
+				if complete {
+					continue
+				}
+			}
 			inst = flow.Route(state)
 		}
 		if inst == nil {
@@ -237,7 +256,11 @@ func (e *engine) run(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
+		e.rememberWorkerError(inst, err)
 		if err != nil {
+			// trackDeadlock 在派发前预记本次尝试。未进入有效 Worker
+			// 语义执行的错误不能被计为“同一任务无进展”。
+			e.discardNonSemanticDeadlockAttempt(inst, err)
 			if stop := e.handleWorkerError(ctx, inst, err); stop {
 				return
 			}
@@ -332,7 +355,7 @@ func (e *engine) retryPlanStart(ctx context.Context, prompt string) *flow.Instru
 		slog.Warn("启动补裁审计落盘失败", "module", "engine", "err", recErr)
 	}
 	if derr != nil {
-		e.pauseWithNotify(notify.KindPlanStart, "启动裁定失败,已暂停(请检查模型/网络配置后继续): "+truncate(derr.Error(), 200))
+		e.pauseWithNotify(notify.KindPlanStart, "启动裁定失败,已暂停(请检查模型/网络配置后继续): "+derr.Error())
 		return nil
 	}
 	if err := e.store.RunMeta.SetPlanStart(domain.PlanStartRecord{
@@ -378,7 +401,7 @@ func (e *engine) precheck(inst *flow.Instruction) (*flow.Instruction, error) {
 				// 是说给 LLM 的;Engine 直接做正确的事)。
 				return &flow.Instruction{
 					Agent:  "architect_long",
-					Task:   fmt.Sprintf("下一弧为骨架(%s)。调用 save_foundation(type=expand_arc) 展开下一弧;若当前卷已写完,改用 type=append_volume 追加并展开下一卷。", err),
+					Task:   fmt.Sprintf("下一弧为骨架(%s)。调用 expand_next_arc 展开下一弧；若当前卷已写完，改用 save_foundation(type=append_volume) 追加并展开下一卷。", err),
 					Reason: "写作目标章未展开,先展开再续写",
 				}, nil
 			}
@@ -414,7 +437,7 @@ func (e *engine) trackDeadlock(ctx context.Context, inst **flow.Instruction) (st
 		*inst = nil
 		return false
 	}
-	key := in.Agent + "\x00" + in.Task
+	key := instructionKey(in)
 	if key == e.lastKey {
 		e.repeats++
 	} else {
@@ -424,11 +447,11 @@ func (e *engine) trackDeadlock(ctx context.Context, inst **flow.Instruction) (st
 		return false
 	}
 	if e.repeats >= deadlockAbortAt {
-		e.pauseWithNotify(notify.KindDeadlock, fmt.Sprintf("僵局熔断: 指令连续 %d 次无进展(%s),已暂停等待人工介入", e.repeats, in.Agent))
+		e.pauseStuck(notify.KindDeadlock, in, fmt.Sprintf("僵局熔断: 指令连续 %d 次无进展(%s),已暂停等待人工介入", e.repeats, in.Agent))
 		return true
 	}
 	// Arbiter 僵局咨询(repeats ∈ [consultAt, abortAt))。裁定 retry 不清零计数。
-	facts := e.failureFacts("deadlock", in, nil)
+	facts := e.failureFacts("deadlock", in, e.workerErrorFor(in))
 	decision, err := runObservedDecision(e.observer, "僵局裁定", func() (arbiter.FailureDecision, error) {
 		return arbiter.DecideFailure(ctx, e.arbiterModel, e.failurePrompt, facts)
 	})
@@ -444,24 +467,25 @@ func (e *engine) trackDeadlock(ctx context.Context, inst **flow.Instruction) (st
 		*inst = &flow.Instruction{Agent: decision.Dispatch.Agent, Task: decision.Dispatch.Task, Reason: decision.Reason}
 		return false
 	default: // abort
-		e.pauseWithNotify(notify.KindDeadlock, "僵局裁定: "+decision.Reason)
+		e.pauseStuck(notify.KindDeadlock, in, "僵局裁定: "+decision.Reason)
 		return true
 	}
 }
 
 // runWorker 直接运行一次子代理:DISPATCH 事件 + 进度中继 + 结果解析。
 func (e *engine) runWorker(ctx context.Context, inst *flow.Instruction) error {
-	slog.Info("engine 派发", "module", "engine", "agent", inst.Agent, "reason", inst.Reason)
-	e.observer.dispatchStart(inst.Agent, inst.Task)
+	e.observer.dispatchStart(inst.Agent, inst.Task, inst.Reason)
 	// Writer 任务预标进行中(与旧 Dispatcher 一致:UI 大纲立即反映"▸ 进行中")。
 	if inst.Agent == "writer" && inst.Chapter > 0 {
 		if err := e.store.Progress.ValidateChapterWork(inst.Chapter); err != nil {
-			e.observer.dispatchFinish(inst.Agent, true)
-			return fmt.Errorf("%w: %w", errInvalidWriteTarget, err)
+			runErr := fmt.Errorf("%w: %w", errInvalidWriteTarget, err)
+			e.observer.dispatchFinish(inst.Agent, runErr)
+			return runErr
 		}
 		if err := e.store.Progress.StartChapter(inst.Chapter); err != nil {
-			e.observer.dispatchFinish(inst.Agent, true)
-			return fmt.Errorf("%w: 预标第 %d 章进行中失败: %w", errInvalidWriteTarget, inst.Chapter, err)
+			runErr := fmt.Errorf("%w: 预标第 %d 章进行中失败: %w", errInvalidWriteTarget, inst.Chapter, err)
+			e.observer.dispatchFinish(inst.Agent, runErr)
+			return runErr
 		}
 	}
 
@@ -474,7 +498,7 @@ func (e *engine) runWorker(ctx context.Context, inst *flow.Instruction) error {
 		// 成功即清失败追踪:同键的下一次失败重新享有"先重试一次"额度。
 		e.failedKey = ""
 	}
-	e.observer.dispatchFinish(inst.Agent, err != nil)
+	e.observer.dispatchFinish(inst.Agent, err)
 	return err
 }
 
@@ -483,10 +507,8 @@ func (e *engine) runWorker(ctx context.Context, inst *flow.Instruction) error {
 // 负责阻止不合法写入。
 func (e *engine) handleWorkerError(ctx context.Context, inst *flow.Instruction, werr error) (stop bool) {
 	msg := werr.Error()
-	e.emitEvent(Event{Time: time.Now(), Category: "ERROR", Agent: inst.Agent,
-		Summary: truncate(fmt.Sprintf("%s 失败: %s", inst.Agent, msg), 120), Detail: msg, Level: "error"})
 
-	key := inst.Agent + "\x00" + inst.Task
+	key := instructionKey(inst)
 	if e.failedKey != key {
 		// 首败:原指令重试一次(下一轮 Route 重算,事实驱动天然幂等)。
 		e.failedKey = key
@@ -512,9 +534,96 @@ func (e *engine) handleWorkerError(ctx context.Context, inst *flow.Instruction, 
 		e.mu.Unlock()
 		return false
 	default: // abort
-		e.pauseWithNotify(notify.KindWorkerFailure, "失败裁定: "+decision.Reason+contentFilterAdvice(werr))
+		e.pauseStuck(notify.KindWorkerFailure, inst, "失败裁定: "+decision.Reason+contentFilterAdvice(werr))
 		return true
 	}
+}
+
+// pauseStuck 在引擎放弃一条指令时暂停:返工章先出队再停。仅用于引擎已判定该指令
+// 走不通的出路(僵局熔断、僵局/失败裁定 abort),裁定不可用等基础设施故障仍走
+// pauseWithNotify——那是外部问题,不该赔上一章返工。
+func (e *engine) pauseStuck(kind string, inst *flow.Instruction, body string) {
+	if e.dropStuckRewrite(inst) {
+		body += fmt.Sprintf("；第 %d 章已移出返工队列(保留上一版终稿),继续创作将从后续章节推进", inst.Chapter)
+	}
+	e.pauseWithNotify(kind, body)
+}
+
+// dropStuckRewrite 把卡死的返工章移出队列。PendingRewrites 是持久化事实,引擎放弃
+// 这条指令时不出队的话,重启会立刻重放同一条死指令,把整本书永久锁死(issue #110)。
+// 返回 true 表示确实出队了。
+func (e *engine) dropStuckRewrite(inst *flow.Instruction) bool {
+	if inst == nil || inst.Agent != "writer" || inst.Chapter <= 0 {
+		return false
+	}
+	progress, err := e.store.Progress.Load()
+	if err != nil || progress == nil || !slices.Contains(progress.PendingRewrites, inst.Chapter) {
+		return false
+	}
+	if err := e.store.Progress.CompleteRewrite(inst.Chapter); err != nil {
+		slog.Warn("卡死返工章出队失败", "module", "engine", "chapter", inst.Chapter, "err", err)
+		return false
+	}
+	return true
+}
+
+// discardNonSemanticDeadlockAttempt 撤销 trackDeadlock 为本次派发预记的
+// 语义尝试。只排除模型调用未完整执行的稳定错误类型；content_filter
+// 保留在原有自愈路径，max_turns、stop_guard、取消等真实无进展仍计数。
+func (e *engine) discardNonSemanticDeadlockAttempt(inst *flow.Instruction, werr error) {
+	if inst == nil || !isNonSemanticWorkerFailure(werr) {
+		return
+	}
+	key := instructionKey(inst)
+	if e.lastKey != key || e.repeats <= 0 {
+		return
+	}
+	e.repeats--
+	if e.repeats == 0 {
+		e.lastKey = ""
+	}
+}
+
+// isNonSemanticWorkerFailure 仅识别“本次模型执行没有产生可判断语义”的错误。
+// 优先依赖 agentcore 的错误链契约；错误链被供应商扁平化时复用日志分类。
+func isNonSemanticWorkerFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, agentcore.ErrContextOverflow) || errors.Is(err, agentcore.ErrStreamPartial) {
+		return true
+	}
+	providerErr := agentcore.ClassifyProvider(err)
+	classified := errors.Is(providerErr, agentcore.ErrProviderStreamIdle) ||
+		errors.Is(providerErr, agentcore.ErrProviderQuota) ||
+		errors.Is(providerErr, agentcore.ErrProviderRateLimit) ||
+		errors.Is(providerErr, agentcore.ErrProviderTimeout) ||
+		errors.Is(providerErr, agentcore.ErrProviderAuth) ||
+		errors.Is(providerErr, agentcore.ErrProviderNetwork) ||
+		errors.Is(providerErr, agentcore.ErrProviderOverloaded)
+	return classified || errorKind(err, err.Error()) == "overloaded"
+}
+
+func instructionKey(inst *flow.Instruction) string {
+	if inst == nil {
+		return ""
+	}
+	return inst.Agent + "\x00" + inst.Task
+}
+
+func (e *engine) rememberWorkerError(inst *flow.Instruction, workerErr error) {
+	if workerErr == nil || inst == nil {
+		e.lastWorkerErrorKey, e.lastWorkerError = "", nil
+		return
+	}
+	e.lastWorkerErrorKey, e.lastWorkerError = instructionKey(inst), workerErr
+}
+
+func (e *engine) workerErrorFor(inst *flow.Instruction) error {
+	if e.lastWorkerErrorKey != instructionKey(inst) {
+		return nil
+	}
+	return e.lastWorkerError
 }
 
 // contentFilterAdvice 给内容审核拦截的暂停附上用户可执行的出路。
@@ -536,7 +645,10 @@ func (e *engine) failureFacts(kind string, inst *flow.Instruction, workerErr err
 	f := arbiter.FailureFacts{Kind: kind, Agent: inst.Agent, Task: inst.Task, Repeats: e.repeats}
 	if workerErr != nil {
 		f.Error = workerErr.Error()
-		f.ErrorKind = agentcore.ErrorKind(workerErr)
+		f.ErrorKind = errorKind(workerErr, f.Error)
+		if f.ErrorKind == "" {
+			f.ErrorKind = "unknown"
+		}
 	}
 	missing, err := e.store.FoundationMissing()
 	if err != nil {
@@ -654,7 +766,7 @@ func (e *engine) applyControlOp(ctx context.Context, op controlOp) error {
 			}
 			e.emitEvent(Event{Time: time.Now(), Category: "SYSTEM", Summary: "已取消一次性暂停", Level: "info"})
 		} else {
-			hold := domain.AdvanceHold{After: op.hold.After, Reason: op.hold.Reason}
+			hold := domain.AdvanceHold{After: op.hold.After, TargetChapter: op.hold.TargetChapter, Reason: op.hold.Reason}
 			if err := e.store.RunMeta.SetAdvanceHold(hold); err != nil {
 				e.emitEvent(Event{Time: time.Now(), Category: "ERROR", Summary: "设置一次性暂停失败: " + err.Error(), Level: "error"})
 				return err // hold 未落盘时关联 dispatch 不得执行
@@ -663,8 +775,7 @@ func (e *engine) applyControlOp(ctx context.Context, op controlOp) error {
 		}
 	}
 	if op.reopen != nil {
-		args, _ := json.Marshal(map[string]any{"chapters": op.reopen.Chapters, "reason": op.reopen.Reason})
-		if _, err := tools.NewReopenBookTool(e.store).Execute(ctx, args); err != nil {
+		if err := tools.ReopenBook(e.store, op.reopen.Chapters, op.reopen.Reason); err != nil {
 			e.emitEvent(Event{Time: time.Now(), Category: "ERROR", Summary: "重开返工失败: " + err.Error(), Level: "error"})
 			fail(err)
 		} else {
@@ -718,17 +829,9 @@ func (e *engine) pauseWithNotify(kind, body string) {
 	e.abort()
 }
 
-// completionSummary 完本的确定性收尾报告(store 已有全部事实,不花 LLM 调用;RFC 末节)。
-func completionSummary(st *storepkg.Store) string {
-	progress, err := st.Progress.Load()
-	if err != nil || progress == nil {
-		return "创作完成"
-	}
+// completionSummary 完本的确定性收尾报告，不花 LLM 调用。
+func completionSummary(progress domain.Progress, book domain.BookMetadata) string {
 	var b strings.Builder
-	name := progress.NovelName
-	if name == "" {
-		name = "本书"
-	}
-	fmt.Fprintf(&b, "《%s》创作完成: 共 %d 章 %d 字", name, len(progress.CompletedChapters), progress.TotalWordCount)
+	fmt.Fprintf(&b, "《%s》创作完成: 共 %d 章 %d 字", book.Title, len(progress.CompletedChapters), progress.TotalWordCount)
 	return b.String()
 }

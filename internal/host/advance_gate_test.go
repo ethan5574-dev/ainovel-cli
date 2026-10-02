@@ -26,7 +26,7 @@ func newAdvanceGateTest(t *testing.T, mode domain.ChapterAdvanceMode) (*storepkg
 	if err := st.RunMeta.SetAdvanceMode(mode); err != nil {
 		t.Fatalf("advance mode: %v", err)
 	}
-	if err := st.Progress.Init("闸门测试", 10); err != nil {
+	if err := st.Progress.Init(10); err != nil {
 		t.Fatalf("progress init: %v", err)
 	}
 	if err := st.Progress.UpdatePhase(domain.PhaseWriting); err != nil {
@@ -188,5 +188,103 @@ func TestChapterAdvanceGateHoldLifecycle(t *testing.T) {
 	meta, _ := st.RunMeta.Load()
 	if meta.AdvanceHold != nil {
 		t.Fatalf("暂停前 hold 必须原子消费: %+v", meta.AdvanceHold)
+	}
+}
+
+func TestChapterAdvanceGateStopsAfterTargetChapterCommit(t *testing.T) {
+	st, gate, recorder := newAdvanceGateTest(t, domain.ChapterAdvanceAuto)
+	hold := domain.AdvanceHold{After: domain.AdvanceHoldAtChapter, TargetChapter: 2, Reason: "写到第2章"}
+	if err := st.RunMeta.SetAdvanceHold(hold); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Progress.MarkChapterComplete(1, 1000, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Checkpoints.Append(domain.ChapterScope(1), "commit", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if gate.HandleBoundary() {
+		t.Fatal("目标章节未完成时不能暂停")
+	}
+	if err := st.Progress.MarkChapterComplete(2, 1000, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Checkpoints.Append(domain.ChapterScope(2), "commit", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if !gate.HandleBoundary() || recorder.paused != 1 {
+		t.Fatal("目标章节稳定提交后必须暂停")
+	}
+	if len(recorder.reasons) == 0 || !strings.Contains(recorder.reasons[len(recorder.reasons)-1], "第 2 章") {
+		t.Fatalf("暂停事件缺少目标章节: %v", recorder.reasons)
+	}
+	meta, _ := st.RunMeta.Load()
+	if meta.AdvanceHold != nil {
+		t.Fatalf("目标章节暂停前必须消费 hold: %+v", meta.AdvanceHold)
+	}
+}
+
+func TestChapterAdvanceGateTargetHoldWaitsForCommitRecovery(t *testing.T) {
+	st, gate, recorder := newAdvanceGateTest(t, domain.ChapterAdvanceAuto)
+	hold := domain.AdvanceHold{After: domain.AdvanceHoldAtChapter, TargetChapter: 1, Reason: "写到第1章"}
+	if err := st.RunMeta.SetAdvanceHold(hold); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Progress.MarkChapterComplete(1, 1000, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Progress.MarkComplete(); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Signals.SavePendingCommit(domain.PendingCommit{Chapter: 1, Stage: domain.CommitStageProgressMarked}); err != nil {
+		t.Fatal(err)
+	}
+	if gate.HandleBoundary() || recorder.paused != 0 {
+		t.Fatal("提交恢复未完成时不能消费目标章节 hold")
+	}
+	meta, _ := st.RunMeta.Load()
+	if meta.AdvanceHold == nil {
+		t.Fatal("提交恢复期间必须保留目标章节 hold")
+	}
+	if err := st.Signals.ClearPendingCommit(); err != nil {
+		t.Fatal(err)
+	}
+	if !gate.HandleBoundary() || recorder.paused != 1 {
+		t.Fatal("提交恢复记录消失但 checkpoint 缺失时必须显式暂停")
+	}
+	meta, _ = st.RunMeta.Load()
+	if meta.AdvanceHold == nil {
+		t.Fatal("损坏状态下不得消费目标章节 hold")
+	}
+}
+
+func TestChapterAdvanceGateTargetHoldTemporarilyAuthorizesReviewMode(t *testing.T) {
+	st, gate, recorder := newAdvanceGateTest(t, domain.ChapterAdvanceReview)
+	hold := domain.AdvanceHold{After: domain.AdvanceHoldAtChapter, TargetChapter: 2, Reason: "写到第2章"}
+	if err := st.RunMeta.SetAdvanceHold(hold); err != nil {
+		t.Fatal(err)
+	}
+	for chapter := 1; chapter <= 2; chapter++ {
+		allowed, err := gate.Allow(&flow.Instruction{Agent: "writer", Chapter: chapter})
+		if err != nil || !allowed {
+			t.Fatalf("目标章节 hold 应临时放行第 %d 章: allowed=%v err=%v", chapter, allowed, err)
+		}
+		if err := st.Progress.MarkChapterComplete(chapter, 1000, "", ""); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.Checkpoints.Append(domain.ChapterScope(chapter), "commit", "", ""); err != nil {
+			t.Fatal(err)
+		}
+		stopped := gate.HandleBoundary()
+		if chapter < 2 && stopped {
+			t.Fatal("到达目标章节前不能暂停")
+		}
+		if chapter == 2 && !stopped {
+			t.Fatal("到达目标章节后必须暂停")
+		}
+	}
+	meta, _ := st.RunMeta.Load()
+	if recorder.paused != 1 || meta.AdvanceMode != domain.ChapterAdvanceReview || meta.AdvanceHold != nil {
+		t.Fatalf("暂停后应恢复原有 review 政策: paused=%d meta=%+v", recorder.paused, meta)
 	}
 }

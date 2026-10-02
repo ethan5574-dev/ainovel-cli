@@ -31,7 +31,7 @@ type importState struct {
 	err        error
 	done       bool // 终态（完成/出错）
 	paused     bool // 管线在 awaiting 处停下、事件通道已关闭：面板可关闭，非终态
-	frame      int  // cursor tick（120ms，与流式光标同速）同步的动画帧：尾随星标与倒计时靠它逐 tick 重算
+	frame      int  // 主动画同步帧：尾随星标与倒计时靠它逐 tick 重算
 	cancel     context.CancelFunc
 	viewport   viewport.Model
 }
@@ -147,7 +147,7 @@ func (s *importState) refresh(contentW int) {
 	now := time.Now()
 	for i := range s.history {
 		ln := &s.history[i]
-		// 已定稿行按宽度缓存渲染结果：refresh 每 120ms tick 都跑，千行级历史全量
+		// 已定稿行按宽度缓存渲染结果：refresh 每个动画 tick 都跑，千行级历史全量
 		// 重排（wrapText+逐行套色）是平方级开销，publish 阶段会肉眼可见卡顿。
 		// 只有倒计时仍活跃的行需要逐 tick 重算（到点后多算 2s 以清掉徽标）。
 		live := !ln.retryAt.IsZero() && now.Before(ln.retryAt.Add(2*time.Second))
@@ -161,7 +161,7 @@ func (s *importState) refresh(contentW int) {
 
 	running := !s.done && !s.paused
 	if running {
-		// 尾随光标：流式面板同款单星跟在最后一条日志下方，cursor tick 驱动逐帧跳动，
+		// 尾随光标：流式面板同款单星跟在最后一条日志下方，随主动画逐帧跳动，
 		// 与顶部"进行中"指示行呼应——日志尾部有它，退避等待期也一眼可见管线还活着。
 		b.WriteString("\n\n")
 		b.WriteString(lipgloss.NewStyle().Foreground(colorAccent).Bold(true).
@@ -318,8 +318,7 @@ func renderImportModal(width, height int, s *importState, frame int) string {
 
 	body := strings.Split(s.viewport.View(), "\n")
 	if running {
-		// 运行中的活动指示：单颗流式面板同款星星 + 已用时。刻意用慢速 spinner 帧（350ms）——
-		// 与日志尾部 120ms 的快速尾随光标拉开节奏，顶部是常驻状态行，太快反而扎眼。
+		// 运行中的活动指示：单颗流式面板同款星星 + 已用时，随主动画低频更新。
 		// 挂在 viewport 外的固定行——viewport 内容只随事件刷新，动画放里面不会动；
 		// 没有它，长时模型调用/退避重试期间面板纹丝不动，用户会误以为卡死。
 		star := lipgloss.NewStyle().Foreground(colorAccent).Bold(true).

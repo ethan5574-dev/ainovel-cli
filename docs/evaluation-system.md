@@ -114,7 +114,7 @@ A/B 的硬约束：同需求、同配置、同模型/provider、同风格、隔�
 
 依赖方向：`eval → host → agents → tools → store → domain`，横向复用 `diag` / `stylestat`。评测层**不反向依赖**运行时控制流，只读 Store 与只读评测器。
 
-> **当前实现覆盖确定性主线**：无 `--variant` 时为 `mode=single`；传 `--variant` 时为 `mode=ab`，同一 case 隔离运行 baseline 与 variant，并生成 delta。Collectors 已接 `diag.Diagnose`、case 契约、`stylestat.Compute`、`meta/usage.json`、session tool call 计数；Graders 已接确定性门禁、baseline/variant diag delta、cost/token/tool call delta、stylestat delta。Runner 直接 `host.New` 装配并自带章数上限截停，**不复用 `headless.Run`**（后者无章数上限、且会设交互式 ask_user handler）。LLM Judge 与 Human 仍是后续可选层，不参与当前确定性门禁。
+> **当前实现覆盖确定性主线**：无 `--variant` 时为 `mode=single`；传 `--variant` 时为 `mode=ab`，同一 case 隔离运行 baseline 与 variant，并生成 delta。Collectors 已接 `diag.Diagnose`、case 契约、`stylestat.Compute`、`meta/usage.json`、session tool call 计数；Graders 已接确定性门禁、baseline/variant diag delta、cost/token/tool call delta、stylestat delta。Runner 直接 `host.New` 装配并自带章数上限截停，**不复用无章数上限的 `headless.Run`**。LLM Judge 与 Human 仍是后续可选层，不参与当前确定性门禁。
 
 ---
 
@@ -204,7 +204,7 @@ Case 是评测输入的最小单位，也是一组**事实层断言**。用 JSON
 **关键纪律：断言契约，不断言精确工具序列。** 架构押注 LLM 自主决策流程（`architecture.md` §2.1），把工具顺序写死会在评测层重新引入被 §10.13 拒绝的"为 LLM 行为写硬编码"。所以这里只断言**必然事实**：
 
 - Writer：`chapter:N:commit` checkpoint 存在；commit 后子代理本轮结束（无超长尾随正文）；draft checkpoint 先于 commit。**不**断言"必须 novel_context→read_chapter→plan→draft→check→commit 这个精确顺序**。
-- Architect：写作期 outline 只增不全覆（`expand_arc`/`append_volume` 的 checkpoint，没有第二条 `layered_outline` 全量写）；展开后扁平 outline 与 layered 章节数一致。
+- Architect：写作期 outline 只增不全覆（`expand_next_arc`/`append_volume` 的 checkpoint，没有第二条 `layered_outline` 全量写）；展开后扁平 outline 与 layered 章节数一致。
 - Editor：`ReviewEntry.Verdict` 合法（accept/polish/rewrite）；rewrite/polish 必须产出 affected chapters；弧末有 `arc_summary`、卷末有 `volume_summary` checkpoint。
 - Engine 派发：Route 指令与实际运行的 Worker 匹配（从 session trace 读，diag `repeatedErrors` 兜底循环）；语义裁定核对 `meta/decisions.jsonl`。
 

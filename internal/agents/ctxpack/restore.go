@@ -27,8 +27,11 @@ const WriterSummaryPrompt = `The above messages are the writing conversation tha
 
 Use the following **exact format**:
 
-## Current Progress
-[Which chapter is being written, which scene/paragraph is in progress, target word count progress for this chapter]
+## 当前任务
+[协调器本次下发的任务，原样保留]
+
+## 当前进度
+[正在写第几章，进行到哪个场景/段落，本章目标字数进展]
 
 ## Real-time Character Status
 - [Character Name]: [Current emotion, motivation, location, relationship changes with other characters]
@@ -61,24 +64,26 @@ Keep it concise. Retain accurate character names, location names, and chapter nu
 
 const WriterUpdateSummaryPrompt = `The above messages are a **new conversation** that needs to be merged into the existing summary. The existing summary is in the <previous-summary> tag.
 
-Update rules:
-- Retain all character statuses that are still valid, update those that have changed
-- Remove resolved foreshadowing, add newly planted foreshadowing
-- Mark resolved review issues as fixed or remove them, add new issues
-- Update "Current Progress" to the latest position
-- Update the emotional tone in "Style & Pacing" if it has changed
-- Retain accurate character names, location names, and chapter numbers
+更新规则：
+- "当前任务"原样保留，不改写
+- 保留所有仍然有效的角色状态，更新发生变化的
+- 已回收的伏笔移除，新埋的伏笔加入
+- 已修的审稿问题标记为已修或移除，新问题加入
+- 更新"当前进度"到最新位置
+- 更新"风格与节奏"中的情绪基调（如有变化）
+- 保留准确的角色名、地点名和章节号
 
 Use the same format as the previous summary:
 
-## Current Progress
-## Real-time Character Status
-## Active Foreshadowing & Clues
-## Review Feedback & Pending Issues
-## Style & Pacing
-## Key Decisions
-## Next Steps
-## Key Context`
+## 当前任务
+## 当前进度
+## 角色即时状态
+## 活跃伏笔与线索
+## 审稿反馈与待修问题
+## 风格与节奏
+## 关键决策
+## 下一步
+## 关键上下文`
 
 const WriterTurnPrefixPrompt = `This is the prefix portion of a conversation turn that is too long to be kept entirely. The suffix (recent work) is preserved separately.
 
@@ -169,8 +174,11 @@ func (p *WriterRestorePack) Clear() {
 // Hook returns a PostSummaryHook that injects the cached restore pack.
 // The hook performs no I/O — it only reads the in-memory pack under a read lock.
 func (p *WriterRestorePack) Hook() corecontext.PostSummaryHook {
-	return func(_ context.Context, _ corecontext.SummaryInfo, _ []agentcore.AgentMessage) ([]agentcore.AgentMessage, error) {
-		msg, ok := p.buildMessage(restoreBudgetTokens)
+	return func(_ context.Context, _ corecontext.SummaryInfo, _ []agentcore.AgentMessage, room int) ([]agentcore.AgentMessage, error) {
+		msg, ok, err := p.buildMessage(min(restoreBudgetTokens, room))
+		if err != nil {
+			return nil, err
+		}
 		if !ok {
 			return nil, nil
 		}
@@ -178,20 +186,20 @@ func (p *WriterRestorePack) Hook() corecontext.PostSummaryHook {
 	}
 }
 
-// buildMessage assembles the restore message within the given token budget.
-// Items are added in priority order: plan → outline → snapshots.
-// Returns false if nothing to inject.
-func (p *WriterRestorePack) buildMessage(budgetTokens int) (agentcore.Message, bool) {
+// buildMessage returns the cached restore message when it fits.
+func (p *WriterRestorePack) buildMessage(budgetTokens int) (agentcore.Message, bool, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
 	if p.text == "" {
-		return agentcore.Message{}, false
+		return agentcore.Message{}, false, nil
 	}
-	if budgetTokens > 0 && corecontext.EstimateTokens(agentcore.UserMsg(p.text)) > budgetTokens {
-		return agentcore.Message{}, false
+	msg := agentcore.UserMsg(p.text)
+	required := corecontext.EstimateTokens(msg)
+	if required > budgetTokens {
+		return agentcore.Message{}, false, fmt.Errorf("writer restore pack requires %d tokens, only %d available", required, budgetTokens)
 	}
-	return agentcore.UserMsg(p.text), true
+	return msg, true, nil
 }
 
 // truncateJSONToTokens keeps the first portion of JSON bytes that fits within

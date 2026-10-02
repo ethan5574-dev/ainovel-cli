@@ -64,7 +64,7 @@ func buildWriterStoreSummaryText(s *store.Store, budgetTokens int) (string, bool
 	if len(parts) == 0 {
 		return "", false, nil
 	}
-	return "以下内容来自小说持久化 store，用于在压缩后恢复写作上下文。\n\n" + strings.Join(parts, "\n\n"), true, nil
+	return strings.Join(parts, "\n\n"), true, nil
 }
 
 func buildWriterRestoreText(s *store.Store, budgetTokens int) (string, bool, error) {
