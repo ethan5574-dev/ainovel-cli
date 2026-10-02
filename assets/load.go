@@ -230,7 +230,7 @@ var promptRole = map[string]string{
 
 const simulationGuidance = `## Simulation Profile
 
-当 novel_context 的 planning_memory 或 working_memory 中存在 simulation_profile 时，必须把它视为当前作品的仿写方向约束。{{role}} 应读取其中的 style、lexicon、plot_design、hook_design、pacing_density、reader_engagement 和 role_guidance。
+When planning_memory or working_memory contains simulation_profile, treat it as the current book's stylistic imitation constraint. {{role}} must read its style, lexicon, plot_design, hook_design, pacing_density, reader_engagement, and role_guidance.
 
 Principles: borrow structure, pacing, hooks, information release, and reader-engagement techniques; do not copy source sentences, characters, place names, named settings, or fixed scenes. If simulation_profile conflicts with an explicit user request, follow the user request.`
 

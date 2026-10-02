@@ -5,31 +5,31 @@ import (
 	"strings"
 )
 
-// CastEntry 是从章节接纳记录投影出的配角信息。
+// CastEntry projects supporting-character information from accepted chapter records.
 //
-// 与 Character（characters.json，Architect 维护的核心档案）解耦：
-//   - CastEntry 由 ChapterRecord 确定性计算，记录"出现过的有名字的次要角色"
-//   - Character 由 Architect 显式设计，记录主角和关键配角的人格弧线/特质/tier
+// Decoupled from Character (core profiles maintained by Architect in characters.json):
+//   - CastEntry deterministically records named minor characters from ChapterRecord
+//   - Character stores explicitly planned arcs, traits, and tiers for main/key supporting characters
 //
-// 同名时以 Character 为准，避免重复。
+// Character takes precedence for matching names to avoid duplication.
 type CastEntry struct {
 	Name             string `json:"name"`
-	BriefRole        string `json:"brief_role,omitempty"` // 一句话定位（首次出场由 Writer 填，可后续补全；不被覆盖）
+	BriefRole        string `json:"brief_role,omitempty"` // Brief role supplied by Writer; may be filled later but is never overwritten
 	FirstSeenChapter int    `json:"first_seen_chapter"`
 	LastSeenChapter  int    `json:"last_seen_chapter"`
-	// AppearanceCount 派生自 len(AppearanceChapters)。
+	// AppearanceCount derives from len(AppearanceChapters).
 	AppearanceCount    int   `json:"appearance_count"`
 	AppearanceChapters []int `json:"appearance_chapters"`
 }
 
-// CastIntro 是 Writer 在 commit_chapter 时对新出场角色的简介声明。
-// 投影采用该角色最早的非空简介。
+// CastIntro is Writer's introduction of a new character at commit_chapter.
+// Projection uses the earliest nonempty introduction.
 type CastIntro struct {
 	Name      string `json:"name"`
 	BriefRole string `json:"brief_role"`
 }
 
-// ProjectCast 从接纳记录重建配角视图。records 的输入顺序不影响结果。
+// ProjectCast rebuilds the cast from accepted records, independently of input order.
 func ProjectCast(records []ChapterRecord, characters []Character) []CastEntry {
 	records = slices.Clone(records)
 	slices.SortFunc(records, func(a, b ChapterRecord) int { return a.Chapter - b.Chapter })
@@ -80,7 +80,7 @@ func ProjectCast(records []ChapterRecord, characters []Character) []CastEntry {
 	return out
 }
 
-// RecentCast 返回最近活跃的前 limit 位配角，不修改输入。
+// RecentCast returns up to limit recently active characters without modifying input.
 func RecentCast(entries []CastEntry, limit int) []CastEntry {
 	if limit <= 0 {
 		return nil

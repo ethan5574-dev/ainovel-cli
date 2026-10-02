@@ -79,8 +79,8 @@ func NewStore(dir string) *Store {
 // Dir 返回输出根目录。
 func (s *Store) Dir() string { return s.dir }
 
-// LoadProjectFormatVersion 返回作品目录的数据格式版本。旧作品没有版本文件，
-// 视为 v1，由启动迁移统一升级，业务代码无需保留旧格式分支。
+// LoadProjectFormatVersion reads the book-directory format version. Legacy books without a version file
+// are v1 and upgraded at startup, keeping old-format branches out of business logic.
 func (s *Store) LoadProjectFormatVersion() (int, error) {
 	var format projectFormat
 	if err := s.Progress.io.ReadJSON(projectFormatPath, &format); err != nil {
@@ -90,15 +90,15 @@ func (s *Store) LoadProjectFormatVersion() (int, error) {
 		return 0, err
 	}
 	if format.Version <= 0 {
-		return 0, fmt.Errorf("项目格式版本无效: %d", format.Version)
+		return 0, fmt.Errorf("invalid project format version: %d", format.Version)
 	}
 	return format.Version, nil
 }
 
-// SaveProjectFormatVersion 在一次迁移全部完成后原子更新项目格式版本。
+// SaveProjectFormatVersion atomically updates the format version after a migration finishes.
 func (s *Store) SaveProjectFormatVersion(version int) error {
 	if version <= 0 {
-		return fmt.Errorf("项目格式版本必须大于 0: %d", version)
+		return fmt.Errorf("project format version must be greater than 0: %d", version)
 	}
 	return s.Progress.io.WriteJSON(projectFormatPath, projectFormat{Version: version})
 }
@@ -151,7 +151,7 @@ func (s *Store) CheckConsistency() []string {
 	return warnings
 }
 
-// FoundationMissing 返回初始规划中尚缺的作品信息与基础设定，顺序稳定。
+// FoundationMissing returns missing book metadata/foundation artifacts in stable order.
 // 长篇模式（已有 layered_outline）额外要求 compass。读取失败必须原样返回，不能把
 // 损坏或无权限读取的工件误判成“尚未创建”，否则调用方可能覆盖真实数据。
 func (s *Store) FoundationMissing() ([]string, error) {
@@ -258,14 +258,14 @@ func (s *Store) Init() error {
 
 // ── 跨域协调方法 ──
 
-// ArcPosition 是由分层大纲故事顺序确定的卷弧位置。
+// ArcPosition locates a volume/arc in layered-outline story order.
 type ArcPosition struct {
 	Volume int
 	Arc    int
 }
 
-// ExpandNextArc 展开当前已完成弧之后的下一弧（Outline + Progress 联动）。
-// 目标由已落盘进度和大纲共同确定，模型只负责创作内容。
+// ExpandNextArc expands the arc after the current completed arc, updating Outline and Progress together.
+// Persisted progress and outline determine the target; the model supplies creative content only.
 func (s *Store) ExpandNextArc(expansion domain.ArcExpansion) (ArcPosition, error) {
 	s.crossMu.Lock()
 	defer s.crossMu.Unlock()
@@ -287,11 +287,11 @@ func (s *Store) ExpandNextArc(expansion domain.ArcExpansion) (ArcPosition, error
 		return ArcPosition{}, err
 	}
 	if p == nil {
-		return ArcPosition{}, fmt.Errorf("progress 未初始化: %w", errs.ErrToolPrecondition)
+		return ArcPosition{}, fmt.Errorf("progress is not initialized: %w", errs.ErrToolPrecondition)
 	}
 	boundary := checkArcBoundary(volumes, p.LatestCompleted())
 	if boundary == nil || !boundary.IsArcEnd || boundary.nextVolumePos < 0 {
-		return ArcPosition{}, fmt.Errorf("当前进度不在弧末，无下一弧可展开: %w", errs.ErrToolPrecondition)
+		return ArcPosition{}, fmt.Errorf("progress is not at an arc boundary; no next arc can be expanded: %w", errs.ErrToolPrecondition)
 	}
 	position := ArcPosition{Volume: boundary.NextVolume, Arc: boundary.NextArc}
 	volumes, err = s.Outline.expandArcAtUnlocked(volumes, boundary.nextVolumePos, boundary.nextArcPos, expansion)
@@ -356,7 +356,7 @@ func (s *Store) ReviseOutline(fromChapter int, replacement []domain.OutlineEntry
 		return 0, fmt.Errorf("load progress: %w: %w", errs.ErrStoreRead, err)
 	}
 	if p == nil {
-		return 0, fmt.Errorf("progress 未初始化: %w", errs.ErrToolPrecondition)
+		return 0, fmt.Errorf("progress is not initialized: %w", errs.ErrToolPrecondition)
 	}
 	if p.Phase == domain.PhaseComplete {
 		return 0, fmt.Errorf("全书已完结，不允许修改大纲: %w", errs.ErrToolPrecondition)

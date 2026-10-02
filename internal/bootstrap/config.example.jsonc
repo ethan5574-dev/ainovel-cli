@@ -136,8 +136,8 @@
   //   "events": ["run_end", "budget", "advance_gate", "stop_guard", "plan_start", "deadlock", "worker_failure"]
   // }
 
-  // 可选。置 true 关闭启动时的新版本检查提醒（默认开）。检查只读 GitHub Releases
-  // 公开接口，结果本地缓存 24h；发现新版本时在欢迎页/事件流提示版本号与更新摘要，
-  // 是否升级始终由你运行 ainovel-cli update 决定。
+  // Optional: true disables startup update reminders (enabled by default). Checks use only the public GitHub Releases
+  // API, with results cached locally for 24h. New versions appear on the welcome screen/event stream with release notes.
+  // Run ainovel-cli update yourself when you choose to upgrade.
   // "disable_update_check": false
 }

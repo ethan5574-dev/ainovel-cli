@@ -13,7 +13,7 @@ import (
 	"github.com/voocel/ainovel-cli/internal/errs"
 )
 
-// ErrOutlineChapterNotFound 表示章节尚未进入当前大纲。
+// ErrOutlineChapterNotFound means the chapter is not in the current outline.
 var ErrOutlineChapterNotFound = errors.New("outline chapter not found")
 
 // OutlineStore 管理故事前提、大纲（扁平/分层）和指南针。
@@ -75,8 +75,8 @@ func (s *OutlineStore) GetChapterOutline(chapter int) (*domain.OutlineEntry, err
 	return nil, fmt.Errorf("%w: chapter %d", ErrOutlineChapterNotFound, chapter)
 }
 
-// SaveLayeredOutline 以分层大纲为唯一来源，保存分层视图并同步重建扁平派生视图。
-// 调用方不需要、也不应再单独维护 outline.json/outline.md。
+// SaveLayeredOutline saves the authoritative layered outline and rebuilds the derived flat view synchronously.
+// Callers must not maintain outline.json/outline.md separately.
 func (s *OutlineStore) SaveLayeredOutline(volumes []domain.VolumeOutline) error {
 	return s.io.WithWriteLock(func() error {
 		assignLayeredIndexes(volumes)
@@ -84,7 +84,7 @@ func (s *OutlineStore) SaveLayeredOutline(volumes []domain.VolumeOutline) error 
 	})
 }
 
-// LoadLayeredOutline 读取分层大纲。
+// LoadLayeredOutline read layered outline。
 func (s *OutlineStore) LoadLayeredOutline() ([]domain.VolumeOutline, error) {
 	var volumes []domain.VolumeOutline
 	if err := s.io.ReadJSON("layered_outline.json", &volumes); err != nil {
@@ -262,7 +262,7 @@ func checkArcBoundary(volumes []domain.VolumeOutline, chapter int) *ArcBoundary 
 	return b
 }
 
-// CompletedArcBoundaries 按故事顺序返回已完成的详细弧边界。
+// CompletedArcBoundaries returns completed detailed-arc boundaries in story order.
 func (s *OutlineStore) CompletedArcBoundaries(lastCompleted int) ([]ArcBoundary, error) {
 	volumes, err := s.LoadLayeredOutline()
 	if err != nil {
@@ -290,7 +290,7 @@ func (s *OutlineStore) CompletedArcBoundaries(lastCompleted int) ([]ArcBoundary,
 	return result, nil
 }
 
-// expandArcAtUnlocked 展开故事顺序中的指定弧，不接受模型提供的结构主键。
+// expandArcAtUnlocked expands an arc in story order, without accepting model-provided structural keys.
 func (s *OutlineStore) expandArcAtUnlocked(volumes []domain.VolumeOutline, volumePos, arcPos int, expansion domain.ArcExpansion) ([]domain.VolumeOutline, error) {
 	if strings.TrimSpace(expansion.Title) == "" {
 		return nil, fmt.Errorf("弧标题不能为空")
@@ -337,7 +337,7 @@ func (s *OutlineStore) appendVolumeUnlocked(vol domain.VolumeOutline) ([]domain.
 	numberVolume(&vol, nextIndex)
 	// AppendVolume 的下一步还要更新 Progress。若进程在“大纲已追加、Progress
 	// 未更新”之间中断，恢复会用同一持久化载荷重试；完全相同的末卷应视为幂等，
-	// 让同参数重试继续补齐 Progress，而不是重复追加。
+	// Retry identical arguments to finish Progress updates rather than appending again.
 	if len(volumes) > 0 && sameVolumePlan(volumes[len(volumes)-1], vol) {
 		vol = volumes[len(volumes)-1]
 	} else {
@@ -466,8 +466,8 @@ func assignLayeredIndexes(volumes []domain.VolumeOutline) {
 	}
 }
 
-// repairMissingLayeredIndexes 兼容旧版本曾把可选 index 漏写为 0 的大纲。
-// 正数标识保持原样，避免改动已有摘要和 checkpoint 的作用域。
+// repairMissingLayeredIndexes supports old outlines with omitted optional indexes stored as zero.
+// Preserve positive identifiers so existing summary and checkpoint scopes remain unchanged.
 func repairMissingLayeredIndexes(volumes []domain.VolumeOutline) {
 	for vi := range volumes {
 		if volumes[vi].Index <= 0 {
@@ -581,7 +581,7 @@ func renderOutline(entries []domain.OutlineEntry) string {
 // ── Writer 大纲反馈池 ──
 //
 // commit_chapter 的 feedback(偏离/建议)持久化于此,architect 下次结构操作
-// (expand_next_arc / append_volume / update_compass)经 novel_context 消费后清空。
+// (expand_next_arc / append_volume / update_compass), after consulting novel_context, consumes and clears it.
 // 事实闭环:工具落盘 → 上下文注入 → 结构操作即消费(docs/engine-arbiter.md 阻断1)。
 
 // ChapterFeedback 一条带章节号的大纲反馈。
@@ -595,8 +595,8 @@ type ChapterFeedback struct {
 	At               string   `json:"at"`
 }
 
-// RequiresImmediateReview 区分外部修订影响与普通写作反馈。普通反馈留到下一次
-// 自然结构操作统一吸收；外部修订可能使即将续写的大纲失效，必须先交 Architect。
+// RequiresImmediateReview distinguishes external revisions from ordinary writing feedback. Ordinary feedback waits for
+// the next structural operation; revisions can invalidate imminent plans and must reach Architect first.
 func (f ChapterFeedback) RequiresImmediateReview() bool {
 	return f.StoryChanged || strings.TrimSpace(f.ChangeSummary) != "" || len(f.DownstreamIssues) > 0
 }

@@ -1,10 +1,10 @@
 package utils
 
-// ThinkingSep 是思考文本与正文之间的分隔标记。
-// observer 在思考文本段前插入此标记，TUI 据此切换渲染样式。
+// ThinkingSep separates thinking text from prose.
+// Observer inserts it before thinking segments; TUI uses it to switch rendering styles.
 const ThinkingSep = "\x02"
 
-// TruncateRunes 按 rune 截断并补省略号；n 以内原样返回。
+// TruncateRunes truncates by rune and adds an ellipsis; text within n runes remains unchanged.
 func TruncateRunes(s string, n int) string {
 	runes := []rune(s)
 	if len(runes) <= n {

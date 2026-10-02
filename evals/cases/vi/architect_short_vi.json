@@ -1,0 +1,18 @@
+{
+  "id": "architect_short_vi",
+  "category": "smoke",
+  "role": "architect",
+  "description": "Bản tiếng Việt của architect_short. Prompt được dịch sát nghĩa từ case tiếng Trung để cô lập biến ngôn ngữ: so cùng một cốt truyện giữa CN và VI sẽ thấy chênh lệch chi phí/chất lượng đến từ ngôn ngữ, không phải từ đề bài khác nhau.",
+  "prompt": "Viết một truyện trinh thám ngắn khoảng ba vạn chữ: một đêm tại khu nghỉ dưỡng biệt lập trên núi, nhiều người lần lượt mất tích, chỉ một vị khách lạ từ nơi khác đến nhận ra điểm bất thường.",
+  "max_chapters": 1,
+  "target_prompts": ["architect-short.md"],
+  "expect": {
+    "phase": "writing",
+    "min_completed_chapters": 1,
+    "required_checkpoints": ["global:outline", "global:characters", "chapter:1:commit"],
+    "no_pending": ["pending_commit", "pending_steer"]
+  },
+  "gate": {
+    "max_severity": "warning"
+  }
+}

@@ -47,10 +47,10 @@ func Run(ctx context.Context, deps Deps, opts Options) (*Result, error) {
 	}
 	book, err := deps.Store.Book.Load()
 	if err != nil {
-		return nil, fmt.Errorf("加载作品信息失败：%w", err)
+		return nil, fmt.Errorf("failed to load book metadata: %w", err)
 	}
 	if book == nil {
-		return nil, fmt.Errorf("作品信息不存在，无法导出")
+		return nil, fmt.Errorf("book metadata is missing; cannot export")
 	}
 
 	completed := make(map[int]struct{}, len(progress.CompletedChapters))

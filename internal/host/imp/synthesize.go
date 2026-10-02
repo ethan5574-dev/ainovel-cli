@@ -255,7 +255,7 @@ func rangeInputDigest(facts []ImportedChapterFacts) string {
 }
 
 func synthesizeBook(ctx context.Context, m callModel, systemPrompt, payload string, n, maxTokens int, prof callProfile) (*BookSynthesis, error) {
-	prof.step(0, 0, "生成全书综合（作品信息/premise/characters/大纲结构）...")
+	prof.step(0, 0, "Generating whole-book synthesis (metadata/premise/characters/outline structure)...")
 	s, err := callStructured[BookSynthesis](ctx, m, synthesisContract, systemPrompt, buildBookPayload(payload, n), maxTokens, prof, func(s *BookSynthesis) error {
 		return validateSynthesis(s, n)
 	})
@@ -273,13 +273,13 @@ func buildRangePayload(facts []ImportedChapterFacts) string {
 }
 
 func buildBookPayload(inner string, n int) string {
-	return fmt.Sprintf("以下是全书 %d 章的紧凑事实/区间摘要。请生成 BookSynthesis：title、synopsis、premise、characters、world_rules、卷弧范围 structure、compass、planning_tier、story_status。\n\n%s", n, inner)
+	return fmt.Sprintf("Below are compact facts/range summaries for %d chapters. Generate BookSynthesis: title, synopsis, premise, characters, world_rules, volume/arc ranges in structure, compass, planning_tier, and story_status.\n\n%s", n, inner)
 }
 
 // validateSynthesis 校验综合结果的结构约束（值域/闭集/范围），不复判文学质量。
 func validateSynthesis(s *BookSynthesis, n int) error {
 	if strings.TrimSpace(s.Synopsis) == "" {
-		return fmt.Errorf("synopsis 为空")
+		return fmt.Errorf("synopsis is empty")
 	}
 	if strings.TrimSpace(s.Premise) == "" {
 		return fmt.Errorf("premise 为空")
@@ -417,7 +417,7 @@ func AssembleFoundation(s *BookSynthesis, facts []ImportedChapterFacts, closed b
 	}, nil
 }
 
-// importedBookTitle 在正文无法确认书名时使用源文件名，保证作品信息仍有明确标题。
+// importedBookTitle falls back to the source filename when prose does not identify a title.
 func importedBookTitle(fallbackName string) string {
 	name := strings.TrimSuffix(fallbackName, ".txt")
 	name = strings.TrimSuffix(name, ".md")

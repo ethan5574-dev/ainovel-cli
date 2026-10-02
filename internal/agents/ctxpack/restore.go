@@ -27,11 +27,11 @@ const WriterSummaryPrompt = `The above messages are the writing conversation tha
 
 Use the following **exact format**:
 
-## 当前任务
-[协调器本次下发的任务，原样保留]
+## Current Task
+[The coordinator's assigned task, preserved verbatim]
 
-## 当前进度
-[正在写第几章，进行到哪个场景/段落，本章目标字数进展]
+## Current Progress
+[Current chapter, scene/paragraph position, and progress toward its intended length]
 
 ## Real-time Character Status
 - [Character Name]: [Current emotion, motivation, location, relationship changes with other characters]
@@ -64,26 +64,26 @@ Keep it concise. Retain accurate character names, location names, and chapter nu
 
 const WriterUpdateSummaryPrompt = `The above messages are a **new conversation** that needs to be merged into the existing summary. The existing summary is in the <previous-summary> tag.
 
-更新规则：
-- "当前任务"原样保留，不改写
-- 保留所有仍然有效的角色状态，更新发生变化的
-- 已回收的伏笔移除，新埋的伏笔加入
-- 已修的审稿问题标记为已修或移除，新问题加入
-- 更新"当前进度"到最新位置
-- 更新"风格与节奏"中的情绪基调（如有变化）
-- 保留准确的角色名、地点名和章节号
+Update rules:
+- Keep "Current Task" verbatim
+- Keep valid character states and update changes
+- Remove resolved foreshadowing and add new plants
+- Mark/remove fixed review issues and add new ones
+- Update "Current Progress" to the latest position
+- Update emotional tone in "Style & Pacing" if it changed
+- Preserve exact character/place names and chapter numbers
 
 Use the same format as the previous summary:
 
-## 当前任务
-## 当前进度
-## 角色即时状态
-## 活跃伏笔与线索
-## 审稿反馈与待修问题
-## 风格与节奏
-## 关键决策
-## 下一步
-## 关键上下文`
+## Current Task
+## Current Progress
+## Real-time Character Status
+## Active Foreshadowing & Clues
+## Review Feedback & Pending Issues
+## Style & Pacing
+## Key Decisions
+## Next Steps
+## Key Context`
 
 const WriterTurnPrefixPrompt = `This is the prefix portion of a conversation turn that is too long to be kept entirely. The suffix (recent work) is preserved separately.
 
@@ -124,7 +124,7 @@ func (p *WriterRestorePack) Refresh(s *store.Store) {
 	}
 	progress, err := s.Progress.Load()
 	if err != nil {
-		p.setWarning("progress 读取失败", err)
+		p.setWarning("failed to read progress", err)
 		return
 	}
 	if progress == nil {
@@ -142,7 +142,7 @@ func (p *WriterRestorePack) Refresh(s *store.Store) {
 
 	text, ok, err := buildWriterRestoreText(s, restoreBudgetTokens)
 	if err != nil {
-		p.setWarning("恢复上下文读取失败", err)
+		p.setWarning("failed to read restore context", err)
 		return
 	}
 	if !ok {
@@ -160,7 +160,7 @@ func (p *WriterRestorePack) setWarning(scope string, err error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.chapter = 0
-	p.text = fmt.Sprintf("<post-compact-context>\n## 数据告警\n%s：%v\n</post-compact-context>", scope, err)
+	p.text = fmt.Sprintf("<post-compact-context>\n## Data Warnings\n%s：%v\n</post-compact-context>", scope, err)
 }
 
 // Clear drops cached data (e.g., when switching chapters).

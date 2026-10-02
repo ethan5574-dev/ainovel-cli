@@ -13,7 +13,7 @@ func newTextHandler(w io.Writer, level slog.Level) slog.Handler {
 	return slog.NewTextHandler(w, &slog.HandlerOptions{
 		Level: level,
 		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-			// 保留日期、毫秒和时区；日志跨进程追加时仍能准确对齐代码版本与会话。
+			// Keep date, milliseconds, and timezone to correlate code versions and sessions across appended process logs.
 			if a.Key == slog.TimeKey {
 				a.Value = slog.StringValue(a.Value.Time().Format("2006-01-02T15:04:05.000Z07:00"))
 			}
@@ -40,9 +40,9 @@ func FileLogger(outputDir, filename string) (*slog.Logger, func(), error) {
 		return slog.Default(), func() {}, err
 	}
 	logger, sessionID := newSessionLogger(f, slog.LevelDebug)
-	logger.Info("日志会话开始", "module", "logger", "session_id", sessionID)
+	logger.Info("Log session started", "module", "logger", "session_id", sessionID)
 	return logger, func() {
-		logger.Info("日志会话结束", "module", "logger", "session_id", sessionID)
+		logger.Info("Log session ended", "module", "logger", "session_id", sessionID)
 		_ = f.Close()
 	}, nil
 }
@@ -64,10 +64,10 @@ func SetupFile(outputDir, filename string, alsoStderr bool, sessionAttrs ...slog
 	previous := slog.Default()
 	logger, sessionID := newSessionLogger(w, slog.LevelDebug, sessionAttrs...)
 	slog.SetDefault(logger)
-	logger.Info("日志会话开始", "module", "logger", "session_id", sessionID)
+	logger.Info("Log session started", "module", "logger", "session_id", sessionID)
 
 	return func() {
-		logger.Info("日志会话结束", "module", "logger", "session_id", sessionID)
+		logger.Info("Log session ended", "module", "logger", "session_id", sessionID)
 		slog.SetDefault(previous)
 		_ = f.Close()
 	}, nil

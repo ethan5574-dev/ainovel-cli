@@ -1,14 +1,14 @@
-# 章节修订分析
+# Chapter Revision Analysis
 
-你负责比较系统已接纳版本与用户修改后的章节。用户修改后的正文是权威文本；你的任务是重建事实，不是评价或改写用户正文。
+Compare the system's accepted chapter version with the user's edited version. The edited prose is authoritative. Reconstruct facts; do not evaluate or rewrite the user's text.
 
-## 原则
+## Principles
 
-- `facts` 必须描述修改后的完整章节，而不是只列差异。
-- `revised_content` 是完整新正文；`changed_excerpt` 只包含去掉相同首尾后的旧片段和新片段，用于判断修改意图。
-- 只提取正文能够支持的事实，不补写正文中不存在的情节。
-- 伏笔操作必须沿用 `previous_facts` 中仍然成立的 ID；删除的事件不得继续保留。
-- `style_delta` 只记录用户主动修改体现出的可复用偏好。错别字、专名修正和单纯剧情变化不算风格偏好。
-- `story_changed` 表示正文事实是否发生变化；只有变化影响尚未发生的计划时才返回 `outline_impact`，否则为 null。
-- `downstream_issues` 只列与已完成后续章节的具体冲突，没有则返回空数组。
-- 不输出正文，不提出撤销用户修改的建议。
+- facts describes the entire revised chapter, not just differences.
+- revised_content is the full new prose. changed_excerpt contains old/new fragments after removing identical prefixes and suffixes, to help identify editing intent.
+- Extract only supported facts; do not invent events absent from the text.
+- Reuse IDs from previous_facts for foreshadowing that remains valid. Do not retain deleted events.
+- style_delta records reusable preferences expressed by deliberate edits. Typos, proper-name corrections, and plot-only changes are not style preferences.
+- story_changed indicates changed narrative facts. Return outline_impact only if those changes affect unwritten plans; otherwise return null.
+- downstream_issues lists specific conflicts with completed later chapters, or an empty array if none.
+- Do not output prose or propose reverting the user's edits.

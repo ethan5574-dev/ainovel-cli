@@ -8,15 +8,18 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/voocel/ainovel-cli/assets"
 	"github.com/voocel/ainovel-cli/internal/bootstrap"
 	"github.com/voocel/ainovel-cli/internal/domain"
 	"github.com/voocel/ainovel-cli/internal/host"
+	"github.com/voocel/ainovel-cli/internal/rules"
 )
 
 //go:embed webui/*
@@ -123,8 +126,22 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /", s.handleStatic)
 	mux.HandleFunc("GET /api/health", s.handleHealth)
 	mux.HandleFunc("GET /api/setup/status", s.handleSetupStatus)
+	mux.HandleFunc("GET /api/setup/providers", s.handleSetupProviders)
+	mux.HandleFunc("POST /api/setup/complete", s.handleSetupComplete)
 	mux.HandleFunc("GET /api/snapshot", s.handleSnapshot)
 	mux.HandleFunc("GET /api/config", s.handleConfig)
+	mux.HandleFunc("POST /api/config/provider", s.handleConfigureProvider)
+	mux.HandleFunc("POST /api/config/test", s.handleTestProvider)
+	mux.HandleFunc("POST /api/config/model", s.handleSwitchModel)
+	mux.HandleFunc("GET /api/book", s.handleBook)
+	mux.HandleFunc("GET /api/chapters/", s.handleChapter)
+	mux.HandleFunc("POST /api/import", s.handleImport)
+	mux.HandleFunc("POST /api/import/resume", s.handleImportResume)
+	mux.HandleFunc("POST /api/export", s.handleExport)
+	mux.HandleFunc("POST /api/cocreate/round", s.handleCoCreateRound)
+	mux.HandleFunc("POST /api/cocreate/pause", s.handleCoCreatePause)
+	mux.HandleFunc("POST /api/cocreate/resume", s.handleCoCreateResume)
+	mux.HandleFunc("POST /api/cocreate/cancel", s.handleCoCreateCancel)
 	mux.HandleFunc("GET /api/events", s.handleEvents)
 	mux.HandleFunc("POST /api/start", s.handleStart)
 	mux.HandleFunc("POST /api/resume", s.handleResume)
@@ -140,12 +157,29 @@ func (s *Server) routes() http.Handler {
 func withLocalHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && !sameOrigin(r) {
+			writeError(w, http.StatusForbidden, fmt.Errorf("cross-origin requests are not allowed"))
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func sameOrigin(r *http.Request) bool {
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" {
+		return true
+	}
+	parsed, err := url.Parse(origin)
+	return err == nil && strings.EqualFold(parsed.Host, r.Host)
 }
 
 // handleStatic serves the embedded Vite build. It first tries the exact requested path
@@ -182,6 +216,89 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 // connection to a (possibly still-unattached) runtime is worth attempting.
 func (s *Server) handleSetupStatus(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"needsSetup": bootstrap.NeedsSetup()})
+}
+
+// setupProtocolType is the custom-proxy protocol picker. Duplicated from the 3-item literal
+// in internal/bootstrap/setup.go's unexported apiTypeOptions rather than exporting it there —
+// small enough not to be worth widening bootstrap's surface for.
+type setupProtocolType struct {
+	Name  string `json:"name"`
+	Label string `json:"label"`
+}
+
+var setupProtocolTypes = []setupProtocolType{
+	{Name: "openai", Label: "OpenAI-compatible"},
+	{Name: "anthropic", Label: "Anthropic-compatible"},
+	{Name: "gemini", Label: "Gemini-compatible"},
+}
+
+func (s *Server) handleSetupProviders(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"providers": bootstrap.ProviderPresets(),
+		"types":     setupProtocolTypes,
+	})
+}
+
+type setupCompleteRequest struct {
+	Provider string `json:"provider"` // preset key (e.g. "openrouter"), or a user-chosen name for a custom proxy
+	Type     string `json:"type"`     // protocol type, only meaningful for custom proxies: openai/anthropic/gemini
+	APIKey   string `json:"apiKey"`
+	BaseURL  string `json:"baseURL"`
+	Model    string `json:"model"`
+}
+
+// handleSetupComplete mirrors bootstrap.RunSetup()'s TUI wizard (internal/bootstrap/setup.go),
+// minus the terminal prompts: same four fields, same Config shape, same save path. Validates
+// before writing to disk so a bad submission never leaves a broken config.json behind for the
+// next `ainovel-cli` (TUI) launch to trip over.
+func (s *Server) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.rt(); ok {
+		writeError(w, http.StatusConflict, fmt.Errorf("setup already completed"))
+		return
+	}
+	var req setupCompleteRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	provider := strings.TrimSpace(req.Provider)
+	model := strings.TrimSpace(req.Model)
+	if provider == "" || model == "" {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("provider and model are required"))
+		return
+	}
+	cfg := bootstrap.Config{
+		Provider:  provider,
+		ModelName: model,
+		Providers: map[string]bootstrap.ProviderConfig{
+			provider: {
+				Type:    strings.TrimSpace(req.Type),
+				APIKey:  strings.TrimSpace(req.APIKey),
+				BaseURL: strings.TrimSpace(req.BaseURL),
+				Models:  []bootstrap.ModelConfig{{Name: model}},
+			},
+		},
+		Roles: map[string]bootstrap.RoleConfig{},
+		Style: "default",
+	}
+	cfg.FillDefaults()
+	if err := cfg.ValidateBase(); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := bootstrap.SaveConfig(bootstrap.DefaultConfigPath(), cfg); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	rules.EnsureHomeRulesDir()
+	bundle := assets.Load(cfg.Style, assets.DefaultLoadOptions(cfg.OutputDir))
+	rt, err := host.New(cfg, bundle)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	s.AttachRuntime(rt)
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func (s *Server) handleSnapshot(w http.ResponseWriter, _ *http.Request) {

@@ -19,9 +19,9 @@ func (t *CommitChapterTool) validateCommitArgs(a commitArgs) error {
 		if err != nil {
 			return fmt.Errorf("load foreshadow ledger: %w: %w", errs.ErrStoreRead, err)
 		}
-		// 账本是全书投影，而 Projector 按章序重放章节记录。重写早期章节时账本里
-		// 还躺着后续章节才种下的伏笔——放行它们，提交前校验就与重放结论相反，
-		// 模型无从修正，返工队列随之锁死。故一律以"本章可见"为准。
+		// The ledger projects the whole book, while Projector replays records in chapter order. When rewriting an early chapter,
+		// later planting facts must not be accepted: doing so contradicts replay validation and locks the queue
+		// with an unfixable model payload. Only facts visible at this chapter are valid.
 		plantedAt := make(map[string]int, len(ledger))
 		for _, entry := range ledger {
 			plantedAt[entry.ID] = entry.PlantedAt
@@ -40,7 +40,7 @@ func (t *CommitChapterTool) validateCommitArgs(a commitArgs) error {
 					return fmt.Errorf("foreshadow_updates[%d] references unknown id %q: %w", i, update.ID, errs.ErrToolPrecondition)
 				}
 				if at > a.Chapter {
-					return fmt.Errorf("foreshadow_updates[%d] 伏笔 %q 种植于第 %d 章，不能在第 %d 章推进或回收: %w",
+					return fmt.Errorf("foreshadow_updates[%d]: %q was planted in chapter %d; cannot advance or resolve it in chapter %d: %w",
 						i, update.ID, at, a.Chapter, errs.ErrToolPrecondition)
 				}
 			}

@@ -69,7 +69,7 @@ func (t *CommitChapterTool) ConcurrencySafe(_ json.RawMessage) bool { return fal
 func (t *CommitChapterTool) StrictSchema() bool                     { return true }
 
 func (t *CommitChapterTool) Schema() map[string]any {
-	props := []schema.Prop{schema.Property("chapter", schema.Int("章节号")).Required()}
+	props := []schema.Prop{schema.Property("chapter", schema.Int("Chapter number")).Required()}
 	props = append(props, chapterfacts.Properties(true)...)
 	return schema.Object(props...)
 }
@@ -116,7 +116,7 @@ func (t *CommitChapterTool) Execute(_ context.Context, args json.RawMessage) (js
 		return nil, fmt.Errorf("load progress: %w: %w", errs.ErrStoreRead, err)
 	}
 	if progress == nil {
-		return nil, fmt.Errorf("progress 未初始化: %w", errs.ErrToolPrecondition)
+		return nil, fmt.Errorf("progress is not initialized: %w", errs.ErrToolPrecondition)
 	}
 	completed := slices.Contains(progress.CompletedChapters, a.Chapter)
 	if existingPending != nil && (existingPending.Stage == domain.CommitStageProgressMarked || existingPending.Stage == domain.CommitStageSignalSaved) {
@@ -127,15 +127,15 @@ func (t *CommitChapterTool) Execute(_ context.Context, args json.RawMessage) (js
 	}
 	if existingPending == nil || existingPending.Stage == domain.CommitStageStarted {
 		if err := t.validateCommitArgs(a); err != nil {
-			// 旧版本可能在发现非法返工事实前就留下了冻结提交。继续保留这份
-			// 不可变载荷只会让每次重试重复同一个错误，因此显式解除冻结，
-			// 让 Writer 能修正参数后重新提交；正文和章节记录均不在此改动。
+			// Old versions may freeze a commit before detecting invalid rework facts. Retaining that
+			// immutable payload would repeat the same error on every retry; explicitly unfreeze it
+			// so Writer can correct and resubmit arguments, without modifying prose or chapter records here.
 			if existingPending != nil && existingPending.Rewrite &&
 				(errors.Is(err, errs.ErrToolArgs) || errors.Is(err, errs.ErrToolPrecondition)) {
 				if clearErr := t.store.Signals.ClearPendingCommit(); clearErr != nil {
-					return nil, fmt.Errorf("返工提交校验失败（%v），且清理冻结提交失败: %w: %w", err, errs.ErrStoreWrite, clearErr)
+					return nil, fmt.Errorf("rework validation failed (%v), and clearing the frozen commit also failed: %w: %w", err, errs.ErrStoreWrite, clearErr)
 				}
-				return nil, fmt.Errorf("旧版遗留的返工提交未通过校验，已解除冻结；请修正后重新提交: %w", err)
+				return nil, fmt.Errorf("legacy rework commit failed validation and was unfrozen; correct it and resubmit: %w", err)
 			}
 			return nil, err
 		}
@@ -187,7 +187,7 @@ func (t *CommitChapterTool) Execute(_ context.Context, args json.RawMessage) (js
 		if progress.Flow != domain.FlowRewriting && progress.Flow != domain.FlowPolishing {
 			expected := progress.NextChapter()
 			if a.Chapter != expected {
-				return nil, fmt.Errorf("正常续写只能提交下一章 %d，收到第 %d 章: %w", expected, a.Chapter, errs.ErrToolConflict)
+				return nil, fmt.Errorf("forward writing can commit only the next chapter %d; received chapter %d: %w", expected, a.Chapter, errs.ErrToolConflict)
 			}
 		}
 	}
@@ -202,7 +202,7 @@ func (t *CommitChapterTool) Execute(_ context.Context, args json.RawMessage) (js
 		}
 		if b == nil {
 			return nil, fmt.Errorf(
-				"第 %d 章不在分层大纲范围内：写作必须先 expand_next_arc 扩展弧或 append_volume 追加卷；若全书已完结请调 save_foundation type=complete_book: %w",
+				"chapter %d is outside the layered outline: first expand_next_arc or append_volume; if the story has concluded, call save_foundation with type=complete_book: %w",
 				a.Chapter, errs.ErrToolPrecondition)
 		}
 		boundary = b
@@ -390,7 +390,7 @@ func (t *CommitChapterTool) Execute(_ context.Context, args json.RawMessage) (js
 		result.Flow = string(latestProgress.Flow)
 	}
 
-	// 8.5 反馈池是后续规划的持久事实，由 Architect 在下一次结构操作时消费。
+	// 8.5 Feedback is a persisted planning fact consumed by Architect at the next structural operation.
 	if a.Feedback != nil && (strings.TrimSpace(a.Feedback.Deviation) != "" || strings.TrimSpace(a.Feedback.Suggestion) != "") {
 		if err := t.store.Outline.AppendOutlineFeedback(store.ChapterFeedback{
 			Chapter: a.Chapter, Deviation: a.Feedback.Deviation, Suggestion: a.Feedback.Suggestion,
@@ -554,8 +554,8 @@ func (t *CommitChapterTool) executeRewriteCommit(a commitArgs, progress *domain.
 	}
 
 	if pending.Stage == domain.CommitStageStarted {
-		// 3. 先构造完整候选记录集并重放校验。旧实现先覆盖记录再重建投影，
-		// 一旦事实链不闭合就会把失败载荷留在磁盘上，后续重试永远读到坏基线。
+		// 3. Build and replay-validate the full candidate record set first. Replacing a record before projection rebuilding
+		// could persist an inconsistent payload and force later retries to read the same broken baseline.
 		existing, err := t.store.ChapterRecords.Load(chapter)
 		if err != nil {
 			return nil, fmt.Errorf("rewrite: load chapter record: %w: %w", errs.ErrStoreRead, err)
@@ -589,18 +589,18 @@ func (t *CommitChapterTool) executeRewriteCommit(a commitArgs, progress *domain.
 				return nil, fmt.Errorf("rewrite: load chapter record %d: %w: %w", completedChapter, errs.ErrStoreRead, err)
 			}
 			if record == nil {
-				return nil, fmt.Errorf("rewrite: 第 %d 章缺少接纳记录: %w", completedChapter, errs.ErrToolConflict)
+				return nil, fmt.Errorf("rewrite: chapter %d lacks an accepted record: %w", completedChapter, errs.ErrToolConflict)
 			}
 			records = append(records, *record)
 		}
 		if err := revision.ValidateRecords(records); err != nil {
 			if clearErr := t.store.Signals.ClearPendingCommit(); clearErr != nil {
-				return nil, fmt.Errorf("rewrite: 章节事实链校验失败（%v），且清理冻结提交失败: %w: %w", err, errs.ErrStoreWrite, clearErr)
+				return nil, fmt.Errorf("rewrite: chapter-fact chain validation failed (%v), and clearing the frozen commit also failed: %w: %w", err, errs.ErrStoreWrite, clearErr)
 			}
-			return nil, fmt.Errorf("rewrite: 章节事实链校验失败，已解除冻结且未写入返工结果: %w: %w", errs.ErrToolPrecondition, err)
+			return nil, fmt.Errorf("rewrite: chapter-fact chain validation failed; unfrozen without saving rework: %w: %w", errs.ErrToolPrecondition, err)
 		}
 
-		// 4. 校验通过后再覆盖权威记录与终稿；同一冻结载荷可安全重放。
+		// 4. After validation, replace the authoritative record and final prose; the same frozen payload can replay safely.
 		if err := t.store.Drafts.SaveFinalChapter(chapter, content); err != nil {
 			return nil, fmt.Errorf("rewrite: save final chapter: %w: %w", errs.ErrStoreWrite, err)
 		}
@@ -608,7 +608,7 @@ func (t *CommitChapterTool) executeRewriteCommit(a commitArgs, progress *domain.
 			return nil, fmt.Errorf("rewrite: save chapter record: %w: %w", errs.ErrStoreWrite, err)
 		}
 		if len(recovered) > 0 {
-			slog.Warn("已从伏笔账本恢复旧版本丢失的种植事实", "module", "commit", "chapter", chapter, "foreshadows", recovered)
+			slog.Warn("Recovered legacy missing plant facts from the foreshadowing ledger", "module", "commit", "chapter", chapter, "foreshadows", recovered)
 		}
 		if err := revision.NewProjector(t.store).Apply(records); err != nil {
 			return nil, fmt.Errorf("rewrite: rebuild chapter projections: %w: %w", errs.ErrStoreWrite, err)
@@ -625,19 +625,19 @@ func (t *CommitChapterTool) executeRewriteCommit(a commitArgs, progress *domain.
 		}
 	}
 
-	// 5. 更新字数（MarkChapterComplete 对已完成章节是幂等的：replaces word count, slice.Contains 防止重复入队）
+	// 5. Update word count idempotently through MarkChapterComplete; replace counts and avoid duplicate completed entries.
 	if progress.Phase != domain.PhaseComplete {
 		if err := t.store.Progress.MarkChapterComplete(chapter, wordCount, a.HookType, a.DominantStrand); err != nil {
 			return nil, fmt.Errorf("rewrite: update word count: %w: %w", errs.ErrStoreWrite, err)
 		}
 
-		// 6. Drain 待处理队列；队列空时 CompleteRewrite 会自动把 flow 切回 writing
+		// 6. Drain pending rework; CompleteRewrite returns flow to writing when the queue is empty.
 		if err := t.store.Progress.CompleteRewrite(chapter); err != nil {
 			return nil, fmt.Errorf("rewrite: complete rewrite: %w: %w", errs.ErrStoreWrite, err)
 		}
 	}
 
-	// 7. 读取 drain 后的 Progress 快照，作为事实返回
+	// 7. Return the post-drain Progress snapshot as facts.
 	mode := pending.RewriteMode
 	if mode == "" {
 		mode = "rewrite"
@@ -690,7 +690,7 @@ func (t *CommitChapterTool) executeRewriteCommit(a commitArgs, progress *domain.
 		}
 	}
 
-	// 同主路径：rewrite/polish 也返回基于当前正文的机械检查结果。
+	// As in the main path, rewrite/polish returns mechanical checks for current prose.
 	violations := t.checkRules(content)
 	output, err := json.Marshal(map[string]any{
 		"chapter": chapter, "rewritten": true, "mode": mode, "word_count": wordCount,
@@ -707,7 +707,7 @@ func (t *CommitChapterTool) executeRewriteCommit(a commitArgs, progress *domain.
 		return nil, fmt.Errorf("rewrite: update pending progress stage: %w: %w", errs.ErrStoreWrite, err)
 	}
 
-	// 8. Checkpoint 后再标 signal_saved，最后清理 PendingCommit。
+	// 8. Write checkpoint before signal_saved, then clear PendingCommit.
 	if err := t.appendCommitCheckpoint(chapter); err != nil {
 		return nil, fmt.Errorf("rewrite: checkpoint commit: %w: %w", errs.ErrStoreWrite, err)
 	}
@@ -727,9 +727,9 @@ func (t *CommitChapterTool) executeRewriteCommit(a commitArgs, progress *domain.
 	return output, nil
 }
 
-// restoreRewritePlants 只修复旧版本已经造成的单一损坏形态：伏笔账本仍记录本章
-// 的 plant，但本章接纳记录已被失败返工覆盖。账本给出完整 id、描述和种植章，
-// 因而可以确定性还原；其他不一致继续显式报错，不猜测剧情事实。
+// restoreRewritePlants repairs one known legacy corruption: the ledger still contains this chapter's
+// plant, but failed rework replaced its accepted record. The ledger has the full ID, description, and planting chapter,
+// allowing deterministic restoration. Other inconsistencies remain explicit errors without guessed story facts.
 func (t *CommitChapterTool) restoreRewritePlants(chapter int, existing []domain.ForeshadowUpdate, facts *domain.ChapterFacts) ([]string, error) {
 	planted := make(map[string]struct{}, len(existing)+len(facts.ForeshadowUpdates))
 	for _, update := range existing {
@@ -757,7 +757,7 @@ func (t *CommitChapterTool) restoreRewritePlants(chapter int, existing []domain.
 			continue
 		}
 		if strings.TrimSpace(entry.ID) == "" || strings.TrimSpace(entry.Description) == "" {
-			return nil, fmt.Errorf("rewrite: 第 %d 章伏笔账本缺少可恢复的 id 或 description: %w", chapter, errs.ErrToolConflict)
+			return nil, fmt.Errorf("rewrite: chapter %d ledger lacks a recoverable id or description: %w", chapter, errs.ErrToolConflict)
 		}
 		planted[entry.ID] = struct{}{}
 		restored = append(restored, domain.ForeshadowUpdate{
@@ -954,9 +954,9 @@ func layeredComplete(st *store.Store, progress *domain.Progress) (bool, error) {
 	return layeredBookComplete(st, progress)
 }
 
-// ReconcileLayeredCompletion 根据当前持久化事实补齐分层书的完结状态。
-// save_volume_summary 正常路径和 Engine 崩溃恢复共用这一入口，避免卷摘要已落盘、
-// Progress 尚未来得及 MarkComplete 时永久丢失自动完结触发点。
+// ReconcileLayeredCompletion reconciles layered-book completion from persisted facts.
+// Shared by save_volume_summary and Engine crash recovery so a saved volume summary cannot lose
+// its automatic completion trigger if the process exits before MarkComplete.
 func ReconcileLayeredCompletion(st *store.Store) (bool, error) {
 	progress, err := st.Progress.Load()
 	if err != nil {
@@ -983,7 +983,7 @@ func ReconcileLayeredCompletion(st *store.Store) (bool, error) {
 
 // layeredBookComplete 用客观事实判断分层长篇是否真正写完，对照 architect-long.md 完结判定
 // 清单里可量化的几项 + 结构性事实。结构完整之上再要求伏笔归零、长线收束——任一不满足都
-// 让位给架构师继续 expand_next_arc / append_volume，绝不抢在故事没写完时收尾。无 compass 时保守
+// Yield to Architect for expand_next_arc / append_volume; never finish an unwritten story. Without a compass, conservatively
 // 判为未完结。这是未宣告收官卷时的"质量级"完结判定，比 layeredStructurallyComplete 更严。
 func layeredBookComplete(st *store.Store, progress *domain.Progress) (bool, error) {
 	structurallyComplete, err := layeredStructurallyComplete(st, progress)

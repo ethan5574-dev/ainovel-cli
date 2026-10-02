@@ -1,0 +1,24 @@
+{
+  "id": "writer_chapters_vi",
+  "category": "smoke",
+  "role": "writer",
+  "description": "Case đo chi phí chính. Bản tiếng Việt của writer_first_chapter nhưng chạy nhiều chương, vì $/chương chỉ ổn định khi context đã lớn dần qua vài chương — đo ở 1 chương sẽ ra con số thấp giả tạo. Chạy `--max-chapters 10` để có ước lượng sát thực tế hơn (expect dùng ngưỡng tối thiểu nên vẫn hợp lệ khi tăng số chương).",
+  "prompt": "Viết một truyện tiên hiệp: nhân vật chính là thiếu niên làm tạp dịch cho tiệm thuốc ở biên thành, nhờ tài nhận biết dược liệu mà vô tình vướng vào một vụ mất tích.",
+  "max_chapters": 3,
+  "target_prompts": ["writer.md"],
+  "expect": {
+    "phase": "writing",
+    "min_completed_chapters": 3,
+    "required_checkpoints": [
+      "chapter:1:plan",
+      "chapter:1:draft",
+      "chapter:1:commit",
+      "chapter:2:commit",
+      "chapter:3:commit"
+    ],
+    "no_pending": ["pending_commit", "pending_steer"]
+  },
+  "gate": {
+    "max_severity": "warning"
+  }
+}

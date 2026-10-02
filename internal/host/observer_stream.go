@@ -10,14 +10,14 @@ import (
 // - DeltaToolCall 只对已知的长内容工具（如 draft_chapter.content）抽取字段流出；其他工具的参数 JSON 全部丢弃
 func (o *observer) handleSubagentDelta(p *agentcore.ProgressPayload) {
 	if p.DeltaKind != agentcore.DeltaToolCall {
-		o.updateModelState(p.Agent, "生成回复")
+		o.updateModelState(p.Agent, "Generating response")
 		o.emitStreamDelta(p.Delta, false)
 		return
 	}
 	if p.Tool == "" {
 		return // 工具名未就绪，下一个 delta 再试
 	}
-	o.updateModelState(p.Agent, "生成 "+p.Tool)
+	o.updateModelState(p.Agent, "Generating "+p.Tool)
 
 	cur, ok := o.streamExtractors[p.Agent]
 	// 同工具调用 args 已闭合（顶层 } 命中）后，仍可能收到 trailing delta：
@@ -71,8 +71,8 @@ func (o *observer) emitStreamDelta(delta string, thinking bool) {
 }
 
 // emitFallbackStreamHeader 给未配置 extractor 的工具补一行 ✻ 标题到流面板。
-// 长内容工具的 header 由 extractor 随参数流输出；其他工具在
-// ProgressToolStart 到来时补齐。
+// Long-content tool headers stream with arguments through the extractor; other tool headers
+// are supplied when ProgressToolStart arrives.
 func (o *observer) emitFallbackStreamHeader(tool string) {
 	if _, has := toolDisplays[tool]; has {
 		return // 有 extractor，header 由 extractor 自行输出

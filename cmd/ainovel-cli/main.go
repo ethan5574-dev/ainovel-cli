@@ -288,7 +288,7 @@ func loadPromptFrom(opts cliOptions, stdin io.Reader) (string, error) {
 	if opts.PromptFile == "-" {
 		data, err := io.ReadAll(stdin)
 		if err != nil {
-			return "", fmt.Errorf("读取 prompt 失败: %w", err)
+			return "", fmt.Errorf("failed to read prompt: %w", err)
 		}
 		return strings.TrimSpace(string(data)), nil
 	}

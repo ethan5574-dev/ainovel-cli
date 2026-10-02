@@ -65,7 +65,7 @@ type Host struct {
 	mu         sync.Mutex
 	lifecycle  lifecycle
 	cocreating bool   // 阶段共创占用：paused 窗口内堵住 import/simulate/continue 的并发介入
-	exclusive  string // 后台独占作业占用（导入/仿写/修订）：非空表示某作业在跑，堵住并发独占入口
+	exclusive  string // Exclusive background job (import/simulation/revision); non-empty blocks concurrent exclusive entry.
 	// exclusiveCancel 是当前独占作业的取消函数：预算硬停/手动暂停须能停掉正在烧钱的
 	// 导入，而不仅是 Engine——abortWithEvent 在 Engine 未运行时取消它（预算哨兵的
 	// abort 回调与手动 Abort 共用同一停机机制）。releaseExclusive 一并清空。
@@ -94,8 +94,8 @@ const (
 	lifecycleCompleted lifecycle = "completed"
 )
 
-// userRulesBuildTimeout 封顶启动/恢复期的规则归一化。整本大纲作为输入时单次调用
-// 可达分钟级,留足余量;超时按既有 degraded 路径降级为 raw preferences,不阻塞开书。
+// userRulesBuildTimeout bounds startup/resume rule normalization. A full outline can require minutes
+// per call; allow headroom, then degrade to raw preferences rather than blocking book startup.
 const userRulesBuildTimeout = 3 * time.Minute
 
 // New 创建 Host。
@@ -134,11 +134,11 @@ func New(cfg bootstrap.Config, bundle assets.Bundle, options ...NewOption) (*Hos
 		logCleanup, fileLogErr = runtimelog.SetupFile(cfg.OutputDir, opts.logFile, opts.logAlsoStderr, opts.logAttrs...)
 		if fileLogErr != nil {
 			logCleanup = nil
-			slog.Warn("文件日志不可用，继续使用当前进程日志", "module", "host", "file", opts.logFile, "err", fileLogErr)
+			slog.Warn("File logging is unavailable; using the current process logger", "module", "host", "file", opts.logFile, "err", fileLogErr)
 		}
 	}
 
-	slog.Info("启动", "module", "boot", "provider", cfg.Provider, "model", cfg.ModelName, "output", cfg.OutputDir)
+	slog.Info("Startup", "module", "boot", "provider", cfg.Provider, "model", cfg.ModelName, "output", cfg.OutputDir)
 
 	store := storepkg.NewStore(cfg.OutputDir)
 	if err := store.Init(); err != nil {
@@ -152,7 +152,7 @@ func New(cfg bootstrap.Config, bundle assets.Bundle, options ...NewOption) (*Hos
 	if err := store.RunMeta.Init(cfg.Style, cfg.Provider, cfg.ModelName); err != nil {
 		return nil, fmt.Errorf("init run meta: %w", err)
 	}
-	// 起后台 goroutine 从 OpenRouter 刷新模型元数据（窗口/价格），磁盘缓存 24h。
+	// Refresh OpenRouter window/pricing metadata in a background goroutine, with a 24h disk cache.
 	modelreg.StartPricingRefresh(modelreg.DefaultRegistry(), bootstrap.DefaultConfigDir())
 
 	models, err := bootstrap.NewModelSet(cfg)
@@ -311,24 +311,24 @@ func (h *Host) PrepareUserRules(rawPrompt string) error {
 	if err := h.refuseNewBookOverExisting(); err != nil {
 		return err
 	}
-	// 归一化是启动期的第一次 LLM 调用：必须可取消(runCtx)且有超时上限——
-	// llmretry 对 retryable 错误(429/5xx/超时)会一直重试到 ctx 结束,
-	// 裸 context.Background() 会让 provider 持续限流时永久卡在这里(issue #125)。
-	// 超时落到既有 degraded 路径：宁可降级为 raw preferences 也不阻塞开书。
+	// Normalization is the first startup LLM call; it must be cancellable through runCtx and time-bounded.
+	// llmretry retries 429/5xx/timeouts until context cancellation;
+	// an unbounded context.Background() would hang forever under sustained rate limiting (issue #125).
+	// Timeout uses the existing degraded path: raw preferences are preferable to blocking startup.
 	ctx, cancel := context.WithTimeout(h.runCtx, userRulesBuildTimeout)
 	defer cancel()
 	svc := userrules.NewService(h.store, h.models.Default, rules.DefaultOptions())
-	snap, err := runObservedStep(h.observer, "SYSTEM", "rules", "规则归一化",
+	snap, err := runObservedStep(h.observer, "SYSTEM", "rules", "Rule normalization",
 		func() (*rules.Snapshot, error) { return svc.Build(ctx, rawPrompt) })
 	if err != nil {
 		return fmt.Errorf("用户规则快照落盘失败，无法继续: %w", err)
 	}
 	logUserRulesSnapshot(snap)
-	// 归一化失败是静默降级(normalizeOrDegrade)——不报错但规则没被结构化,
-	// 用户有权知道自己的要求只是以原文形态生效。
+	// normalizeOrDegrade silently falls back when normalization fails, leaving rules unstructured.
+	// The user must be informed that their requirements apply as raw text only.
 	if snap != nil && snap.Status == rules.StatusDegraded {
 		h.emitEvent(Event{Time: time.Now(), Category: "SYSTEM", Level: "warn",
-			Summary: "部分规则未能归一化，已按原文作为风格偏好生效",
+			Summary: "Some rules could not be normalized; their original text applies as style preferences",
 			Detail:  strings.Join(snap.Uncertain, "; ")})
 	}
 	return nil
@@ -337,8 +337,8 @@ func (h *Host) PrepareUserRules(rawPrompt string) error {
 // ensureUserRules 在恢复路径确保快照存在；缺失时按
 // system_defaults + rules 文件生成。
 func (h *Host) ensureUserRules() {
-	// 与 PrepareUserRules 同源：快照缺失时 GetOrBuild 会走 Build 发起 LLM 调用,
-	// 同样必须可取消 + 有超时,否则恢复路径复现 issue #125 的静默卡死。
+	// As in PrepareUserRules, missing snapshots cause GetOrBuild to invoke the model through Build;
+	// use cancellation and a timeout to prevent the resume path reproducing issue #125.
 	ctx, cancel := context.WithTimeout(h.runCtx, userRulesBuildTimeout)
 	defer cancel()
 	svc := userrules.NewService(h.store, h.models.Default, rules.DefaultOptions())
@@ -460,7 +460,7 @@ func (h *Host) refuseNewBookOverExisting() error {
 		return err
 	}
 	if book == nil {
-		return fmt.Errorf("输出目录已有章节，但作品信息不存在")
+		return fmt.Errorf("output directory contains chapters but no book metadata")
 	}
 	name := book.Title
 	return fmt.Errorf("输出目录已有《%s》的 %d 章创作进度，新建会重置其进度与检查点：续写请走恢复入口（重启应用自动恢复），新书请更换输出目录",
@@ -534,9 +534,9 @@ func (h *Host) Reopen(direction string) error {
 	if err := h.store.Progress.ReopenContinue(); err != nil {
 		return err
 	}
-	reopenEvent := Event{Time: time.Now(), Category: "SYSTEM", Summary: "已重开本书为创作状态（用户撤销完结裁定）", Level: "info"}
+	reopenEvent := Event{Time: time.Now(), Category: "SYSTEM", Summary: "Book reopened for writing (completion revoked by the user)", Level: "info"}
 	if d := strings.TrimSpace(direction); d != "" {
-		reopenEvent.Detail = reopenEvent.Summary + "\n续写方向: " + d
+		reopenEvent.Detail = reopenEvent.Summary + "\nContinuation direction: " + d
 	}
 	h.emitEvent(reopenEvent)
 	if d := strings.TrimSpace(direction); d != "" {
@@ -547,7 +547,7 @@ func (h *Host) Reopen(direction string) error {
 	return nil
 }
 
-// Resume 恢复模式：从 checkpoint + progress 生成 resume prompt 并启动。
+// Resume creates a recovery prompt from checkpoints and progress, then starts execution.
 func (h *Host) Resume() (string, error) {
 	h.mu.Lock()
 	if h.lifecycle == lifecycleRunning {
@@ -968,7 +968,7 @@ func (h *Host) Close() {
 	})
 }
 
-// FileLogError 返回构造阶段的文件日志初始化错误；Host 生命周期内不会变化。
+// FileLogError returns the construction-time file-log initialization error, unchanged during Host lifetime.
 func (h *Host) FileLogError() error {
 	return h.fileLogErr
 }
@@ -999,7 +999,7 @@ func (h *Host) runEnded() {
 		h.lifecycle = lifecycleIdle
 		h.mu.Unlock()
 		h.emitEvent(Event{Time: time.Now(), Category: "ERROR", Level: "error",
-			Summary: "引擎结束时读取作品信息失败: " + err.Error()})
+			Summary: "Failed to read book metadata at engine completion: " + err.Error()})
 		select {
 		case h.done <- struct{}{}:
 		default:
@@ -1011,7 +1011,7 @@ func (h *Host) runEnded() {
 			h.lifecycle = lifecycleIdle
 			h.mu.Unlock()
 			h.emitEvent(Event{Time: time.Now(), Category: "ERROR", Level: "error",
-				Summary: "引擎结束时作品信息不存在"})
+				Summary: "Book metadata is missing at engine completion"})
 			select {
 			case h.done <- struct{}{}:
 			default:
@@ -1088,7 +1088,7 @@ func (h *Host) emitEvent(ev Event) {
 	if h.outputClosed {
 		return
 	}
-	// 读锁保证关闭前的事件完整写完；关闭后的事件直接拒绝。
+	// Read lock ensures pre-close events finish writing; reject post-close events.
 	LogEvent(ev)
 	select {
 	case h.events <- ev:
@@ -1311,7 +1311,7 @@ func (h *Host) fillDetails(snap *UISnapshot, progress *domain.Progress) {
 	if progress != nil && len(progress.CompletedChapters) > 0 {
 		cast, err := h.store.BuildCast(progress.CompletedChapters)
 		if err != nil {
-			slog.Warn("配角视图投影失败", "module", "host.snapshot", "err", err)
+			slog.Warn("Cast projection failed", "module", "host.snapshot", "err", err)
 		}
 		snap.SupportingCount = len(cast)
 		recent := domain.RecentCast(cast, 5)
@@ -1346,7 +1346,7 @@ func (h *Host) fillDetails(snap *UISnapshot, progress *domain.Progress) {
 			ch := progress.CompletedChapters[i]
 			if summary, err := h.store.Summaries.LoadSummary(ch); err == nil && summary != nil {
 				snap.RecentSummaries = append(snap.RecentSummaries,
-					fmt.Sprintf("第%d章: %s", ch, utils.TruncateRunes(summary.Summary, 50)))
+					fmt.Sprintf("Chapter %d: %s", ch, utils.TruncateRunes(summary.Summary, 50)))
 			}
 		}
 	}
@@ -1572,7 +1572,7 @@ func (h *Host) PauseForCoCreate() bool {
 	running := h.lifecycle == lifecycleRunning
 	h.mu.Unlock()
 
-	// 运行中复用 abortWithEvent 停机（running→paused + Abort + 事件），与手动
+	// While running, reuse abortWithEvent (running -> paused, Abort, and event), matching manual
 	// 暂停同序、不另抄一遍；已停止（idle/paused）只置标记，规划完经 Continue 续跑。
 	if running {
 		h.abortWithEvent("进入阶段共创，创作已暂停", "info")
@@ -1632,7 +1632,7 @@ func (h *Host) refreshWriterRestore() {
 func (h *Host) CheckChapterRevisions() ([]int, error) {
 	pending, err := h.store.Revisions.LoadPending()
 	if err != nil {
-		return nil, fmt.Errorf("读取修订恢复记录: %w", err)
+		return nil, fmt.Errorf("read revision recovery record: %w", err)
 	}
 	if pending != nil {
 		chapters := make([]int, 0, len(pending.Items))
@@ -1649,7 +1649,7 @@ func (h *Host) CheckChapterRevisions() ([]int, error) {
 }
 
 func (h *Host) SyncChapterRevisions(ctx context.Context) (*revision.Result, error) {
-	if err := h.acquireExclusive("同步章节修订"); err != nil {
+	if err := h.acquireExclusive("Sync chapter revisions"); err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(ctx)
@@ -1675,7 +1675,7 @@ func (h *Host) SyncChapterRevisions(ctx context.Context) (*revision.Result, erro
 		}
 	}
 	model := h.models.ForRoleWithFailover("editor", func(ev bootstrap.FailoverEvent) {
-		slog.Warn("章节修订 provider 切换", "module", "revision", "role", ev.Role,
+		slog.Warn("Chapter revision provider switched", "module", "revision", "role", ev.Role,
 			"reason", ev.Reason, "from", fmt.Sprintf("%s/%s", ev.FromProvider, ev.FromModel),
 			"to", fmt.Sprintf("%s/%s", ev.ToProvider, ev.ToModel), "err", ev.Err)
 	})
@@ -1687,10 +1687,10 @@ func (h *Host) SyncChapterRevisions(ctx context.Context) (*revision.Result, erro
 func (h *Host) requireCleanChapters() error {
 	chapters, err := h.CheckChapterRevisions()
 	if err != nil {
-		return fmt.Errorf("检查章节外部修订: %w", err)
+		return fmt.Errorf("check external chapter revisions: %w", err)
 	}
 	if len(chapters) > 0 {
-		return fmt.Errorf("检测到章节正文已被外部修改：%v；请先执行 /sync", chapters)
+		return fmt.Errorf("external chapter edits detected: %v; run /sync first", chapters)
 	}
 	return nil
 }
@@ -1832,7 +1832,7 @@ func (h *Host) ImportSimulationProfile(ctx context.Context, path string) (<-chan
 	return superviseExclusive(h, ch), nil
 }
 
-// acquireExclusive 原子占用后台独占作业槽（import/simulate/revision）：Engine 运行中、阶段共创窗口内、
+// acquireExclusive atomically claims the import/simulation/revision job slot. Reject while Engine runs, during stage co-creation,
 // 或已有独占作业在跑时拒绝。成功即登记占用，作业结束须调 releaseExclusive 释放——否则两个导入
 // 或导入+仿写会并发抢改同一状态。补上此前只查 ==running/cocreating、不登记作业本身的缺口。
 func (h *Host) acquireExclusive(action string) error {

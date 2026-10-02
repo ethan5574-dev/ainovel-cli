@@ -1,6 +1,6 @@
 package domain
 
-// TimelineEvent 时间线事件。
+// TimelineEvent Timeline events。
 type TimelineEvent struct {
 	Chapter    int      `json:"chapter"`
 	Time       string   `json:"time"`
@@ -24,9 +24,9 @@ type ForeshadowUpdate struct {
 	Description string `json:"description,omitempty"`
 }
 
-// RestoreOwnPlants 把旧记录里本章种下、而新记录未再声明的伏笔 plant 补回队首。
-// 一章埋过哪些伏笔是它自身的历史事实，重写正文不改变这一点；丢掉它，章节记录
-// 全量重放时本章及后续章节的 advance/resolve 会找不到前置 plant，整条链报错。
+// RestoreOwnPlants prepends plants owned by the old chapter record but missing from the new facts.
+// A chapter's planted foreshadowing is historical fact unaffected by rewriting; losing it means
+// replay cannot find the preceding plant for later advance/resolve actions, breaking the chain.
 func RestoreOwnPlants(prev, next []ForeshadowUpdate) []ForeshadowUpdate {
 	declared := make(map[string]struct{}, len(next))
 	for _, u := range next {
@@ -48,7 +48,7 @@ func RestoreOwnPlants(prev, next []ForeshadowUpdate) []ForeshadowUpdate {
 	if len(restored) == 0 {
 		return next
 	}
-	// plant 必须排在同章 advance/resolve 之前，重放才能先建起条目。
+	// Place plants before same-chapter advance/resolve actions so replay creates entries first.
 	return append(restored, next...)
 }
 

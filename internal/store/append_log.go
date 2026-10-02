@@ -8,10 +8,10 @@ import (
 	"os"
 )
 
-// appendLog 管理只增长事实的 JSONL 存储。调用方负责持有 io.mu 写锁。
+// appendLog stores append-only facts as JSONL. Caller must hold the io.mu write lock.
 //
-// 首次加载建立内存去重索引；正常追加只写新增记录。旧版 JSON 数组在第一次
-// 追加时一次性迁移，JSONL 成功落盘后再删除旧文件，因此任一中断窗口都可重放。
+// Initial loading builds an in-memory deduplication index; ordinary appends write only new records. Legacy JSON arrays
+// migrate on first append, deleting the old file only after saving JSONL, so interruption remains replayable.
 type appendLog[T any] struct {
 	path       string
 	legacyPath string
@@ -76,8 +76,8 @@ func (l *appendLog[T]) allUnlocked(io *IO) ([]T, error) {
 	return l.cloneValues(l.values), nil
 }
 
-// appendUnlocked 返回实际新增的记录。即使旧文件清理失败，已经提交到 JSONL 的
-// 新记录也会返回，调用方可据此把派生投影标记为待修复；下一次重放只做清理。
+// appendUnlocked returns actual new records, including committed JSONL records when legacy-file cleanup fails.
+// Callers can mark derived projections for repair; a subsequent replay only cleans up.
 func (l *appendLog[T]) appendUnlocked(io *IO, incoming []T) ([]T, error) {
 	if err := l.loadUnlocked(io); err != nil {
 		return nil, err
@@ -114,14 +114,14 @@ func (l *appendLog[T]) appendUnlocked(io *IO, incoming []T) ([]T, error) {
 			return nil, err
 		}
 		if err := io.AppendLineUnlocked(l.path, data); err != nil {
-			// 写入可能留下未换行的尾部。丢弃缓存，让下一次加载按提交协议
-			// 显式截断未提交尾部后再重放。
+			// A failed write may leave an unterminated tail. Drop the cache so the next load
+			// explicitly truncates the uncommitted tail under the commit protocol before replay.
 			l.reset()
 			return nil, err
 		}
 	} else if len(incoming) > 0 && l.hasLog {
-		// 上一次追加可能已写完整记录，但 Sync 返回了错误。
-		// 幂等重放在确认成功前再次同步，不把“当前可读”误当成“已持久化”。
+		// An earlier append may have written full records but failed Sync.
+		// Idempotent replay resynchronizes before reporting success; readable does not imply durable.
 		if err := io.syncFileUnlocked(l.path); err != nil {
 			l.reset()
 			return nil, err
@@ -139,7 +139,7 @@ func (l *appendLog[T]) appendUnlocked(io *IO, incoming []T) ([]T, error) {
 			return l.cloneValues(added), err
 		}
 		l.legacyPresent = false
-		slog.Info("增长型事实已迁移为追加日志",
+		slog.Info("Growing facts migrated to append-only logs",
 			"module", "store", "from", l.legacyPath, "to", l.path, "records", len(l.values))
 	}
 	return l.cloneValues(added), nil
@@ -222,8 +222,8 @@ func decodeJSONLines[T any](path string, data []byte) ([]T, error) {
 	return values, nil
 }
 
-// committedJSONLinesUnlocked 丢弃协议上可证明未提交的尾部：只有以换行结束的
-// JSONL 记录才算提交。完整行损坏仍严格报错，不做猜测式修复。
+// committedJSONLinesUnlocked drops only provably uncommitted tails: a JSONL record is committed
+// only when newline-terminated. Corrupt complete lines still return errors; no speculative repair.
 func committedJSONLinesUnlocked(io *IO, path string) ([]byte, error) {
 	data, err := io.ReadFileUnlocked(path)
 	if err != nil {
@@ -236,7 +236,7 @@ func committedJSONLinesUnlocked(io *IO, path string) ([]byte, error) {
 	if err := os.Truncate(io.path(path), int64(keep)); err != nil {
 		return nil, err
 	}
-	slog.Warn("已修复追加日志的未提交尾部",
+	slog.Warn("Repaired uncommitted append-log tail",
 		"module", "store", "file", path, "discarded_bytes", len(data)-keep)
 	return data[:keep], nil
 }

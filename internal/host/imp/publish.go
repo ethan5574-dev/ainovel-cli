@@ -57,11 +57,11 @@ func publishFoundation(st *store.Store, f *Foundation) error {
 	if _, err := st.Checkpoints.AppendArtifact(domain.GlobalScope(), "world_rules", "world_rules.json"); err != nil {
 		return fmt.Errorf("checkpoint world_rules：%w", err)
 	}
-	// layered outline 是唯一来源，Store 同步重建 flat outline。
+	// Layered outline is authoritative; Store rebuilds the flat outline synchronously.
 	if err := st.Outline.SaveLayeredOutline(f.Volumes); err != nil {
 		return fmt.Errorf("layered outline：%w", err)
 	}
-	// 大纲阶段的进度是引擎重算路由的依据（章节容量/分层/当前卷弧），写入失败会留下不一致的
+	// Outline progress drives engine routing (capacity, layered mode, current volume/arc); write failures would leave inconsistent
 	// 已发布状态，必须暴露而非吞掉（RFC §12.2）。
 	if err := st.Progress.UpdatePhase(domain.PhaseOutline); err != nil {
 		return fmt.Errorf("phase outline：%w", err)
@@ -107,17 +107,17 @@ func publishFoundation(st *store.Store, f *Foundation) error {
 
 // checkFoundationConflicts 校验待发布 Foundation 与既有正式工件的一致性：
 // 既有为空视为首次发布；相同视为幂等；不同则报冲突不覆盖（RFC §12.2 / 不变量 6）。
-// compass 与扁平大纲由分层大纲派生，分层一致即派生一致，故不单独检查派生工件。
+// Compass and flat outline derive from the layered outline, so matching the source implies matching projections.
 // 读错误不得吞成"文件不存在"：store 加载器对缺失返回 (零值, nil)，故任何非 nil 都是真实错误
 // （损坏/权限/JSON 非法），若当作空值继续会覆盖无法读取的正式工件（RFC §12.2）。
 func checkFoundationConflicts(st *store.Store, f *Foundation) error {
 	wantBook := f.Book.Normalized()
 	book, err := st.Book.Load()
 	if err != nil {
-		return fmt.Errorf("读取正式 book：%w", err)
+		return fmt.Errorf("read published book metadata：%w", err)
 	}
 	if book != nil && !jsonEqual(book, wantBook) {
-		return fmt.Errorf("正式 book 与导入综合冲突（已存在不同版本），拒绝覆盖")
+		return fmt.Errorf("published book metadata conflicts with the import synthesis; refusing to overwrite a different version")
 	}
 	cur, err := st.Outline.LoadPremise()
 	if err != nil {
@@ -230,7 +230,7 @@ func commitArgs(chapter int, f ImportedChapterFacts) map[string]any {
 }
 
 // isPublished 判断正式状态是否已反映完整导入：Foundation 已落盘且已完成章节达到预期。
-// 只对账导入真正产出的工件——book、premise、覆盖全章的扁平大纲、完成章节——而不复用
+// Reconcile only actual import outputs: book, premise, all-chapter flat outline, and completed chapters; do not reuse
 // FoundationMissing()：后者是普通创作流程的“可写作”门禁，会把合法为空的 world_rules
 // 误判为未完成，导致发布对账永不收敛（RFC §12.3）。
 func isPublished(st *store.Store, expected int) (bool, error) {
@@ -239,7 +239,7 @@ func isPublished(st *store.Store, expected int) (bool, error) {
 	}
 	book, err := st.Book.Load()
 	if err != nil {
-		return false, fmt.Errorf("读取正式 book: %w", err)
+		return false, fmt.Errorf("read published book metadata: %w", err)
 	}
 	if book == nil {
 		return false, nil

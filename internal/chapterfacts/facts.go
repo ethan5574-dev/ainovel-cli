@@ -9,61 +9,61 @@ import (
 	"github.com/voocel/ainovel-cli/internal/llmcontract"
 )
 
-// Properties 返回完整章节事实共用的 JSON Schema 字段。
+// Properties returns the shared JSON Schema fields for complete chapter facts.
 func Properties(includeFeedback bool) []schema.Prop {
 	textList := func(description string) map[string]any {
 		return schema.Array(description, schema.String(description))
 	}
 	timeline := schema.Object(
-		schema.Property("time", schema.String("故事内时间")).Required(),
-		schema.Property("event", schema.String("事件")).Required(),
-		schema.Property("characters", textList("涉及角色")).Required(),
+		schema.Property("time", schema.String("In-story time")).Required(),
+		schema.Property("event", schema.String("Event")).Required(),
+		schema.Property("characters", textList("Characters involved")).Required(),
 	)
 	foreshadow := schema.Object(
-		schema.Property("id", schema.String("伏笔 ID")).Required(),
-		schema.Property("action", schema.Enum("操作", "plant", "advance", "resolve")).Required(),
-		schema.Property("description", llmcontract.Nullable(schema.String("plant 描述，其它操作为 null"))).Required(),
+		schema.Property("id", schema.String("Foreshadowing ID")).Required(),
+		schema.Property("action", schema.Enum("Action", "plant", "advance", "resolve")).Required(),
+		schema.Property("description", llmcontract.Nullable(schema.String("Description for plant; null for other actions"))).Required(),
 	)
 	relationship := schema.Object(
-		schema.Property("character_a", schema.String("角色 A")).Required(),
-		schema.Property("character_b", schema.String("角色 B")).Required(),
-		schema.Property("relation", schema.String("本章结束时关系")).Required(),
+		schema.Property("character_a", schema.String("Character A")).Required(),
+		schema.Property("character_b", schema.String("Character B")).Required(),
+		schema.Property("relation", schema.String("Relationship at the chapter end")).Required(),
 	)
 	stateChange := schema.Object(
-		schema.Property("entity", schema.String("实体")).Required(),
-		schema.Property("field", schema.String("属性")).Required(),
-		schema.Property("old_value", llmcontract.Nullable(schema.String("变化前值"))).Required(),
-		schema.Property("new_value", schema.String("变化后值")).Required(),
-		schema.Property("reason", llmcontract.Nullable(schema.String("原因"))).Required(),
+		schema.Property("entity", schema.String("Entity")).Required(),
+		schema.Property("field", schema.String("Field")).Required(),
+		schema.Property("old_value", llmcontract.Nullable(schema.String("Previous value"))).Required(),
+		schema.Property("new_value", schema.String("New value")).Required(),
+		schema.Property("reason", llmcontract.Nullable(schema.String("Reason"))).Required(),
 	)
 	props := []schema.Prop{
-		schema.Property("title", schema.String("最终标题")).Required(),
-		schema.Property("summary", schema.String("章节摘要")).Required(),
-		schema.Property("characters", textList("出场角色")).Required(),
-		schema.Property("key_events", textList("关键事件")).Required(),
-		schema.Property("timeline_events", schema.Array("时间线事件", timeline)).Required(),
-		schema.Property("foreshadow_updates", schema.Array("伏笔操作", foreshadow)).Required(),
-		schema.Property("relationship_changes", schema.Array("关系变化", relationship)).Required(),
-		schema.Property("state_changes", schema.Array("状态变化", stateChange)).Required(),
-		schema.Property("cast_intros", schema.Array("新配角", schema.Object(
-			schema.Property("name", schema.String("姓名")).Required(),
-			schema.Property("brief_role", schema.String("定位")).Required(),
+		schema.Property("title", schema.String("Final title")).Required(),
+		schema.Property("summary", schema.String("Chapter summary")).Required(),
+		schema.Property("characters", textList("Characters appearing")).Required(),
+		schema.Property("key_events", textList("Key events")).Required(),
+		schema.Property("timeline_events", schema.Array("Timeline events", timeline)).Required(),
+		schema.Property("foreshadow_updates", schema.Array("Foreshadowing operations", foreshadow)).Required(),
+		schema.Property("relationship_changes", schema.Array("Relationship changes", relationship)).Required(),
+		schema.Property("state_changes", schema.Array("State changes", stateChange)).Required(),
+		schema.Property("cast_intros", schema.Array("New supporting characters", schema.Object(
+			schema.Property("name", schema.String("Name")).Required(),
+			schema.Property("brief_role", schema.String("Brief role")).Required(),
 		))).Required(),
-		schema.Property("hook_type", llmcontract.Nullable(schema.Enum("章末钩子", domain.HookTypes()...))).Required(),
-		schema.Property("dominant_strand", llmcontract.Nullable(schema.Enum("主导叙事线", domain.DominantStrands()...))).Required(),
+		schema.Property("hook_type", llmcontract.Nullable(schema.Enum("Chapter-ending hook", domain.HookTypes()...))).Required(),
+		schema.Property("dominant_strand", llmcontract.Nullable(schema.Enum("Dominant narrative strand", domain.DominantStrands()...))).Required(),
 	}
 	if includeFeedback {
 		feedback := schema.Object(
-			schema.Property("deviation", schema.String("偏离大纲的描述")).Required(),
-			schema.Property("suggestion", schema.String("对后续大纲的调整建议")).Required(),
+			schema.Property("deviation", schema.String("Description of outline deviation")).Required(),
+			schema.Property("suggestion", schema.String("Suggested adjustments to future outlines")).Required(),
 		)
-		feedback["description"] = "对后续大纲的建议对象；必须直接传 JSON object，不要传字符串化 JSON"
+		feedback["description"] = "Future-outline feedback object; pass a JSON object directly, not serialized JSON"
 		props = append(props, schema.Property("feedback", llmcontract.Nullable(feedback)).Required())
 	}
 	return props
 }
 
-// Validate 校验普通提交与人工修订共用的确定性约束。
+// Validate checks deterministic constraints shared by commits and user revisions.
 func Validate(facts domain.ChapterFacts) error {
 	if strings.TrimSpace(facts.Title) == "" {
 		return fmt.Errorf("title is required")

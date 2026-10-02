@@ -434,8 +434,8 @@ func (m Model) handleRuntimeMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		}
 		return m, cmd, true
 	case bootstrapMsg:
-		// 是否已有作品决定界面落点，恢复成功只决定引擎是否运行。数据升级、
-		// 预算或修订门禁失败时仍留在工作台展示原书，不能退回欢迎页。
+		// An existing book determines the UI destination; successful recovery only determines whether Engine runs. Migration,
+		// budget, or revision-gate failures still show the book workspace, never return to welcome.
 		if (msg.existing || msg.resumed) && m.mode == modeNew && !msg.completed {
 			enableMouse := m.enterRunning()
 			m.resizeTextarea()
@@ -457,7 +457,7 @@ func (m Model) handleRuntimeMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 			}
 			return m, tea.Batch(fetchSnapshot(m.runtime), enableMouse, m.textarea.Focus()), true
 		}
-		// /reopen 等会话内恢复从完成态重新进入创作台。
+		// In-session recovery such as /reopen re-enters the creative workspace from completion.
 		if msg.resumed && m.mode == modeDone {
 			enableMouse := m.enterRunning()
 			m.resizeTextarea()
@@ -470,8 +470,8 @@ func (m Model) handleRuntimeMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		return m, fetchSnapshot(m.runtime), true
 	case snapshotMsg:
 		next := host.UISnapshot(msg)
-		// 启动期 Host 尚未进入 running（规则归一化/启动裁定都在 StartPrepared 之前或之中），
-		// 直接套用快照会把工作台显示成"空闲"，让正在进行的启动看起来像卡死。
+		// During startup Host is not yet running (rule normalization/startup decisions happen before or during StartPrepared).
+		// Applying the raw snapshot would show "idle" and make active startup look stuck.
 		if m.starting {
 			next.IsRunning = true
 			next.RuntimeState = "starting"
@@ -581,9 +581,9 @@ func (m Model) handleRuntimeMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		return m, nil, true
 	case updateCheckMsg:
 		if msg.err != nil {
-			message := "启动版本检查失败"
+			message := "Startup update check failed"
 			if msg.result != nil {
-				message = "启动版本检查完成，但缓存存在异常"
+				message = "Startup update check completed with a cache error"
 			}
 			slog.Warn(message, "module", "version", "err", msg.err)
 		}
@@ -601,11 +601,11 @@ func (m Model) handleRuntimeMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		return m, nil, true
 	case revisionDoneMsg:
 		if msg.err != nil {
-			m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "章节同步失败：" + msg.err.Error(), Level: "error"})
+			m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "Chapter sync failed: " + msg.err.Error(), Level: "error"})
 		} else if msg.checkOnly {
-			summary := "未检测到章节外部修改"
+			summary := "No external chapter edits detected"
 			if len(msg.chapters) > 0 {
-				summary = fmt.Sprintf("检测到章节正文已被外部修改：%v；执行 /sync 接纳", msg.chapters)
+				summary = fmt.Sprintf("External chapter edits detected: %v; run /sync to accept them", msg.chapters)
 			}
 			m.applyEvent(host.Event{Time: time.Now(), Category: "SYSTEM", Summary: summary, Level: "info"})
 		} else {
@@ -674,7 +674,7 @@ func (m Model) handleRuntimeMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		m.spinnerIdx = (m.spinnerIdx + 1) % len(spinnerFrames)
 		m.cursorIdx++
 		if m.snapshot.IsRunning {
-			// 顶栏、活动提示和流式光标共用低频动画，避免多条常驻 timer 重复触发全屏 View。
+			// Header, activity hint, and stream cursor share one low-frequency animation to avoid duplicate full-screen timers.
 			m.refreshEventViewport()
 			m.refreshStreamViewport()
 			m.streamDirty = false
@@ -698,7 +698,7 @@ func (m Model) handleRuntimeMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 			m.streamRounds = append(m.streamRounds, "")
 		}
 		m.streamRounds[len(m.streamRounds)-1] += string(msg)
-		// 不立即刷新；首个 delta 启动一次 16ms 合并窗口，后续 delta 复用该 timer。
+		// Do not refresh immediately; the first delta starts a 16ms coalescing window reused by later deltas.
 		m.streamDirty = true
 		cmd := listenStream(m.runtime)
 		if !m.flushPending {
@@ -860,14 +860,14 @@ func (m Model) handleTextareaMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// applyEvent 记录一条 TUI 本地产生的事件并更新投影。Host 事件已经在产生端
-// 落过日志，事件订阅路径应直接调用 applyEventProjection，避免重复记录。
+// applyEvent records a TUI-local event and updates its projection. Host events are already logged
+// at their source; subscribers use applyEventProjection directly to avoid duplicate logging.
 func (m *Model) applyEvent(ev host.Event) {
 	host.LogEvent(ev)
 	m.applyEventProjection(ev)
 }
 
-// applyEventProjection 把一条事件应用到 m.events：
+// applyEventProjection applies an event to m.events:
 // - 带 ID 且已存在 → 原地更新（合并完成态字段，保留首次的 Time / Summary）
 // - 新事件 → 追加，必要时记录到 eventIndex
 // - 超过 maxEvents 时做滑动截断并重建索引
@@ -917,7 +917,7 @@ func (m *Model) applyEventProjection(ev host.Event) {
 }
 
 // trimStreamRounds 把 streamRounds 截断到 maxStreamRounds 段；超出从头丢弃。
-// 调用时机：每次 streamClear 新开轮次后。
+// Called after each streamClear starts a new round.
 func (m *Model) trimStreamRounds() {
 	if len(m.streamRounds) <= maxStreamRounds {
 		return

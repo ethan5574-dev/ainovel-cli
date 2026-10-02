@@ -35,10 +35,10 @@ func (t *ReviseOutlineTool) StrictSchema() bool                   { return true 
 
 func (t *ReviseOutlineTool) Schema() map[string]any {
 	entry := schema.Object(
-		schema.Property("title", schema.String("章节标题")).Required(),
-		schema.Property("core_event", schema.String("本章核心事件")).Required(),
-		schema.Property("hook", schema.String("章末钩子")).Required(),
-		schema.Property("scenes", schema.Array("计划场景；无则为空数组", schema.String(""))).Required(),
+		schema.Property("title", schema.String("Chapter title")).Required(),
+		schema.Property("core_event", schema.String("Chapter core event")).Required(),
+		schema.Property("hook", schema.String("Chapter-ending hook")).Required(),
+		schema.Property("scenes", schema.Array("Planned scenes; empty array if none", schema.String(""))).Required(),
 	)
 	return schema.Object(
 		schema.Property("from_chapter", schema.Int("从这一章开始替换尚未发生的计划")).Required(),

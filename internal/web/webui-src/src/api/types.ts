@@ -5,7 +5,7 @@
 //    AgentCacheStat, AgentContextSnapshot, CoCreateReply) have NO `json` tags in Go, so they
 //    marshal using the exact Go field name (PascalCase). Mirrored verbatim here.
 //  - Request/response DTOs defined in internal/web/server.go (textRequest, reviewRequest,
-//    answerRequest, askPayload) and domain/tools structs (Question, Option) DO have explicit
+//    setupCompleteRequest) and domain structs DO have explicit
 //    `json` tags (lowerCamelCase). Mirrored per-tag here.
 // Verify with a live `curl` against a running `ainovel-cli web` before trusting a shape you
 // haven't seen on the wire yet — this file is derived from reading Go source, not from
@@ -59,7 +59,7 @@ export interface AgentCacheStat {
 // Mirrors internal/host/events.go UISnapshot exactly (field-for-field, same order).
 export interface UISnapshot {
   Provider: string
-  NovelName: string
+  BookTitle: string
   ModelName: string
   ModelContextWindow: number
   ThinkingLevel: string
@@ -84,16 +84,6 @@ export interface UISnapshot {
   IsRunning: boolean
   Agents: AgentSnapshot[]
 
-  ContextTokens: number
-  ContextWindow: number
-  ContextPercent: number
-  ContextScope: string
-  ContextStrategy: string
-  ContextActiveMessages: number
-  ContextSummaryCount: number
-  ContextCompactedCount: number
-  ContextKeptCount: number
-
   TotalInputTokens: number
   TotalOutputTokens: number
   TotalCacheReadTokens: number
@@ -112,6 +102,7 @@ export interface UISnapshot {
   CachePerAgent: AgentCacheStat[]
   CachePerModel: AgentCacheStat[]
 
+  Synopsis: string
   Premise: string
   Outline: OutlineSnapshot[]
   Characters: string[]
@@ -151,6 +142,30 @@ export interface HostEvent {
 
 export const ZERO_TIME = '0001-01-01T00:00:00Z'
 
+// internal/bootstrap/setup.go ProviderPreset — no json tags, PascalCase.
+export interface ProviderPreset {
+  Name: string
+  Label: string
+  BaseURL: string
+  NeedType: boolean
+  APIKeyOptional: boolean
+}
+
+// internal/web/server.go setupProtocolType — has json tags.
+export interface SetupProtocolType {
+  name: string
+  label: string
+}
+
+// internal/web/server.go setupCompleteRequest — has json tags.
+export interface SetupCompleteRequest {
+  provider: string
+  type?: string
+  apiKey?: string
+  baseURL?: string
+  model: string
+}
+
 export function isEventRunning(e: HostEvent): boolean {
   return e.ID !== '' && (e.FinishedAt === '' || e.FinishedAt === ZERO_TIME)
 }
@@ -163,23 +178,84 @@ export interface CoCreateReply {
   Raw: string
 }
 
-// internal/tools/ask_user.go — has explicit json tags.
-export interface QuestionOption {
-  label: string
-  description: string
+export interface ModelConfig {
+  name: string
+  context_window?: number
+  json_schema?: boolean
 }
 
-export interface Question {
-  question: string
-  header: string
-  options: QuestionOption[]
-  multiSelect: boolean
+export interface ProviderSnapshot {
+  Name: string
+  Type: string
+  API: string
+  BaseURL: string
+  Models: ModelConfig[]
+  HasAPIKey: boolean
+  APIKeyHint: string
+  RequiresAPIKey: boolean
 }
 
-// internal/web/server.go askPayload — has explicit json tags.
-export interface AskPayload {
-  id: string
-  questions: Question[]
+export interface ModelConfiguration {
+  Providers: ProviderSnapshot[]
+  DefaultProvider: string
+  DefaultModel: string
+  ConfigPath: string
+  References: Record<string, string[]>
+}
+
+export interface ModelDraft {
+  provider: string
+  type?: string
+  api?: string
+  baseURL?: string
+  models: ModelConfig[]
+  apiKeyAction: 'keep' | 'replace' | 'clear'
+  apiKey?: string
+  testModel?: string
+}
+
+export interface ChapterListItem {
+  chapter: number
+  title: string
+  coreEvent?: string
+  summary?: string
+  status: 'planned' | 'writing' | 'completed'
+  wordCount: number
+  volume?: number
+  arc?: number
+}
+
+export interface BookSnapshot {
+  name: string
+  premise: string
+  phase: string
+  chapters: ChapterListItem[]
+}
+
+export interface ChapterDetail {
+  chapter: number
+  status: string
+  content: string
+  outline: { chapter: number; title: string; core_event: string; hook: string; scenes: string[] } | null
+  summary: { chapter: number; title: string; summary: string; characters: string[]; key_events: string[] } | null
+  plan: Record<string, unknown> | null
+}
+
+export interface CoCreateMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export interface ImportEvent {
+  stage: string
+  current: number
+  total: number
+  message: string
+  level: string
+  key: string
+  retryAt: string
+  error: string
+  continued: boolean
 }
 
 // SSE envelope: server sends `event: <name>\ndata: <json>\n\n`; the event name is not part
@@ -190,4 +266,4 @@ export type SSEMessage =
   | { event: 'event'; data: HostEvent }
   | { event: 'delta'; data: string }
   | { event: 'clear'; data: boolean }
-  | { event: 'ask'; data: AskPayload }
+  | { event: 'import'; data: ImportEvent }

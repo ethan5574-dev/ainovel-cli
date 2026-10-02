@@ -32,16 +32,16 @@ func (g *ChapterAdvanceGate) HandleBoundary() bool {
 	}
 	meta, err := g.store.RunMeta.Load()
 	if err != nil {
-		return g.fail(fmt.Errorf("读取 RunMeta: %w", err))
+		return g.fail(fmt.Errorf("Read RunMeta: %w", err))
 	}
 	if meta == nil {
-		return g.fail(fmt.Errorf("RunMeta 未初始化"))
+		return g.fail(fmt.Errorf("RunMeta is not initialized"))
 	}
 	if !meta.AdvanceMode.Valid() {
 		return g.fail(&domain.UnsupportedAdvanceModeError{Mode: meta.AdvanceMode})
 	}
 	if meta.AdvanceMode == domain.ChapterAdvanceAuto && meta.AdvancePermitChapter != 0 {
-		return g.fail(fmt.Errorf("auto 模式残留第 %d 章许可", meta.AdvancePermitChapter))
+		return g.fail(fmt.Errorf("Auto mode retains a permit for chapter %d", meta.AdvancePermitChapter))
 	}
 
 	if meta.AdvanceHold != nil {
@@ -59,7 +59,7 @@ func (g *ChapterAdvanceGate) HandleBoundary() bool {
 func (g *ChapterAdvanceGate) handleHold(hold domain.AdvanceHold) bool {
 	progress, err := g.store.Progress.Load()
 	if err != nil {
-		return g.fail(fmt.Errorf("读取 Progress 解析一次性暂停: %w", err))
+		return g.fail(fmt.Errorf("Read Progress to resolve a one-time hold: %w", err))
 	}
 	resolution, err := flow.ResolveAdvanceHold(&hold, progress)
 	if err != nil {
@@ -79,41 +79,41 @@ func (g *ChapterAdvanceGate) handleHold(hold domain.AdvanceHold) bool {
 		return false
 	case flow.AdvanceHoldConsume:
 		if err := g.store.RunMeta.ClearAdvanceHold(hold); err != nil {
-			return g.fail(fmt.Errorf("消费一次性暂停: %w", err))
+			return g.fail(fmt.Errorf("Consume one-time hold: %w", err))
 		}
-		g.reportEvent("info", withAdvanceReason("全书已完结，一次性暂停意图已解除", hold.Reason))
+		g.reportEvent("info", withAdvanceReason("Book complete; one-time hold cleared", hold.Reason))
 		return false
 	case flow.AdvanceHoldConsumeAndStop:
 		if err := g.store.RunMeta.ClearAdvanceHold(hold); err != nil {
-			return g.fail(fmt.Errorf("消费一次性暂停: %w", err))
+			return g.fail(fmt.Errorf("Consume one-time hold: %w", err))
 		}
-		msg := "已按用户要求在当前工作边界暂停"
+		msg := "Paused at the current work boundary as requested"
 		switch hold.After {
 		case domain.AdvanceHoldAfterRewritesDrained:
-			msg = "返工队列已排空，已暂停等待验收"
+			msg = "Rework queue drained; paused for review"
 		case domain.AdvanceHoldAtChapter:
-			msg = fmt.Sprintf("已写到第 %d 章，按用户要求暂停", hold.TargetChapter)
+			msg = fmt.Sprintf("Reached chapter %d; paused as requested", hold.TargetChapter)
 		}
 		g.pauseNow(withAdvanceReason(msg, hold.Reason))
 		return true
 	default:
-		return g.fail(fmt.Errorf("未知一次性暂停解析结果 %d", resolution))
+		return g.fail(fmt.Errorf("Unknown one-time hold resolution %d", resolution))
 	}
 }
 
 func (g *ChapterAdvanceGate) targetChapterCommitted(progress *domain.Progress, chapter int) (bool, error) {
 	pending, err := g.store.Signals.LoadPendingCommit()
 	if err != nil {
-		return false, fmt.Errorf("读取 PendingCommit 对账目标章节: %w", err)
+		return false, fmt.Errorf("read PendingCommit to reconcile target chapter: %w", err)
 	}
 	if pending != nil {
 		return false, nil
 	}
 	if !slices.Contains(progress.CompletedChapters, chapter) {
-		return false, fmt.Errorf("目标第 %d 章未出现在已完成章节中", chapter)
+		return false, fmt.Errorf("target chapter %d is not among completed chapters", chapter)
 	}
 	if g.store.Checkpoints.LatestByStep(domain.ChapterScope(chapter), "commit") == nil {
-		return false, fmt.Errorf("目标第 %d 章已标记完成但缺少 commit checkpoint", chapter)
+		return false, fmt.Errorf("target chapter %d is marked complete but has no commit checkpoint", chapter)
 	}
 	return true, nil
 }
@@ -123,37 +123,37 @@ func (g *ChapterAdvanceGate) reconcilePermit(permit int) bool {
 		return false
 	}
 	if permit < 0 {
-		return g.fail(fmt.Errorf("章节许可不能为负数: %d", permit))
+		return g.fail(fmt.Errorf("Chapter permit cannot be negative: %d", permit))
 	}
 	progress, err := g.store.Progress.Load()
 	if err != nil {
-		return g.fail(fmt.Errorf("读取 Progress 对账章节许可: %w", err))
+		return g.fail(fmt.Errorf("Read Progress to reconcile chapter permit: %w", err))
 	}
 	if progress == nil {
-		return g.fail(fmt.Errorf("缺少 Progress，无法对账第 %d 章许可", permit))
+		return g.fail(fmt.Errorf("Missing Progress; cannot reconcile permit for chapter %d", permit))
 	}
 	pending, err := g.store.Signals.LoadPendingCommit()
 	if err != nil {
-		return g.fail(fmt.Errorf("读取 PendingCommit 对账章节许可: %w", err))
+		return g.fail(fmt.Errorf("Read PendingCommit to reconcile chapter permit: %w", err))
 	}
 	completed := slices.Contains(progress.CompletedChapters, permit)
 	if completed {
 		if pending != nil {
 			if pending.Chapter != permit {
-				return g.fail(fmt.Errorf("第 %d 章许可与第 %d 章 PendingCommit 冲突", permit, pending.Chapter))
+				return g.fail(fmt.Errorf("Permit for chapter %d conflicts with PendingCommit for chapter %d", permit, pending.Chapter))
 			}
 			return false
 		}
 		if g.store.Checkpoints.LatestByStep(domain.ChapterScope(permit), "commit") == nil {
-			return g.fail(fmt.Errorf("第 %d 章已标记完成但缺少 commit checkpoint", permit))
+			return g.fail(fmt.Errorf("Chapter %d is marked complete but has no commit checkpoint", permit))
 		}
 		if err := g.store.RunMeta.ClearAdvancePermit(permit); err != nil {
-			return g.fail(fmt.Errorf("消费第 %d 章许可: %w", permit, err))
+			return g.fail(fmt.Errorf("Consume permit for chapter %d: %w", permit, err))
 		}
 		return false
 	}
 	if permit != progress.NextChapter() {
-		return g.fail(fmt.Errorf("第 %d 章许可与当前下一章 %d 不一致", permit, progress.NextChapter()))
+		return g.fail(fmt.Errorf("Permit for chapter %d does not match next chapter %d", permit, progress.NextChapter()))
 	}
 	return false
 }
@@ -165,27 +165,27 @@ func (g *ChapterAdvanceGate) Allow(inst *flow.Instruction) (bool, error) {
 	}
 	meta, err := g.store.RunMeta.Load()
 	if err != nil {
-		return false, fmt.Errorf("读取 RunMeta: %w", err)
+		return false, fmt.Errorf("Read RunMeta: %w", err)
 	}
 	if meta == nil {
-		return false, fmt.Errorf("RunMeta 未初始化")
+		return false, fmt.Errorf("RunMeta is not initialized")
 	}
 	if !meta.AdvanceMode.Valid() {
 		return false, &domain.UnsupportedAdvanceModeError{Mode: meta.AdvanceMode}
 	}
 	if meta.AdvanceMode == domain.ChapterAdvanceAuto {
 		if meta.AdvancePermitChapter != 0 {
-			return false, fmt.Errorf("auto 模式残留第 %d 章许可", meta.AdvancePermitChapter)
+			return false, fmt.Errorf("Auto mode retains a permit for chapter %d", meta.AdvancePermitChapter)
 		}
 		return true, nil
 	}
 	progress, err := g.store.Progress.Load()
 	if err != nil {
-		return false, fmt.Errorf("读取 Progress: %w", err)
+		return false, fmt.Errorf("Read Progress: %w", err)
 	}
 	pending, err := g.store.Signals.LoadPendingCommit()
 	if err != nil {
-		return false, fmt.Errorf("读取 PendingCommit: %w", err)
+		return false, fmt.Errorf("Read PendingCommit: %w", err)
 	}
 	if !flow.StartsForwardChapter(inst, progress, pending) {
 		return true, nil
@@ -198,22 +198,22 @@ func (g *ChapterAdvanceGate) Allow(inst *flow.Instruction) (bool, error) {
 		return true, nil
 	}
 	if meta.AdvancePermitChapter != 0 {
-		return false, fmt.Errorf("第 %d 章派发与第 %d 章许可不一致", target, meta.AdvancePermitChapter)
+		return false, fmt.Errorf("Dispatch for chapter %d does not match permit for chapter %d", target, meta.AdvancePermitChapter)
 	}
 	if hold := meta.AdvanceHold; hold != nil && hold.After == domain.AdvanceHoldAtChapter && target <= hold.TargetChapter {
 		return true, nil
 	}
 	latest := progress.LatestCompleted()
-	message := fmt.Sprintf("已完成至第 %d 章，逐章验收等待放行第 %d 章；使用 /next 生成，或输入修改意见", latest, target)
+	message := fmt.Sprintf("Completed through chapter %d; chapter-by-chapter review awaits approval for chapter %d. Use /next to generate it, or enter revision feedback", latest, target)
 	if latest == 0 {
-		message = fmt.Sprintf("规划已就绪，逐章验收等待放行第 %d 章；使用 /next 生成，或输入修改意见", target)
+		message = fmt.Sprintf("Plan ready; chapter-by-chapter review awaits approval for chapter %d. Use /next to generate it, or enter revision feedback", target)
 	}
 	g.pauseNow(message)
 	return false, nil
 }
 
 func (g *ChapterAdvanceGate) fail(err error) bool {
-	g.pauseNow("章节推进控制错误，已暂停：" + err.Error())
+	g.pauseNow("Chapter advance control error; paused: " + err.Error())
 	return true
 }
 
@@ -235,5 +235,5 @@ func withAdvanceReason(msg, reason string) string {
 	if reason == "" {
 		return msg
 	}
-	return msg + "（诉求：" + reason + "）"
+	return msg + " (request: " + reason + ")"
 }

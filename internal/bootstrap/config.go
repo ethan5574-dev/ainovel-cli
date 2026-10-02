@@ -222,8 +222,8 @@ type Config struct {
 	// Notify configuration for unattended alerts; enabled by default with the system channel as fallback.
 	Notify NotifyConfig `json:"notify,omitzero"`
 
-	// DisableUpdateCheck 关闭启动时的新版本检查提醒（默认开）。检查只读
-	// GitHub Releases 公开接口，结果缓存在本地配置目录，不上报任何数据。
+	// DisableUpdateCheck disables startup update reminders (enabled by default). Checks only read the
+	// public GitHub Releases API and cache results locally; no data is reported.
 	DisableUpdateCheck bool `json:"disable_update_check,omitempty"`
 }
 

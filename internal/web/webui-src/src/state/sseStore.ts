@@ -1,7 +1,7 @@
 // External store for the single /api/events SSE connection, consumed via useSyncExternalStore
 // selector hooks (see sseHooks.ts) so a `delta` tick doesn't re-render panels that only care
 // about `snapshot`. No Redux/Zustand — the data shape (one replace-on-push snapshot, one
-// append/patch event log, one transient text buffer, one nullable pending-ask) fits a plain
+// append/patch event log, one transient text buffer, import progress) fits a plain
 // external store cleanly.
 //
 // Reconnection has two layers, matching internal/web/server.go's handleEvents:
@@ -15,7 +15,7 @@
 // sessionStorage id after a long gap) — upsertEvent's dedupe key handles that for events with a
 // stable ID (call-correlated DISPATCH/TOOL/DECISION rows); for ID-less rows (SYSTEM/ERROR/...)
 // it falls back to a content key, since those are byte-identical on replay.
-import type { AskPayload, HostEvent, UISnapshot } from '../api/types'
+import type { HostEvent, ImportEvent, UISnapshot } from '../api/types'
 
 export type ConnectionStatus = 'connecting' | 'open' | 'reconnecting' | 'closed'
 
@@ -51,7 +51,7 @@ export function createSSEStore() {
   const snapshot = makeSlice<UISnapshot | null>(null)
   const events = makeSlice<HostEvent[]>([])
   const streamBuffer = makeSlice<string>('')
-  const pendingAsk = makeSlice<AskPayload | null>(null)
+  const importEvent = makeSlice<ImportEvent | null>(null)
 
   let source: EventSource | null = null
   const seenKeys = new Set<string>()
@@ -104,8 +104,8 @@ export function createSSEStore() {
       streamBuffer.set(next)
     })
     source.addEventListener('clear', () => streamBuffer.set(''))
-    source.addEventListener('ask', (e) => {
-      pendingAsk.set(JSON.parse((e as MessageEvent).data))
+    source.addEventListener('import', (e) => {
+      importEvent.set(JSON.parse((e as MessageEvent).data))
     })
   }
 
@@ -114,19 +114,14 @@ export function createSSEStore() {
     source = null
   }
 
-  function resolveAsk() {
-    pendingAsk.set(null)
-  }
-
   return {
     status,
     snapshot,
     events,
     streamBuffer,
-    pendingAsk,
+    importEvent,
     connect,
     disconnect,
-    resolveAsk,
   }
 }
 

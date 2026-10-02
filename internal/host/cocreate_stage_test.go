@@ -217,7 +217,7 @@ func TestBuildStoryStateSummary_Populated(t *testing.T) {
 	}
 
 	got := buildStoryStateSummary(st)
-	for _, want := range []string{"影之诗", "已完成 3 章", "下一章为第 4 章", "主角登临绝巅", "师门血仇未报", "预计 4-6 卷"} {
+	for _, want := range []string{"影之诗", "3 chapters completed", "next chapter: 4", "主角登临绝巅", "师门血仇未报", "预计 4-6 卷"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("摘要应含 %q，实际:\n%s", want, got)
 		}
@@ -250,10 +250,10 @@ func TestBuildStoryStateSummaryUsesDynamicPlanningWording(t *testing.T) {
 	}
 
 	got := buildStoryStateSummary(st)
-	if !strings.Contains(got, "当前已细化 2 章（后续按弧动态规划）") {
+	if !strings.Contains(got, "2 chapters detailed so far (later arcs planned dynamically)") {
 		t.Fatalf("动态规划摘要口径错误:\n%s", got)
 	}
-	if strings.Contains(got, "66") || strings.Contains(got, "规划 2 章") {
+	if strings.Contains(got, "66") || strings.Contains(got, "planned total 2 chapters") {
 		t.Fatalf("动态规划摘要不得暗示固定总章数:\n%s", got)
 	}
 }

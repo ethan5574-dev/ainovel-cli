@@ -6,7 +6,7 @@ import (
 
 // Event 是 TUI 消费的结构化事件。
 //
-// 对于 MODEL / TOOL / DISPATCH / DECISION 调用事件，同一次调用的开始与结束共用一个 ID：
+// MODEL / TOOL / DISPATCH / DECISION start and end events share one ID per call:
 // 开始时先发 FinishedAt 为零值的事件（TUI 渲染为"进行中"样式）；
 // 结束时再发一条同 ID 的事件，填入 FinishedAt + Duration（+ Failed），
 // TUI 按 ID 定位原行原地更新，避免"开始一行、完成又一行"的冗余。
@@ -29,7 +29,7 @@ type Event struct {
 }
 
 // Running 返回事件是否处于进行中。
-// 仅调用类事件（有 ID 的 MODEL / TOOL / DISPATCH / DECISION）可能进行中；其它类型总是返回 false。
+// Only call events with an ID can be running; other event kinds always return false.
 func (e Event) Running() bool {
 	return e.hasLifecycle() && e.FinishedAt.IsZero()
 }
@@ -105,7 +105,7 @@ type UISnapshot struct {
 	Premise          string
 	Outline          []OutlineSnapshot
 	Characters       []string
-	SupportingCount  int      // 章节记录中的次要角色总数
+	SupportingCount  int      // Total supporting characters derived from chapter records.
 	RecentSupporting []string // 最近活跃的次要角色（最多 5 个，按 LastSeenChapter 倒序）
 	Layered          bool
 	CurrentVolumeArc string

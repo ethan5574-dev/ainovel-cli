@@ -10,7 +10,7 @@ const (
 	RuntimePriorityBackground RuntimeQueuePriority = "background"
 )
 
-// RuntimeQueueItem 是统一运行时队列的持久化记录。
+// RuntimeQueueItem is a persisted runtime-queue record.
 type RuntimeQueueItem struct {
 	Seq      int64                `json:"seq"`
 	Time     time.Time            `json:"time"`

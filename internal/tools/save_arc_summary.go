@@ -16,7 +16,7 @@ import (
 	"github.com/voocel/ainovel-cli/internal/store"
 )
 
-// SaveArcSummaryTool 保存弧级摘要、角色快照和写作规则，Editor 在弧结束时调用。
+// SaveArcSummaryTool saves arc summaries, character snapshots, and writing rules for Editor at arc end.
 type SaveArcSummaryTool struct {
 	store *store.Store
 }
@@ -27,7 +27,7 @@ func NewSaveArcSummaryTool(store *store.Store) *SaveArcSummaryTool {
 
 func (t *SaveArcSummaryTool) Name() string { return "save_arc_summary" }
 func (t *SaveArcSummaryTool) Description() string {
-	return "保存弧级摘要、角色状态快照和写作规则（长篇模式，弧结束时调用）"
+	return "Save an arc summary, character snapshots, and writing rules at a long-form arc boundary"
 }
 func (t *SaveArcSummaryTool) Label() string { return "Save Arc Summary" }
 
@@ -53,12 +53,12 @@ func (t *SaveArcSummaryTool) Schema() map[string]any {
 		schema.Property("taboos", schema.Array("Writing practices to avoid in this novel", schema.String(""))),
 	)
 	return schema.Object(
-		schema.Property("volume", schema.Int("卷号")).Required(),
-		schema.Property("arc", schema.Int("弧号")).Required(),
-		schema.Property("title", schema.String("弧标题")).Required(),
-		schema.Property("summary", schema.String("弧摘要（500字以内）")).Required(),
-		schema.Property("key_events", schema.Array("弧内关键事件", schema.String(""))).Required(),
-		schema.Property("character_snapshots", schema.Array("角色状态快照", snapshotSchema)).Required(),
+		schema.Property("volume", schema.Int("Volume number")).Required(),
+		schema.Property("arc", schema.Int("Arc number")).Required(),
+		schema.Property("title", schema.String("Arc title")).Required(),
+		schema.Property("summary", schema.String("Arc summary (within 500 characters)")).Required(),
+		schema.Property("key_events", schema.Array("Key events in the arc", schema.String(""))).Required(),
+		schema.Property("character_snapshots", schema.Array("Character state snapshots", snapshotSchema)).Required(),
 		schema.Property("style_rules", styleRulesSchema).Required(),
 	)
 }
@@ -120,8 +120,8 @@ func (t *SaveArcSummaryTool) Execute(_ context.Context, args json.RawMessage) (j
 			return nil, fmt.Errorf("save style rules: %w: %w", errs.ErrStoreWrite, err)
 		}
 
-		// 弧摘要是 Router 的完成标记，作为最后一个语义工件写入。此前任一步
-		// 失败时摘要保持缺失，恢复后 Router 仍会重派本任务。
+		// Arc summary is Router's completion marker, saved as the last semantic artifact. If an earlier step
+		// fails, the missing summary ensures Router dispatches this task again after recovery.
 		if err := t.store.Summaries.SaveArcSummary(arcSummary); err != nil {
 			return nil, fmt.Errorf("save arc summary: %w: %w", errs.ErrStoreWrite, err)
 		}
@@ -147,8 +147,8 @@ func (t *SaveArcSummaryTool) Execute(_ context.Context, args json.RawMessage) (j
 	})
 }
 
-// arcSummaryReplay 只放行内容完全相同的幂等收尾，用于语义工件已落盘但
-// checkpoint 追加失败的重试。任何差异都显式冲突，不能借重试覆盖历史聚合事实。
+// arcSummaryReplay allows only identical-content idempotent finishing when artifacts exist but
+// checkpoint append failed. Any difference conflicts explicitly; retries cannot overwrite historical aggregates.
 func (t *SaveArcSummaryTool) arcSummaryReplay(
 	summary domain.ArcSummary,
 	snapshots []domain.CharacterSnapshot,
@@ -175,7 +175,7 @@ func (t *SaveArcSummaryTool) arcSummaryReplay(
 	if !reflect.DeepEqual(*existing, summary) ||
 		!slices.Equal(storedSnapshots, snapshots) ||
 		storedRules == nil || !reflect.DeepEqual(*storedRules, rules) {
-		return false, fmt.Errorf("第 %d 卷第 %d 弧摘要已存在但关联工件不同，拒绝覆盖: %w", summary.Volume, summary.Arc, errs.ErrToolConflict)
+		return false, fmt.Errorf("summary for volume %d arc %d already exists with different related artifacts; refusing overwrite: %w", summary.Volume, summary.Arc, errs.ErrToolConflict)
 	}
 	return true, nil
 }

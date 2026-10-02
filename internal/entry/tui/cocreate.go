@@ -70,18 +70,18 @@ func errorText(err error) string {
 
 type cocreateState struct {
 	session             *startup.CoCreateSession
-	stage               bool // true=阶段共创（运行中规划后续走向）；false=冷启动共创（启动前澄清需求）
+	stage               bool // true: stage co-creation plans subsequent events; false: pre-start co-creation clarifies requirements.
 	awaiting            bool
 	reqID               int
-	cancel              context.CancelFunc // 取消当前 LLM 请求
+	cancel              context.CancelFunc // Cancel the current LLM request.
 	deltaCh             chan cocreateStreamItem
 	doneCh              chan cocreateDoneMsg
 	convVP              viewport.Model
 	promptVP            viewport.Model
-	convFollow          bool // true: 流式新内容自动滚到底；用户上滚后置 false 停止跟随
+	convFollow          bool // Follow streamed content until the user scrolls upward.
 	selectedSuggestions []string
-	// focusPrompt 决定 ↑↓/PgUp/PgDn/Home/End 滚哪一栏：false=左对话栏（默认），
-	// true=右创作指令栏。欢迎页已关鼠标上报（保留原生复制），右栏溢出靠 Tab 切焦点后键盘滚。
+	// focusPrompt selects the pane for arrow/Page/Home/End scrolling: false = conversation (default),
+	// true = creative instructions. Mouse reporting is disabled on the welcome screen for native copying; Tab selects the right pane for keyboard scrolling.
 	focusPrompt bool
 }
 
@@ -157,8 +157,8 @@ func (s *cocreateState) suggestions() []string {
 	return s.session.Suggestions()
 }
 
-// appendSuggestion 把数字键对应的建议追加到由快捷键生成的输入。
-// 用户一旦手动修改输入，current 与已选建议的组合不再相等，数字键即恢复为普通输入。
+// appendSuggestion appends a numbered suggestion to shortcut-generated input.
+// Manual edits break the shortcut composition match, restoring ordinary numeric input.
 func (s *cocreateState) appendSuggestion(index int, current string) (string, bool) {
 	suggestions := s.suggestions()
 	if index < 0 || index >= len(suggestions) {
@@ -327,7 +327,7 @@ func renderCoCreateSuggestions(width int, state *cocreateState) string {
 	bodyStyle := lipgloss.NewStyle().Foreground(colorMuted)
 	hintStyle := lipgloss.NewStyle().Foreground(colorDim).Italic(true)
 
-	lines := []string{hintStyle.Render("AI 建议（按 1/2/3 组合，可编辑后发送）：")}
+	lines := []string{hintStyle.Render("AI suggestions (combine with 1/2/3, edit before sending):")}
 	for i, s := range sugs {
 		lines = append(lines, digitStyle.Render(digits[i]+" ")+bodyStyle.Render(strings.TrimSpace(s)))
 	}

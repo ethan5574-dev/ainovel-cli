@@ -31,7 +31,7 @@ func Run(cfg bootstrap.Config, bundle assets.Bundle, build buildversion.Info) er
 	m := NewModel(rt, build.Version)
 	m.disableUpdateCheck = cfg.DisableUpdateCheck
 	if logErr := rt.FileLogError(); logErr != nil {
-		logWarning := fmt.Errorf("文件日志不可用，已继续使用终端日志：%w", logErr)
+		logWarning := fmt.Errorf("file logging is unavailable; continuing with terminal logging: %w", logErr)
 		m.err = logWarning
 		m.applyEvent(host.Event{
 			Time: time.Now(), Category: "SYSTEM", Level: "warn",

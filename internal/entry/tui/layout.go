@@ -36,9 +36,9 @@ func contextPercentColor(percent float64) lipgloss.AdaptiveColor {
 	}
 }
 
-// formatContextWindow 把 token 数格式化成紧凑窗口标记："128K" / "200K" / "1M" / "2M"。
-// Gemini 的 1048576 (2^20) 等技术意义上的 1M 会展示为 "1M" 而非 "1.0M"。
-// n<=0 返回空串，调用方应据此决定是否展示。
+// formatContextWindow renders compact token-window labels: "128K", "200K", "1M", "2M".
+// Technical 1M windows such as Gemini 1048576 (2^20) display as "1M", not "1.0M".
+// n<=0 returns empty; the caller decides whether to display it.
 func formatContextWindow(n int) string {
 	if n <= 0 {
 		return ""

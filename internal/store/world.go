@@ -40,7 +40,7 @@ func NewWorldStore(io *IO) *WorldStore {
 
 // ── 时间线 ──
 
-// SaveTimeline 全量替换时间线事实与人类可读投影。
+// SaveTimeline replaces all timeline facts and their readable projection.
 func (s *WorldStore) SaveTimeline(events []domain.TimelineEvent) error {
 	return s.io.WithWriteLock(func() error {
 		if err := s.timeline.replaceUnlocked(s.io, events); err != nil {
@@ -56,7 +56,7 @@ func (s *WorldStore) SaveTimeline(events []domain.TimelineEvent) error {
 	})
 }
 
-// LoadTimeline 读取时间线。
+// LoadTimeline read timeline。
 func (s *WorldStore) LoadTimeline() ([]domain.TimelineEvent, error) {
 	s.io.mu.Lock()
 	defer s.io.mu.Unlock()
@@ -79,8 +79,8 @@ func (s *WorldStore) AppendTimelineEvents(newEvents []domain.TimelineEvent) erro
 
 		added, err := s.timeline.appendUnlocked(s.io, newEvents)
 		if err != nil {
-			// 追加错误时磁盘上可能已有部分完整记录，重放前必须
-			// 从事实日志重建投影，不能仅依赖 added 的返回值。
+			// Failed appends may leave complete records on disk; before replay, rebuild
+			// the projection from the fact log instead of relying only on returned added records.
 			s.timelineProjectionReady = false
 			return err
 		}
@@ -95,8 +95,8 @@ func (s *WorldStore) AppendTimelineEvents(newEvents []domain.TimelineEvent) erro
 	})
 }
 
-// ensureTimelineProjectionUnlocked 在进程首次追加或上次投影失败后核对 timeline.md。
-// 正常路径只执行一次全量核对，之后每章与 JSONL 同步追加；投影不参与事实读取。
+// ensureTimelineProjectionUnlocked reconciles timeline.md on first append or after a projection failure.
+// Normally reconcile once, then append alongside JSONL per chapter; facts are never read from the projection.
 func (s *WorldStore) ensureTimelineProjectionUnlocked(events []domain.TimelineEvent) error {
 	if s.timelineProjectionReady {
 		return nil
@@ -143,7 +143,7 @@ func (s *WorldStore) SaveForeshadowLedger(entries []domain.ForeshadowEntry) erro
 	})
 }
 
-// LoadForeshadowLedger 读取伏笔账本。
+// LoadForeshadowLedger read foreshadowing ledger。
 func (s *WorldStore) LoadForeshadowLedger() ([]domain.ForeshadowEntry, error) {
 	var entries []domain.ForeshadowEntry
 	if err := s.io.ReadJSON("foreshadow_ledger.json", &entries); err != nil {
@@ -247,7 +247,7 @@ func (s *WorldStore) SaveRelationships(entries []domain.RelationshipEntry) error
 	})
 }
 
-// LoadRelationships 读取人物关系状态。
+// LoadRelationships reads character relationship state.
 func (s *WorldStore) LoadRelationships() ([]domain.RelationshipEntry, error) {
 	var entries []domain.RelationshipEntry
 	if err := s.io.ReadJSON("relationship_state.json", &entries); err != nil {
@@ -306,7 +306,7 @@ func (s *WorldStore) LoadStateChanges() ([]domain.StateChange, error) {
 	return s.stateChanges.allUnlocked(s.io)
 }
 
-// SaveStateChanges 全量替换状态变化事实，供章节修订后重建投影。
+// SaveStateChanges replaces state-change facts when rebuilding projections after revisions.
 func (s *WorldStore) SaveStateChanges(changes []domain.StateChange) error {
 	return s.io.WithWriteLock(func() error {
 		return s.stateChanges.replaceUnlocked(s.io, changes)
@@ -401,7 +401,7 @@ func (s *WorldStore) HasGlobalReview(chapter int) (bool, error) {
 	return r != nil && r.Scope == "global", nil
 }
 
-// LoadGlobalReview 读取指定截止章节的全局审阅。
+// LoadGlobalReview reads the global review through the specified chapter.
 func (s *WorldStore) LoadGlobalReview(chapter int) (*domain.ReviewEntry, error) {
 	var r domain.ReviewEntry
 	if err := s.io.ReadJSON(fmt.Sprintf("reviews/%02d-global.json", chapter), &r); err != nil {
@@ -474,6 +474,38 @@ func (s *WorldStore) LoadReviewsAffectingChapter(chapter int) ([]domain.ReviewEn
 	return reviews, nil
 }
 
+// LoadAllReviews 返回 reviews/ 目录下的全部审阅（chapter/arc/global 三种 scope 都含），
+// 按章节升序排列。供导出/统计类调用方（如平台 worker 的 provenance 采集）一次性取全量，
+// 区别于 LoadReviewsAffectingChapter 只返回影响特定章节的子集。
+func (s *WorldStore) LoadAllReviews() ([]domain.ReviewEntry, error) {
+	entries, err := os.ReadDir(s.io.path("reviews"))
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var reviews []domain.ReviewEntry
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		data, err := os.ReadFile(s.io.path("reviews/" + entry.Name()))
+		if err != nil {
+			return nil, err
+		}
+		var review domain.ReviewEntry
+		if err := json.Unmarshal(data, &review); err != nil {
+			return nil, fmt.Errorf("parse reviews/%s: %w", entry.Name(), err)
+		}
+		reviews = append(reviews, review)
+	}
+	slices.SortFunc(reviews, func(a, b domain.ReviewEntry) int {
+		return a.Chapter - b.Chapter
+	})
+	return reviews, nil
+}
+
 // ── render helpers ──
 
 func pairKey(a, b string) string {
@@ -501,7 +533,7 @@ func stateChangeKey(c domain.StateChange) string {
 	return stableRecordKey(c.Chapter, c.Entity, c.Field, c.OldValue, c.NewValue)
 }
 
-// stableRecordKey 使用长度前缀编码可变文本，避免内容中的分隔符导致去重碰撞。
+// stableRecordKey length-prefixes variable text to avoid deduplication collisions from content delimiters.
 func stableRecordKey(chapter int, parts ...string) string {
 	var b strings.Builder
 	b.WriteString(strconv.Itoa(chapter))
@@ -578,7 +610,7 @@ func renderWorldRules(rules []domain.WorldRule) string {
 		for _, r := range grouped[cat] {
 			fmt.Fprintf(&b, "- **规则**：%s\n", r.Rule)
 			if r.Boundary != "" {
-				fmt.Fprintf(&b, "  - 边界：%s\n", r.Boundary)
+				fmt.Fprintf(&b, "  - Boundary: %s\n", r.Boundary)
 			}
 		}
 		b.WriteString("\n")

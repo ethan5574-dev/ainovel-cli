@@ -70,7 +70,7 @@ func (t *SaveVolumeSummaryTool) Execute(_ context.Context, args json.RawMessage)
 	}
 	if existing != nil {
 		if !reflect.DeepEqual(*existing, volSummary) {
-			return nil, fmt.Errorf("卷 %d 摘要已存在且内容不同，拒绝覆盖: %w", a.Volume, errs.ErrToolConflict)
+			return nil, fmt.Errorf("volume %d summary already exists with different content; refusing overwrite: %w", a.Volume, errs.ErrToolConflict)
 		}
 	} else {
 		if err := requireAggregateTarget(t.store, flow.AggregateVolumeSummary, a.Volume, 0, 0); err != nil {

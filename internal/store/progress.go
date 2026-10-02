@@ -51,7 +51,7 @@ func (s *ProgressStore) Init(totalChapters int) error {
 	})
 }
 
-// SetTotalChapters 更新大纲容量：非分层模式为详细章数，分层模式为内部估算。
+// SetTotalChapters updates outline capacity: detailed count in flat mode, internal estimate in layered mode.
 func (s *ProgressStore) SetTotalChapters(n int) error {
 	return s.io.WithWriteLock(func() error {
 		p, err := s.loadUnlocked()
@@ -66,7 +66,7 @@ func (s *ProgressStore) SetTotalChapters(n int) error {
 	})
 }
 
-// UpdatePhase 更新创作阶段。
+// UpdatePhase updates the creative phase.
 func (s *ProgressStore) UpdatePhase(phase domain.Phase) error {
 	return s.io.WithWriteLock(func() error {
 		p, err := s.loadUnlocked()
@@ -84,8 +84,8 @@ func (s *ProgressStore) UpdatePhase(phase domain.Phase) error {
 	})
 }
 
-// AdvancePhase 将创作阶段至少推进到 phase；已经到达更后阶段时保持不变。
-// 适用于可重复保存的阶段工件，避免修订旧工件被误判为阶段回退。
+// AdvancePhase advances to at least phase, preserving a later phase if already reached.
+// For repeatable artifact saves, preventing revisions from being misclassified as phase regressions.
 func (s *ProgressStore) AdvancePhase(phase domain.Phase) error {
 	return s.io.WithWriteLock(func() error {
 		p, err := s.loadUnlocked()
@@ -118,7 +118,7 @@ func (s *ProgressStore) StartChapter(chapter int) error {
 			return err
 		}
 		if p == nil {
-			return fmt.Errorf("progress 未初始化: %w", errs.ErrToolPrecondition)
+			return fmt.Errorf("progress is not initialized: %w", errs.ErrToolPrecondition)
 		}
 		if p.Phase != domain.PhaseWriting {
 			return fmt.Errorf("章节写作仅允许在 writing 阶段（当前 phase=%s）: %w", p.Phase, errs.ErrToolPrecondition)
@@ -234,7 +234,7 @@ func (s *ProgressStore) Reopen(chapters []int, reason string) error {
 			return err
 		}
 		if p == nil {
-			return fmt.Errorf("progress 未初始化: %w", errs.ErrToolPrecondition)
+			return fmt.Errorf("progress is not initialized: %w", errs.ErrToolPrecondition)
 		}
 		if p.Phase != domain.PhaseComplete {
 			return fmt.Errorf("reopen 仅适用于已完结的书（当前 phase=%s）: %w", p.Phase, errs.ErrToolPrecondition)
@@ -263,7 +263,7 @@ func (s *ProgressStore) ReopenContinue() error {
 			return err
 		}
 		if p == nil {
-			return fmt.Errorf("progress 未初始化: %w", errs.ErrToolPrecondition)
+			return fmt.Errorf("progress is not initialized: %w", errs.ErrToolPrecondition)
 		}
 		if p.Phase != domain.PhaseComplete {
 			return fmt.Errorf("重开仅适用于已完结的书（当前 phase=%s）: %w", p.Phase, errs.ErrToolPrecondition)
@@ -370,7 +370,7 @@ func (s *ProgressStore) ApplyReviewOutcome(flow domain.FlowState, chapters []int
 			return err
 		}
 		if p == nil {
-			return fmt.Errorf("progress 未初始化: %w", errs.ErrToolPrecondition)
+			return fmt.Errorf("progress is not initialized: %w", errs.ErrToolPrecondition)
 		}
 		if len(chapters) > 0 {
 			if flow == domain.FlowWriting {
@@ -475,7 +475,7 @@ func (s *ProgressStore) ValidateChapterWork(chapter int) error {
 		return err
 	}
 	if p == nil {
-		return fmt.Errorf("progress 未初始化: %w", errs.ErrToolPrecondition)
+		return fmt.Errorf("progress is not initialized: %w", errs.ErrToolPrecondition)
 	}
 	if p.Phase != domain.PhaseWriting {
 		return fmt.Errorf("章节写作仅允许在 writing 阶段（当前 phase=%s）: %w", p.Phase, errs.ErrToolPrecondition)
@@ -525,7 +525,7 @@ func normalizePendingRewrites(chapters, completed []int) ([]int, error) {
 		normalized = append(normalized, ch)
 	}
 	if len(invalid) > 0 {
-		return nil, fmt.Errorf("pending_rewrites 只能包含已完成章节，非法章节：%v，completed_chapters=%v: %w", invalid, completed, errs.ErrToolPrecondition)
+		return nil, fmt.Errorf("pending_rewrites can only contain completed chapters, invalid chapters: %v, completed_chapters=%v: %w", invalid, completed, errs.ErrToolPrecondition)
 	}
 	return normalized, nil
 }

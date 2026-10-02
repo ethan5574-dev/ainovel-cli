@@ -24,9 +24,9 @@ func NewSaveFoundationTool(store *store.Store) *SaveFoundationTool {
 
 func (t *SaveFoundationTool) Name() string { return "save_foundation" }
 func (t *SaveFoundationTool) Description() string {
-	return "保存小说基础设定（premise/outline/characters/world_rules/compass 等）。**这是这些设定的持久化入口**：未经工具调用保存的内容不会进入 store，只在消息里输出 Markdown/JSON 等于丢失。type 可选 premise / outline / layered_outline / characters / world_rules / append_volume / update_compass / complete_book。premise 时 content 必须是 Markdown 字符串；其他类型 content 优先直接传 JSON 数组或对象。append_volume 追加新卷（content 为不带卷弧 index 的 VolumeOutline JSON，序号由系统生成；顶层带 \"final\": true 即宣告收官卷——全书在该卷收束，所有章节写完后自动完结，无需再调 complete_book）；update_compass 更新终局方向（content 为 StoryCompass JSON）；complete_book 宣告全书完结（content 传空对象 {}，直接推 Phase=Complete；工具会校验：大纲内章节已全部写完、无返工队列、compass 无未收束 open_threads——确认长线已收束须先 update_compass 清空 open_threads 落盘，想提前收束用 append_volume 的 final 收官卷）。append_volume / complete_book 必须带 reason 参数（一句话判定理由，对照完结判定清单，记入裁定审计）。scale 可选，仅允许 short / mid / long。"
+	return "Persist novel foundations: premise/outline/layered_outline/characters/world_rules/append_volume/update_compass/complete_book. Artifacts not saved through this tool never enter the store. premise content must be a Markdown string; pass JSON arrays/objects directly for other types. append_volume takes a VolumeOutline without volume/arc index (system generated); top-level final:true declares a final volume, automatically completing after its chapters/review/summary. update_compass saves StoryCompass. complete_book takes {} and sets Phase=Complete only after all detailed chapters are written, the rework queue is empty, and compass.open_threads is empty; first persist update_compass to clear resolved threads. For early closure, append a final volume instead. append_volume/complete_book require a one-sentence reason based on the completion checklist, recorded in the decision audit. Optional scale accepts short/mid/long only."
 }
-func (t *SaveFoundationTool) Label() string { return "保存设定" }
+func (t *SaveFoundationTool) Label() string { return "Save foundation" }
 
 // 写工具（跨域更新 Outline/Progress/Characters），禁止并发。
 func (t *SaveFoundationTool) ReadOnly(_ json.RawMessage) bool        { return false }
@@ -34,12 +34,12 @@ func (t *SaveFoundationTool) ConcurrencySafe(_ json.RawMessage) bool { return fa
 
 func (t *SaveFoundationTool) Schema() map[string]any {
 	return schema.Object(
-		schema.Property("type", schema.Enum("设定类型", "premise", "outline", "layered_outline", "characters", "world_rules", "append_volume", "update_compass", "complete_book")).Required(),
+		schema.Property("type", schema.Enum("Foundation type", "premise", "outline", "layered_outline", "characters", "world_rules", "append_volume", "update_compass", "complete_book")).Required(),
 		schema.Property("content", map[string]any{
-			"description": "内容。premise 传 Markdown 字符串；其他类型直接传 JSON 数组或对象即可，也兼容传 JSON 字符串。",
+			"description": "Content: a Markdown string for premise; JSON arrays/objects for other types (serialized JSON strings also supported).",
 		}).Required(),
-		schema.Property("scale", schema.Enum("规划级别", "short", "mid", "long")),
-		schema.Property("reason", schema.String("卷末判定理由（append_volume / complete_book 时必填）：对照完结判定清单，一句话说明为何续卷、宣告收官或完结")),
+		schema.Property("scale", schema.Enum("Planning tier", "short", "mid", "long")),
+		schema.Property("reason", schema.String("Volume-end decision reason (required for append_volume / complete_book): one sentence explaining continuation, finale declaration, or completion against the completion checklist")),
 	)
 }
 
@@ -67,8 +67,8 @@ func (t *SaveFoundationTool) Execute(_ context.Context, args json.RawMessage) (j
 
 	result := map[string]any{"saved": true, "type": a.Type, "scale": a.Scale}
 
-	// 全量大纲只属于规划期。写作期必须用受保护的增量操作，完结后必须先重开；
-	// 否则会绕过已完成章节保护，破坏 Progress 与章节事实的一致性。
+	// Full outlines belong to planning only. Writing uses guarded incremental operations; completed books must reopen first,
+	// otherwise completed-chapter protections and consistency between Progress and chapter facts could be bypassed.
 	progress, err := t.store.Progress.Load()
 	if err != nil {
 		return nil, fmt.Errorf("check foundation phase: %w: %w", errs.ErrStoreRead, err)
@@ -77,11 +77,11 @@ func (t *SaveFoundationTool) Execute(_ context.Context, args json.RawMessage) (j
 		switch progress.Phase {
 		case domain.PhaseWriting:
 			return nil, fmt.Errorf(
-				"写作阶段禁止使用 %s 全量覆盖大纲。请使用 revise_outline 修订未发生章节、expand_next_arc 展开下一骨架弧，或 append_volume 追加新卷: %w",
+				"during writing, %s cannot overwrite the whole outline. Use revise_outline for unwritten chapters, expand_next_arc for the next skeleton, or append_volume: %w",
 				a.Type, errs.ErrToolPrecondition)
 		case domain.PhaseComplete:
 			return nil, fmt.Errorf(
-				"全书已完结，禁止使用 %s 全量覆盖大纲。请先重开作品，再使用受保护的大纲修订或续写操作: %w",
+				"book is complete; %s cannot overwrite its outline. Reopen before protected outline revision or continuation: %w",
 				a.Type, errs.ErrToolPrecondition)
 		}
 	}
@@ -258,7 +258,7 @@ func (t *SaveFoundationTool) Execute(_ context.Context, args json.RawMessage) (j
 			return nil, fmt.Errorf("load progress: %w: %w", errs.ErrStoreRead, perr)
 		}
 		if progress == nil {
-			return nil, fmt.Errorf("progress 未初始化: %w", errs.ErrToolPrecondition)
+			return nil, fmt.Errorf("progress is not initialized: %w", errs.ErrToolPrecondition)
 		}
 		if progress.Phase != domain.PhaseWriting {
 			return nil, fmt.Errorf("complete_book 仅在 writing 阶段可调用（当前 phase=%s）: %w", progress.Phase, errs.ErrToolPrecondition)
@@ -279,7 +279,7 @@ func (t *SaveFoundationTool) Execute(_ context.Context, args json.RawMessage) (j
 				return nil, fmt.Errorf("load outlined chapters: %w: %w", errs.ErrStoreRead, outlineErr)
 			}
 			if next <= len(outline) {
-				return nil, fmt.Errorf("当前详细大纲还有未写章节（下一章 %d/当前已细化 %d），不可完本；想提前收束请改用 append_volume 且卷 JSON 顶层带 \"final\": true 宣告收官卷: %w", next, len(outline), errs.ErrToolPrecondition)
+				return nil, fmt.Errorf("detailed outline has unwritten chapters (next %d / detailed %d); cannot complete. For early closure, append_volume with top-level \"final\": true: %w", next, len(outline), errs.ErrToolPrecondition)
 			}
 		} else if progress.TotalChapters > 0 && next <= progress.TotalChapters {
 			return nil, fmt.Errorf("大纲内还有未写章节（下一章 %d/共 %d），不可完本；想提前收束请改用 append_volume 且卷 JSON 顶层带 \"final\": true 宣告收官卷: %w", next, progress.TotalChapters, errs.ErrToolPrecondition)
@@ -447,7 +447,7 @@ func (t *SaveFoundationTool) recordVolumeEndDecision(action, reason string, fact
 	}
 }
 
-// consumeWriterFeedback 在结构操作成功后清除已处理的规划反馈。
+// consumeWriterFeedback clears processed planning feedback after a successful structural operation.
 func consumeWriterFeedback(st *store.Store) error {
 	if err := st.Outline.ClearOutlineFeedback(); err != nil {
 		return fmt.Errorf("clear outline feedback: %w: %w", errs.ErrStoreWrite, err)

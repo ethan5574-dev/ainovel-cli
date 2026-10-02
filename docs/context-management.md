@@ -39,10 +39,10 @@ The current context management is divided into four layers:
    Responsible for assembling structured data from the novel project into the available context for the current turn.
 
 3. `internal/agents/ctxpack`
-   负责 Writer 专用的 store-based 快速压缩。
+   Provides Writer-specific fast compaction based on store data.
 
 4. `internal/agents/ctxpack/restore.go`
-   负责在 `FullSummary` 之后追加一份压缩后恢复包，确保 Writer 能继续写。
+   Appends a post-compaction restore pack after `FullSummary` so Writer can continue.
 
 ### 2.2 Data Flow
 
@@ -88,10 +88,10 @@ Functions:
 
 Functions:
 
-- `build.go` 给 Writer / Architect / Editor 各挂一个 `ContextManagerFactory`，每次运行按当前模型窗口重建
-- `context_manager.go` 提供统一的 `newContextManager`，以及 Architect / Editor 共用的 `roleContextProfile`
-- `architect_context.go` / `editor_context.go` 只放各自的摘要 prompt 和档案参数
-- Writer 额外挂 `StoreSummaryCompact` 与 restore pack，见 3.3
+- `build.go` attaches a `ContextManagerFactory` to Writer, Architect, and Editor, rebuilding against the current model window for each run
+- `context_manager.go` provides shared `newContextManager` and the Architect/Editor `roleContextProfile`
+- `architect_context.go` / `editor_context.go` contain role-specific summary prompts and profile parameters only
+- Writer also uses `StoreSummaryCompact` and a restore pack (see 3.3)
 
 ### 3.3 Project-Side Compression and Recovery
 
@@ -135,13 +135,13 @@ Functions:
 
 Functions:
 
-- 三个角色共用同一个重写回调，按 `agent` 字段区分，写入 slog
-- 输出策略名称、token 变化、消息保留量
-- 让 TUI 能看到当前上下文是 `projected` 还是 `compacted`
+- All three roles share one rewrite callback, distinguished by the `agent` field in slog
+- Records strategy names, token changes, and retained message counts
+- Lets TUI display whether the context is `projected` or `compacted`
 
 ## 4. How ContextManager is Assembled
 
-三个 Worker 都走 `newContextManager`，由各自的 `ContextManagerFactory` 在每次运行时按当前模型窗口重建（`/model` 切换后自动跟随）。Writer 的配置直接写在 `build.go`；Architect / Editor 共用 `roleContextProfile`，只差摘要 prompt 和保留的读取次数。
+All three Workers use `newContextManager`, rebuilt by their `ContextManagerFactory` against the current model window for each run (including after `/model` switches). Writer configuration lives directly in `build.go`; Architect/Editor share `roleContextProfile` with different summary prompts and retained-read counts.
 
 Key parameters of the current `contextManagerConfig`:
 
@@ -149,36 +149,36 @@ Key parameters of the current `contextManagerConfig`:
   The model's total context window.
 
 - `ReserveTokens`
-  触发压缩前保留的余量，统一由 `bootstrap.CompactReserveTokens` 计算：窗口的 15%，不低于 8000。
+  Reserved headroom before compaction, computed by `bootstrap.CompactReserveTokens`: 15% of the window, with a minimum of 8,000 tokens.
 
 - `CommitProjected`
-  压缩结果是否提交为新基线。三个角色都为 true，避免后续轮次反复改写请求前缀、打穿提示词缓存。
+  Whether to commit compaction as the new baseline. All three roles use true, avoiding repeated prefix rewrites that invalidate prompt caching.
 
 - `ToolMicrocompact`
   Configuration for tool result micro-compression.
 
 - `ExtraStrategies`
-  项目侧额外压缩策略。当前只有 Writer 挂 `StoreSummaryCompact`。
+  Additional project strategies. Currently only Writer uses `StoreSummaryCompact`.
 
 - `Summary`
-  `FullSummary` 的配置，包括角色专属 prompt 和 post-summary hook。
+  `FullSummary` configuration, including role-specific prompts and post-summary hooks.
 
-当前实际配置：
+Current configuration:
 
-| 参数 | Writer | Architect | Editor |
+| Parameter | Writer | Architect | Editor |
 |------|--------|-----------|--------|
-| 微压缩范围 | 全部工具结果 | 仅 `novel_context` | 仅 `novel_context` |
-| 微压缩保留最近 | 5 条 | 3 条 | 2 条 |
-| 微压缩下限 | 200 token | 200 token | 200 token |
-| ExtraStrategies | StoreSummaryCompact（尾部保留 20,000 token） | 无 | 无 |
-| Summary prompt | 小说叙事版（ctxpack） | 规划检查点版 | 审阅检查点版 |
-| PostSummaryHook | writerRestorePack | 无 | 无 |
+| Microcompaction scope | All tool results | `novel_context` only | `novel_context` only |
+| Recent results retained | 5 | 3 | 2 |
+| Microcompaction minimum | 200 tokens | 200 tokens | 200 tokens |
+| ExtraStrategies | StoreSummaryCompact (retain 20,000 tail tokens) | None | None |
+| Summary prompt | Novel narrative (ctxpack) | Planning checkpoint | Review checkpoint |
+| PostSummaryHook | writerRestorePack | None | None |
 
-压缩触发阈值 = `ContextWindow - ReserveTokens`。例如窗口 200K 时在 170K 触发，窗口 128K 时在约 109K 触发。
+Compaction triggers at `ContextWindow - ReserveTokens`: 170K for a 200K window, or approximately 109K for 128K.
 
-切点按完整工具组对齐（`agentcore/context.FindCutPoint`）：倒数 token 落在工具结果上时，退回到发起它的 assistant 调用，整组留在尾部。Worker 一次运行只有一条任务消息、其余全是工具组，旧的"向前找 user 边界"逻辑在这种形态下会一路走到末尾放弃，等于从不压缩。
+Cut points align to complete tool groups (`agentcore/context.FindCutPoint`). If the token boundary lands on a tool result, move back to its initiating assistant call and retain the whole group in the tail. Workers have one task message followed by tool groups; searching forward for a user boundary would reach the end and abandon compaction every time.
 
-当前策略管线顺序：
+Current strategy order:
 
 Writer：
 
@@ -193,15 +193,15 @@ Architect / Editor：
 
 This sequence has a signature:
 
-- 先用最便宜的办法清理工具噪音
-- Writer 如果 store 数据够，直接做零 LLM 的结构化压缩
-- 最后才退到 LLM 摘要
+- Remove tool noise using the cheapest method first
+- If store data is sufficient, Writer compacts structured data without an LLM call
+- Fall back to an LLM summary last
 
-Architect / Editor 只清理旧的 `novel_context` 读取结果：这些数据都在 store 里，需要时可以重读。而 `save_*` 等写工具结果和 `read_chapter` 的章节原文是当前任务的事实与证据，不做微压缩，只在最终 `FullSummary` 时进入摘要。
+Architect/Editor microcompact only old `novel_context` results, since they can reread that store data. Write-tool results (`save_*`) and chapter prose from `read_chapter` are task facts and evidence: they remain intact until final `FullSummary` summarization.
 
-`novel_context` 工具本身不按固定字节预算裁剪分区：它只做与任务相关的语义选择（聚焦弧、最近窗口、活跃伏笔），体积由各 Worker 按真实模型窗口管理。一个超过就报错的工具层上限对用户没有任何可操作性，而窗口是用户可以在配置里写明的。
+`novel_context` does not truncate sections against a fixed byte budget. It selects task-relevant data (focused arc, recent window, active foreshadowing); each Worker manages size against the real model window. A hard tool-size error offers no useful user action, whereas the model window is configurable.
 
-## 5. 每个策略的作用
+## 5. What Each Strategy Does
 
 ### 5.1 ToolResultMicrocompact
 
@@ -219,17 +219,17 @@ Value:
 - Tool return contents are usually large in volume and low in information density.
 - Many old tool results are just "process noise," not novel memory.
 
-当前配置特点：
+Current configuration characteristics:
 
-- Writer 对所有工具结果生效，保留最近 5 条
-- Architect / Editor 只对 `novel_context` 生效，分别保留最近 3 条和 2 条；相同参数的重复读取只保护最新一次
-- 低于 200 token 的小结果不清理，它们通常是状态迁移的唯一记录
+- Writer covers all tool results and retains the latest five
+- Architect/Editor cover only `novel_context`, retaining three and two respectively; only the latest read with identical arguments is protected
+- Results below 200 tokens are retained because they may be the only record of a state transition
 
 Applicable Scenarios:
 
-- Writer 多轮 read / check / draft 工具之后
-- 长篇 Architect 按卷弧多次聚焦读取 `novel_context`
-- Editor 审阅一段范围时逐章读取 `novel_context`
+- After multiple Writer read/check/draft calls
+- During repeated volume/arc-focused long-form Architect reads
+- During chapter-by-chapter Editor context reads over a review range
 
 ### 5.2 LightTrim
 
@@ -252,7 +252,7 @@ Applicable Scenarios:
 
 - A single message is too long, but the entire history does not need to be summarized yet.
 
-当前状态：agentcore 提供，但本项目没有接入任何 Worker 管线。它会跳过最近几条消息，且对文本块掐头去尾硬截，用在 `novel_context` 这类 JSON 结果上会破坏结构，微压缩整条清掉再重读更合适。
+Current status: provided by agentcore but not used by any project Worker pipeline. It skips recent messages and hard-truncates text blocks at both ends, potentially breaking JSON from `novel_context`. Removing an old tool result entirely and rereading is more appropriate.
 
 ### 5.3 StoreSummaryCompact
 
@@ -269,9 +269,9 @@ Functions:
 
 It is not a dialogue summary, but "structured memory replacement."
 
-"当前任务"是 Writer 所有摘要格式的固定一节：store 摘要和 LLM 摘要（`WriterSummaryPrompt`）都带，首次压缩取自首条 user 消息，之后从上一份摘要按下一个标题解析取回，两种摘要交替出现也不丢。store 只有小说事实，没有本次任务，不这样做会出现"知道小说状态，却忘了这次要做什么"。
+"Current Task" is a fixed section in every Writer summary: store summaries and LLM summaries (`WriterSummaryPrompt`) both preserve it. The first compaction reads the initial user message; later compactions extract it from the previous summary up to the next heading. Alternating summary formats therefore preserves the task. Store data contains novel facts, not the current assignment; otherwise Writer could remember the novel but forget what it must do. Legacy Chinese task headings remain readable for older checkpoints.
 
-当前保留的核心数据包括：
+Core data currently retained:
 
 - Current progress.
 - Recent chapter summaries.
@@ -300,9 +300,9 @@ Value:
 
 Why only used for the Writer:
 
-- 这是小说业务策略，不是通用框架策略
-- 它围绕写章工作态（章节计划、当前大纲、待修问题）构建；Architect / Editor 是单任务、多次读取的模式，旧的 `novel_context` 结果直接清掉重读即可，不需要用 store 替换历史
-- 先在最需要连续创作记忆的 Writer 上验证最合理
+- This is a novel-domain strategy, not a general framework strategy
+- It targets chapter-writing state (plan, outline, unresolved issues). Architect/Editor have single tasks with repeated reads and can discard old `novel_context` results and reread instead of replacing history with store data
+- Writer is the appropriate first validation target because it most needs continuous creative memory
 
 ### 5.4 FullSummary
 
@@ -319,26 +319,26 @@ Functions:
 
 Where the Writer differs from the default code assistant:
 
-- Writer 使用了自定义 summary prompt
-- 摘要内容明确要求保留：
-  - 当前任务（原样）
-  - 当前进度
-  - 角色即时状态
-  - 活跃伏笔与线索
-  - 审稿反馈与待修问题
-  - 风格与节奏
-  - 关键决策
-  - 下一步
-  - 关键上下文
+- Writer uses a custom summary prompt
+- The summary explicitly preserves:
+  - Current task verbatim
+  - Current progress
+  - Current character state
+  - Active foreshadowing and clues
+  - Review feedback and unresolved issues
+  - Style and pacing
+  - Key decisions
+  - Next steps
+  - Essential context
 
-Architect / Editor 各有一套检查点式 prompt（`architect_context.go` / `editor_context.go`）：
+Architect/Editor each use checkpoint-style prompts (`architect_context.go` / `editor_context.go`):
 
-- Architect 摘要保留：当前任务、硬性约束、已确认事实、规划决策、待处理事项、下一步；并要求区分已落盘结果与尚未保存的提议
-- Editor 摘要保留：当前任务、授权与验收约束、已读证据（按章节号）、当前发现、工具进度、下一步；并禁止声称读过未读章节
+- Architect preserves current task, hard constraints, confirmed facts, planning decisions, pending items, and next steps, distinguishing saved results from unsaved proposals
+- Editor preserves current task, authorization and acceptance constraints, evidence read by chapter number, findings, tool progress, and next steps; it may not claim to have read unread chapters
 
-两者都不挂 restore pack：压缩后模型可以重新调用 `novel_context` / `read_chapter` 取回事实与原文。代价是 Editor 在整卷摘要这类长任务里，早期章节的原文引证会经过一次摘要，精度低于直接引用。
+Neither uses a restore pack. After compaction they can reread facts and prose via `novel_context` / `read_chapter`. For long Editor tasks such as volume summaries, earlier chapter quotations pass through summarization and may be less precise than direct quotations.
 
-价值：
+Value:
 
 - It is the final fallback strategy.
 - Even if store data is insufficient, continuity can still be maintained through the LLM.
@@ -389,10 +389,10 @@ Why standard `bytes/4` cannot be used:
 
 Impact Scope:
 
-- `EstimateTokens`（单条消息）
-- `EstimateTotal`（消息列表）
-- `EstimateContextTokens`（混合估算：LLM 上报 Usage + 尾部消息估算）
-- `ctxpack/builder.go` 中的预算裁剪
+- `EstimateTokens` (one message)
+- `EstimateTotal` (message list)
+- `EstimateContextTokens` (hybrid: reported LLM usage plus estimated tail messages)
+- Budget trimming in `ctxpack/builder.go`
 
 Note: ToolCall args are JSON (ASCII-dominated), using `bytes/4`, unaffected by CJK adjustments.
 
@@ -434,7 +434,7 @@ Why both are needed:
 - Even if `FullSummary` is done perfectly, it might omit precise information in the store.
 - So the restore pack acts as the final insurance.
 
-现在这两者已经共用 `ctxpack/builder.go`，避免口径漂移。
+Both now share `ctxpack/builder.go`, preventing divergent data selection.
 
 ## 7. Function of novel_context
 
@@ -556,7 +556,7 @@ Implementation Location:
 
 - `internal/agents/context_manager.go`
 
-每次上下文重写都会通过 `contextRewriteCallback` 写入 slog，`agent` 字段为 `writer` / `architect` / `editor`，其余字段：
+Each context rewrite records a slog event through `contextRewriteCallback`, with `agent=writer|architect|editor` and these additional fields:
 
 - `reason`
 - `strategy`
@@ -618,9 +618,9 @@ Value:
 
 Look first at:
 
-- `novel_context` 是否稳定注入 `chapter_plan`
-- `ctxpack/builder.go` 是否拿到 `chapterPlan`
-- `writerRestorePack` 是否刷新
+- Does `novel_context` consistently inject `chapter_plan`?
+- Does `ctxpack/builder.go` receive `chapterPlan`?
+- Does `writerRestorePack` refresh?
 
 Key Files:
 
@@ -635,7 +635,7 @@ Look first at:
 - `LoadLatestSnapshots`
 - `LoadActiveForeshadow`
 - `ctxpack/builder.go`
-- Writer summary prompt 是否被覆盖
+- Has the Writer summary prompt been overridden?
 
 #### Scenario 3: Compression is frequent but always misses store_summary
 
@@ -658,14 +658,14 @@ Look first at:
 
 Look first at:
 
-- `ToolResultMicrocompact` 是否命中
-- slog 中 `agent=writer|architect|editor` 的上下文重写事件，`strategy` 是 `tool_result_microcompact` 还是 `full_summary`
+- Did `ToolResultMicrocompact` apply?
+- Inspect context rewrite events with `agent=writer|architect|editor` in slog: is `strategy` tool_result_microcompact or full_summary?
 
-#### 场景 6：单次 `novel_context` 就撑爆窗口
+#### Scenario 6: One `novel_context` Result Exceeds the Window
 
-先看：
+Check first:
 
-- 启动日志里该角色的上下文窗口来源。自定义代理下未登记的模型会兜底到 200K；实际窗口更小的模型要在 `providers.<name>.models[].context_window` 写明真实值，压缩才会按真实窗口触发
+- The role's context-window source in startup logs. Unregistered custom-proxy models default to 200K; smaller models must declare their real window in `providers.<name>.models[].context_window` so compaction triggers correctly
 
 ## 11. Trade-offs in the Current Implementation
 
@@ -678,11 +678,11 @@ Look first at:
 
 ### Intentionally Retained Limitations
 
-1. `StoreSummaryCompact` 只给 Writer 用
-2. 第一章不会命中 store-based compact
-3. store 数据不足时仍然回退到 `FullSummary`
-4. `writerRestorePack` 是追加式补偿，不替代 `FullSummary`
-5. Architect / Editor 只有微压缩加 `FullSummary`，没有 store-based compact 和 restore pack
+1. Only Writer uses `StoreSummaryCompact`
+2. Store-based compaction does not apply in the first chapter
+3. Insufficient store data falls back to `FullSummary`
+4. `writerRestorePack` supplements, rather than replaces, `FullSummary`
+5. Architect/Editor use microcompaction and `FullSummary`, without store-based compaction or restore packs
 
 These limitations are not flaws, but boundaries set to control complexity at the current stage.
 
@@ -694,6 +694,6 @@ Context management in this project is not as simple as "shrinking long conversat
 
 If you modify this system in the future, prioritize keeping these three rules:
 
-1. 不要让 Writer 的关键记忆再次只依赖聊天历史。
-2. 不要让 `ctxpack` 的 strategy 和 restore 口径分叉。
-3. 出现连续性问题时，先查结构化工件有没有进入上下文，再决定是否改 prompt。
+1. Do not make Writer's critical memory depend solely on chat history again.
+2. Keep ctxpack strategy and restore data selection aligned.
+3. For continuity problems, first verify that structured artifacts enter context, then decide whether prompts need changes.

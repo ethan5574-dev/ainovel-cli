@@ -22,7 +22,7 @@ function App() {
   }, [])
 
   if (setup === 'checking') return null
-  if (setup === 'needed') return <Onboarding />
+  if (setup === 'needed') return <Onboarding onComplete={() => setSetup('ready')} />
 
   return (
     <SSEProvider>

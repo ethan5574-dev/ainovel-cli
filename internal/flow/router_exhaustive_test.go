@@ -42,7 +42,7 @@ const (
 //  5. 缺失的聚合工件 → Editor 补建
 //  6. 外部修订对后续规划有影响 → Architect 消费
 //  7. 分层模式弧末 → 评审 → 弧摘要 → (卷末)卷摘要 → 展开下一弧 → 追加新卷
-//  8. 其余 → writer 续写下一章
+//  8. 其余 → writer Write the next chapter
 func expectedInstruction(s State) expectKind {
 	p := s.Progress
 	if p == nil || p.Phase == domain.PhaseComplete {
@@ -81,7 +81,7 @@ func expectedInstruction(s State) expectKind {
 			return expectNewVolume
 		}
 	}
-	// 非分层:每 ReviewInterval 章一次全局审阅(未做则先审阅再续写)。
+	// 非分层:每 ReviewInterval 章一次globally(未做则先审阅再续写)。
 	if !p.Layered && s.LastCompleted > 0 {
 		if due, _ := domain.ShouldReview(len(p.CompletedChapters)); due && !s.HasGlobalReview {
 			return expectGlobalReview
@@ -99,16 +99,16 @@ func classify(t *testing.T, inst *Instruction) expectKind {
 	switch inst.Agent {
 	case "writer":
 		switch {
-		case contains(inst.Task, "重写") || contains(inst.Task, "打磨"):
+		case contains(inst.Task, "Rewrite") || contains(inst.Task, "Polish"):
 			return expectRewrite
-		case contains(inst.Task, "写第"):
+		case contains(inst.Task, "Write chapter"):
 			return expectNextChapter
 		}
 	case "editor":
 		switch {
-		case contains(inst.Task, "弧级评审"):
+		case contains(inst.Task, "arc review"):
 			return expectArcReview
-		case contains(inst.Task, "全局审阅"):
+		case contains(inst.Task, "globally"):
 			return expectGlobalReview
 		case contains(inst.Task, "save_arc_summary"):
 			return expectArcSummary
@@ -117,7 +117,7 @@ func classify(t *testing.T, inst *Instruction) expectKind {
 		}
 	case "architect_long":
 		switch {
-		case contains(inst.Task, "补齐基础设定"):
+		case contains(inst.Task, "Fill missing foundation"):
 			return expectFoundationFill
 		case contains(inst.Task, "writer_feedback"):
 			return expectOutlineFeedback
@@ -127,7 +127,7 @@ func classify(t *testing.T, inst *Instruction) expectKind {
 			return expectNewVolume
 		}
 	case "architect_short":
-		if contains(inst.Task, "补齐基础设定") {
+		if contains(inst.Task, "Fill missing foundation") {
 			return expectFoundationFill
 		}
 		if contains(inst.Task, "writer_feedback") {
@@ -212,7 +212,7 @@ func TestRoute_ExhaustiveAgainstSpec(t *testing.T) {
 	phases := []domain.Phase{domain.PhaseInit, domain.PhasePremise, domain.PhaseOutline, domain.PhaseWriting, domain.PhaseComplete}
 	flows := []domain.FlowState{domain.FlowWriting, domain.FlowReviewing, domain.FlowRewriting, domain.FlowPolishing, domain.FlowSteering}
 	queues := [][]int{nil, {7, 9}}
-	// {1..5} 命中 ReviewInterval(=5)的全局审阅触发点
+	// {1..5} 命中 ReviewInterval(=5)的globally触发点
 	completedSets := [][]int{nil, {1, 2, 3}, {1, 2, 3, 4, 5}}
 	missingSets := [][]string{nil, {"characters", "world_rules"}}
 	tiers := []domain.PlanningTier{"", domain.PlanningTierShort, domain.PlanningTierLong}
@@ -305,7 +305,7 @@ func assertConservation(t *testing.T, s State, inst *Instruction) {
 		if s.PlanningTier == domain.PlanningTierShort {
 			wantPlanner = "architect_short"
 		}
-		if inst.Agent != wantPlanner || !contains(inst.Task, "补齐基础设定") || inst.Chapter != 0 {
+		if inst.Agent != wantPlanner || !contains(inst.Task, "Fill missing foundation") || inst.Chapter != 0 {
 			t.Fatalf("规划期指令必须是补齐派单且规划师匹配 tier=%q：%+v", s.PlanningTier, inst)
 		}
 		return
@@ -319,9 +319,9 @@ func assertConservation(t *testing.T, s State, inst *Instruction) {
 			if inst.Chapter != p.PendingRewrites[0] {
 				t.Fatalf("重写队列非空时必须派队列头 %d，got %d", p.PendingRewrites[0], inst.Chapter)
 			}
-			wantVerb := "重写"
+			wantVerb := "Rewrite"
 			if p.Flow == domain.FlowPolishing {
-				wantVerb = "打磨"
+				wantVerb = "Polish"
 			}
 			if !contains(inst.Task, wantVerb) {
 				t.Fatalf("队列任务动词应为 %q：%q", wantVerb, inst.Task)

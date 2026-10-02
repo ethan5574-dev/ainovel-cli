@@ -21,7 +21,7 @@ export function useStreamBuffer() {
   return useSyncExternalStore(store.streamBuffer.subscribe, store.streamBuffer.get)
 }
 
-export function useAskPending() {
+export function useImportEvent() {
   const store = useSSEStore()
-  return useSyncExternalStore(store.pendingAsk.subscribe, store.pendingAsk.get)
+  return useSyncExternalStore(store.importEvent.subscribe, store.importEvent.get)
 }

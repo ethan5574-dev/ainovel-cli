@@ -54,7 +54,7 @@ func (r *contextReads) warn(scope string, err error) {
 	if err == nil || os.IsNotExist(err) {
 		return
 	}
-	msg := fmt.Sprintf("%s 读取失败: %v", scope, err)
+	msg := fmt.Sprintf("failed to read %s: %v", scope, err)
 	if r.seen == nil {
 		r.seen = make(map[string]struct{})
 	}
@@ -69,7 +69,7 @@ func (r *contextReads) require(scope string, err error) {
 	if r.err != nil || err == nil || os.IsNotExist(err) || errors.Is(err, store.ErrOutlineChapterNotFound) {
 		return
 	}
-	r.err = fmt.Errorf("%s 读取失败: %w", scope, err)
+	r.err = fmt.Errorf("failed to read %s: %w", scope, err)
 }
 
 func (r *contextReads) fail(err error) {
@@ -96,8 +96,8 @@ func NewContextTool(
 func (t *ContextTool) Name() string { return "novel_context" }
 func (t *ContextTool) Description() string {
 	return "获取小说当前状态和创作上下文。" +
-		"不传 chapter：返回 progress_status（phase/flow/next_chapter/pending_rewrites 等进度字段）+ 精简规划概览，用于判断下一步该做什么；" +
-		"长篇 Architect 可传 volume + arc 聚焦读取指定弧：已展开弧包含章节详情，骨架弧包含 title/goal/estimated_chapters。" +
+		"Without chapter: return progress_status (phase/flow/next_chapter/pending_rewrites) and a compact planning overview to determine the next action; " +
+		"Long-form Architect may pass volume + arc to focus on an arc: expanded arcs include chapter details; skeletons include title/goal/estimated_chapters." +
 		"传 chapter=N：额外返回该章的前情摘要、伏笔、角色状态、风格规则等写作上下文"
 }
 func (t *ContextTool) Label() string { return "加载上下文" }
@@ -108,9 +108,9 @@ func (t *ContextTool) ConcurrencySafe(_ json.RawMessage) bool { return true }
 
 func (t *ContextTool) Schema() map[string]any {
 	return schema.Object(
-		schema.Property("chapter", schema.Int("章节号。不传则返回进度状态和基础设定（Architect 用）；传入则额外返回该章的写作上下文（Writer/Editor 用）")),
-		schema.Property("volume", schema.Int("长篇 Architect 可选：聚焦读取的卷序号；已展开弧返回章节详情，骨架弧返回规划目标；必须与 arc 同时传入，不能与 chapter 同时使用")),
-		schema.Property("arc", schema.Int("长篇 Architect 可选：聚焦读取的卷内弧序号；已展开弧返回章节详情，骨架弧返回规划目标；必须与 volume 同时传入，不能与 chapter 同时使用")),
+		schema.Property("chapter", schema.Int("Chapter number. Omit for progress and foundation data (Architect); provide it to also load writing context for that chapter (Writer/Editor).")),
+		schema.Property("volume", schema.Int("Optional for long-form Architect: target volume; expanded arcs return chapters, skeletons planning goals. Requires arc; incompatible with chapter")),
+		schema.Property("arc", schema.Int("Optional for long-form Architect: target arc within volume; expanded arcs return chapters, skeletons planning goals. Requires volume; incompatible with chapter")),
 	)
 }
 
@@ -143,7 +143,7 @@ func (t *ContextTool) Execute(_ context.Context, args json.RawMessage) (json.Raw
 		state := t.prepareChapterContext(a.Chapter, &seed, reads)
 		seed.apply(result)
 		t.buildChapterContext(result, state, reads)
-		// episodic 是已写入正文的备忘，不是待写素材。
+		// Episodic memory records already-written prose, not material to be written.
 		if epi, ok := result["episodic_memory"].(map[string]any); ok && len(epi) > 0 {
 			epi["_usage"] = "本容器为已写入正文的事实备忘（供一致性与衔接对照）；在新章正文中原样复述这些内容属于重复缺陷"
 		}
@@ -174,7 +174,7 @@ func (t *ContextTool) Execute(_ context.Context, args json.RawMessage) (json.Raw
 		result["_warnings"] = reads.warnings
 	}
 
-	// 工具层只做与任务相关的语义选择；上下文体积由各 Worker 按实际模型窗口管理。
+	// Tools select task-relevant data; Workers manage context size against the actual model window.
 	result["_loading_summary"] = buildLoadingSummary(result, a.Chapter)
 
 	data, err := json.Marshal(result)
@@ -278,15 +278,15 @@ func buildLoadingSummary(result map[string]any, chapter int) string {
 		items = append(items, fmt.Sprintf("参考:%d项", len(refs)))
 	}
 	if len(referencePack) > 0 {
-		items = append(items, fmt.Sprintf("参考包:%d", len(referencePack)))
+		items = append(items, fmt.Sprintf("Reference pack:%d", len(referencePack)))
 	}
 	if _, ok := result["memory_policy"]; ok {
 		items = append(items, "记忆策略:ok")
 	}
 	if _, ok := working["simulation_profile"]; ok {
-		items = append(items, "仿写画像:ok")
+		items = append(items, "Simulation profile:ok")
 	} else if _, ok := planning["simulation_profile"]; ok {
-		items = append(items, "仿写画像:ok")
+		items = append(items, "Simulation profile:ok")
 	}
 	if warnings, ok := result["_warnings"].([]string); ok && len(warnings) > 0 {
 		items = append(items, fmt.Sprintf("告警:%d", len(warnings)))
@@ -556,7 +556,7 @@ func (t *ContextTool) buildRelatedChapters(
 	// 1. 伏笔反查：活跃伏笔的描述是否与当前章大纲相关
 	for _, f := range foreshadow {
 		if strings.Contains(outlineText, f.ID) || containsAny(outlineText, strings.Fields(f.Description)) {
-			add(f.PlantedAt, fmt.Sprintf("伏笔%s(%s)埋设章", f.ID, utils.TruncateRunes(f.Description, 15)))
+			add(f.PlantedAt, fmt.Sprintf("Planting chapter for foreshadowing %s (%s)", f.ID, utils.TruncateRunes(f.Description, 15)))
 		}
 		if len(results) >= maxResults {
 			break
@@ -616,7 +616,7 @@ func (t *ContextTool) buildRelatedChapters(
 	return results
 }
 
-// findLastStateChange 在已加载的状态变化列表中查找实体最近一次变化的章节号。
+// findLastStateChange finds the latest chapter of an entity's changes in the loaded state-change list.
 func findLastStateChange(changes []domain.StateChange, entity string, currentChapter int) int {
 	for i := len(changes) - 1; i >= 0; i-- {
 		if changes[i].Entity == entity && changes[i].Chapter < currentChapter {
@@ -688,7 +688,7 @@ func (t *ContextTool) selectStoryThreads(state contextBuildState) []domain.Recal
 			Key:     entry.ID,
 			Chapter: entry.PlantedAt,
 			Reason:  "当前章可能需要承接既有伏笔",
-			Summary: fmt.Sprintf("伏笔“%s”埋于第%d章：%s", entry.ID, entry.PlantedAt, utils.TruncateRunes(entry.Description, 30)),
+			Summary: fmt.Sprintf("Foreshadowing %s planted in chapter %d: %s", entry.ID, entry.PlantedAt, utils.TruncateRunes(entry.Description, 30)),
 		})
 		if len(items) >= maxThreads {
 			return items
@@ -703,7 +703,7 @@ func (t *ContextTool) selectStoryThreads(state contextBuildState) []domain.Recal
 			Key:     entry.ID,
 			Chapter: entry.PlantedAt,
 			Reason:  "伏笔久挂未回收，注意适时推进或回收",
-			Summary: fmt.Sprintf("伏笔“%s”埋于第%d章，已 %d 章未回收：%s", entry.ID, entry.PlantedAt, state.chapter-entry.PlantedAt, utils.TruncateRunes(entry.Description, 30)),
+			Summary: fmt.Sprintf("Foreshadowing %s planted in chapter %d, unresolved for %d chapters: %s", entry.ID, entry.PlantedAt, state.chapter-entry.PlantedAt, utils.TruncateRunes(entry.Description, 30)),
 		})
 		if len(items) >= maxThreads {
 			break
@@ -772,7 +772,7 @@ func (t *ContextTool) selectReviewLessons(chapter int, reads *contextReads) []do
 					Key:     fmt.Sprintf("review-%d-issue-%d", review.Chapter, i),
 					Chapter: review.Chapter,
 					Reason:  "最近审阅指出需要避免重复问题",
-					Summary: fmt.Sprintf("第%d章审阅提醒：%s", review.Chapter, utils.TruncateRunes(issue.Description, 36)),
+					Summary: fmt.Sprintf("Chapter %d review reminder: %s", review.Chapter, utils.TruncateRunes(issue.Description, 36)),
 				})
 			}
 			if len(items) >= 3 {

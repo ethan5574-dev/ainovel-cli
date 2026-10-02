@@ -94,15 +94,15 @@ func (n *Notifier) allows(kind string) bool {
 	return n.events == nil || n.events[kind]
 }
 
-// deliver 同步执行一次发送并记录失败，由 Send 在 goroutine 中调用。
+// deliver synchronously sends and logs failures; Send calls it in a goroutine.
 func (n *Notifier) deliver(nt Notification) {
 	if err := n.deliverError(nt); err != nil {
-		slog.Warn("通知发送失败", "module", "notify", "kind", nt.Kind, "err", err)
+		slog.Warn("Notification failed", "module", "notify", "kind", nt.Kind, "err", err)
 	}
 }
 
-// deliverError 同步执行一次发送并返回原始错误。Send 在 goroutine
-// 中调用 deliver 记录失败；测试直接调用本方法，避免错误被二次症状掩盖。
+// deliverError sends synchronously and returns the original error. Send invokes deliver
+// in a goroutine; tests call this method directly so secondary symptoms do not hide errors.
 func (n *Notifier) deliverError(nt Notification) error {
 	ctx, cancel := context.WithTimeout(context.Background(), n.timeout)
 	defer cancel()
@@ -131,7 +131,7 @@ func runCommand(ctx context.Context, command string, nt Notification) error {
 	cmd.Stdin = strings.NewReader(string(payload))
 	if err := cmd.Run(); err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return fmt.Errorf("通知命令超时: %w", ctxErr)
+			return fmt.Errorf("notification command timed out: %w", ctxErr)
 		}
 		return err
 	}
@@ -182,8 +182,8 @@ func runWindowsNotification(ctx context.Context, nt Notification) error {
 }
 
 func findPowerShell() (string, error) {
-	// 优先 PowerShell 7：GitHub Windows runner 和现代 Windows 环境中 pwsh
-	// 对重定向 stdin 的行为更稳定；Windows PowerShell 5.1 仅作兼容后备。
+	// Prefer PowerShell 7: pwsh handles redirected stdin more reliably on GitHub Windows runners
+	// and modern Windows; Windows PowerShell 5.1 is a compatibility fallback.
 	for _, name := range []string{"pwsh.exe", "pwsh", "powershell.exe", "powershell"} {
 		if path, err := exec.LookPath(name); err == nil {
 			return path, nil

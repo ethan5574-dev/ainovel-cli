@@ -22,7 +22,7 @@ if command -v sha256sum >/dev/null 2>&1; then
 elif command -v shasum >/dev/null 2>&1; then
 	sha256_file() { shasum -a 256 "$1" | awk '{print tolower($1)}'; }
 else
-	echo "需要 sha256sum 或 shasum，请先安装后重试"
+	echo "sha256sum or shasum is required; install one and retry"
 	exit 1
 fi
 
@@ -56,7 +56,7 @@ fi
 
 RELEASE=$(curl_https "$API")
 TAG=$(printf '%s\n' "$RELEASE" | grep '"tag_name"' | head -1 | cut -d '"' -f 4)
-[ -n "$TAG" ] || { echo "release 缺少 tag_name，拒绝安装"; exit 1; }
+[ -n "$TAG" ] || { echo "release lacks tag_name; refusing installation"; exit 1; }
 
 RELEASE_VERSION=${TAG#v}
 ASSET="${BIN}_${RELEASE_VERSION}_${OS}_${ARCH}.tar.gz"
@@ -66,7 +66,7 @@ BASE_URL="https://github.com/$REPO/releases/download/$TAG"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-echo "下载 $ASSET"
+echo "Downloading $ASSET"
 curl_https -o "$TMP/$ASSET" "$BASE_URL/$ASSET"
 curl_https -o "$TMP/$CHECKSUMS" "$BASE_URL/$CHECKSUMS"
 
@@ -83,30 +83,30 @@ EXPECTED=$(awk -v asset="$ASSET" '
 		if (count != 1) exit 1
 		print sum
 	}
-' "$TMP/$CHECKSUMS") || { echo "checksum 清单中未唯一找到 $ASSET，拒绝安装"; exit 1; }
+' "$TMP/$CHECKSUMS") || { echo "checksum manifest does not uniquely identify $ASSET; refusing installation"; exit 1; }
 
 case "$EXPECTED" in
-	*[!0-9a-f]*|'') echo "$ASSET 的 SHA256 格式非法，拒绝安装"; exit 1 ;;
+	*[!0-9a-f]*|'') echo "invalid SHA256 format for $ASSET; refusing installation"; exit 1 ;;
 esac
-[ "${#EXPECTED}" -eq 64 ] || { echo "$ASSET 的 SHA256 长度非法，拒绝安装"; exit 1; }
+[ "${#EXPECTED}" -eq 64 ] || { echo "invalid SHA256 length for $ASSET; refusing installation"; exit 1; }
 
 ACTUAL=$(sha256_file "$TMP/$ASSET")
 [ "$ACTUAL" = "$EXPECTED" ] || {
-	echo "$ASSET SHA256 校验失败，拒绝安装"
+	echo "SHA256 verification failed for $ASSET; refusing installation"
 	exit 1
 }
-echo "SHA256 校验通过"
+echo "SHA256 verification passed"
 
-CONTENTS=$(tar -tzf "$TMP/$ASSET") || { echo "无法读取安装包，拒绝安装"; exit 1; }
+CONTENTS=$(tar -tzf "$TMP/$ASSET") || { echo "cannot read archive; refusing installation"; exit 1; }
 BIN_COUNT=$(printf '%s\n' "$CONTENTS" | awk -v bin="$BIN" '$0 == bin { count++ } END { print count + 0 }')
-[ "$BIN_COUNT" -eq 1 ] || { echo "安装包中未唯一找到 $BIN，拒绝安装"; exit 1; }
+[ "$BIN_COUNT" -eq 1 ] || { echo "archive does not uniquely contain $BIN; refusing installation"; exit 1; }
 
 mkdir "$TMP/extract"
 tar -xOzf "$TMP/$ASSET" "$BIN" > "$TMP/extract/$BIN" || {
-	echo "无法从安装包提取 $BIN，拒绝安装"
+	echo "cannot extract $BIN from archive; refusing installation"
 	exit 1
 }
-[ -s "$TMP/extract/$BIN" ] || { echo "安装包中的 $BIN 为空，拒绝安装"; exit 1; }
+[ -s "$TMP/extract/$BIN" ] || { echo "$BIN in archive is empty; refusing installation"; exit 1; }
 chmod 0755 "$TMP/extract/$BIN"
 
 echo "Installing to $DEST"
@@ -114,7 +114,7 @@ echo "Installing to $DEST"
 if [ -w "$DEST" ]; then
 	mv "$TMP/extract/$BIN" "$DEST/$BIN"
 else
-	echo "需要管理员权限写入 $DEST"
+	echo "Administrator permissions are required to write to $DEST"
 	sudo mv "$TMP/extract/$BIN" "$DEST/$BIN"
 fi
 

@@ -130,13 +130,13 @@ func TestObserverSeparatesModelResponseFromToolExecution(t *testing.T) {
 	if len(events) != 3 {
 		t.Fatalf("events = %d, want MODEL start + two state updates", len(events))
 	}
-	if events[0].Category != "MODEL" || events[0].Summary != "等待模型" || !events[0].Running() {
+	if events[0].Category != "MODEL" || events[0].Summary != "Waiting for model" || !events[0].Running() {
 		t.Fatalf("model start = %+v", events[0])
 	}
-	if events[1].ID != events[0].ID || events[1].Summary != "思考中" {
+	if events[1].ID != events[0].ID || events[1].Summary != "Thinking" {
 		t.Fatalf("thinking update = %+v", events[1])
 	}
-	if events[2].ID != events[0].ID || events[2].Summary != "生成 draft_chapter" {
+	if events[2].ID != events[0].ID || events[2].Summary != "Generating draft_chapter" {
 		t.Fatalf("generation update = %+v", events[2])
 	}
 	if len(o.toolStarts) != 0 {
@@ -159,7 +159,7 @@ func TestObserverSeparatesModelResponseFromToolExecution(t *testing.T) {
 		t.Fatalf("events = %d, want MODEL finish + TOOL start/finish", len(events))
 	}
 	modelEnd, toolStart, toolEnd := events[3], events[4], events[5]
-	if modelEnd.ID != events[0].ID || modelEnd.Summary != "模型响应" || modelEnd.FinishedAt.IsZero() {
+	if modelEnd.ID != events[0].ID || modelEnd.Summary != "Model response" || modelEnd.FinishedAt.IsZero() {
 		t.Fatalf("model end = %+v", modelEnd)
 	}
 	if toolStart.Category != "TOOL" || toolStart.Summary != "draft_chapter(第11章)" || !toolStart.Running() {

@@ -167,11 +167,11 @@ func commandRegistryInstance() commandRegistry {
 			Name:        "start",
 			Group:       "writing",
 			Usage:       "/start <path>",
-			Description: "从设定或大纲文件创建新书",
+			Description: "Create a new book from a settings or outline file",
 			Run: func(m Model, args []string) (tea.Model, tea.Cmd) {
 				if m.mode != modeNew {
 					m.applyEvent(host.Event{
-						Time: time.Now(), Category: "ERROR", Summary: "/start 仅可在欢迎页创建新书", Level: "error",
+						Time: time.Now(), Category: "ERROR", Summary: "/start can create a book only from the welcome screen", Level: "error",
 					})
 					m.refreshEventViewport()
 					return m, nil
@@ -298,19 +298,19 @@ func commandRegistryInstance() commandRegistry {
 			Name:        "sync",
 			Group:       "writing",
 			Usage:       "/sync [--check]",
-			Description: "检查或接纳手动修改的已完成章节",
+			Description: "Check or accept manual edits to completed chapters",
 			AutoExecute: true,
 			NeedsIdle:   true,
 			Run: func(m Model, args []string) (tea.Model, tea.Cmd) {
 				cmd, checkOnly, err := startRevisionSync(m.runtime, args)
 				if err != nil {
-					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "章节同步启动失败：" + err.Error(), Level: "error"})
+					m.applyEvent(host.Event{Time: time.Now(), Category: "ERROR", Summary: "Failed to start chapter sync: " + err.Error(), Level: "error"})
 					m.refreshEventViewport()
 					return m, nil
 				}
-				summary := "正在分析并接纳章节修订..."
+				summary := "Analyzing and accepting chapter revisions..."
 				if checkOnly {
-					summary = "正在检查章节外部修改..."
+					summary = "Checking for external chapter edits..."
 				}
 				m.applyEvent(host.Event{Time: time.Now(), Category: "SYSTEM", Summary: summary, Level: "info"})
 				m.refreshEventViewport()
@@ -353,7 +353,7 @@ func prepareFileStart(args []string) (string, error) {
 		path = path[1 : len(path)-1]
 	}
 	if path == "" {
-		return "", fmt.Errorf("用法：/start <设定或大纲文件路径>")
+		return "", fmt.Errorf("Usage: /start <settings-or-outline-file>")
 	}
 	prompt, err := startup.LoadPromptFile(path)
 	if err != nil {

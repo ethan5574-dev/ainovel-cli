@@ -296,10 +296,10 @@ func (r *runner) applyGuidance() error {
 	}
 	// 发布开始后正式工件不可覆盖（§12.2）：此时重切必然在 publish 撞「拒绝覆盖」死墙，
 	// 且撞墙前会先重付切分/分析/综合的全链模型调用——把失败提前到零成本处。
-	// book 是发布的第一笔写入，它存在即发布已开始（导入前置校验保证书原本为空）。
+	// Book metadata is the first publish write; its presence proves publishing began because import requires an empty book.
 	book, err := r.deps.Store.Book.Load()
 	if err != nil {
-		return fmt.Errorf("读取正式 book: %w", err)
+		return fmt.Errorf("read published book metadata: %w", err)
 	}
 	if book != nil {
 		return fmt.Errorf("正式 Foundation 已开始发布，--guide 重切会与已发布内容冲突而被拒绝覆盖，不再接受切分指导")

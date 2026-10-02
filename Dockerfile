@@ -17,6 +17,11 @@ RUN GOOS=$TARGETOS GOARCH=$TARGETARCH \
     -o /out/ainovel-cli \
     ./cmd/ainovel-cli
 
+RUN GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -ldflags="-s -w" \
+    -o /out/ainovel-worker \
+    ./cmd/ainovel-worker
+
 FROM alpine:3.22
 
 RUN apk add --no-cache \
@@ -26,4 +31,5 @@ RUN apk add --no-cache \
 WORKDIR /workspace
 
 COPY --from=builder /out/ainovel-cli /usr/local/bin/ainovel-cli
+COPY --from=builder /out/ainovel-worker /usr/local/bin/ainovel-worker
 ENTRYPOINT ["ainovel-cli"]

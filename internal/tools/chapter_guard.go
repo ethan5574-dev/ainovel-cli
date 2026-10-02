@@ -22,7 +22,7 @@ func EnsureChapterExpanded(st *store.Store, chapter int) error {
 		return fmt.Errorf("load progress: %w: %w", errs.ErrStoreRead, err)
 	}
 	if progress == nil {
-		return fmt.Errorf("progress 未初始化: %w", errs.ErrToolPrecondition)
+		return fmt.Errorf("progress is not initialized: %w", errs.ErrToolPrecondition)
 	}
 	if progress.Phase != domain.PhaseWriting {
 		return fmt.Errorf("章节写作仅允许在 writing 阶段（当前 phase=%s）: %w", progress.Phase, errs.ErrToolPrecondition)
@@ -38,6 +38,6 @@ func EnsureChapterExpanded(st *store.Store, chapter int) error {
 		return nil
 	}
 	return fmt.Errorf(
-		"第 %d 章不在分层大纲范围内：写作必须先 expand_next_arc 扩展弧或 append_volume 追加卷；若全书已完结请调 save_foundation type=complete_book: %w",
+		"chapter %d is outside the layered outline: first expand_next_arc or append_volume; if the story has concluded, call save_foundation with type=complete_book: %w",
 		chapter, errs.ErrToolPrecondition)
 }

@@ -242,8 +242,8 @@ func Route(s RouterState) *NextInstruction {
         if b.NeedsExpansion {
             return &NextInstruction{
                 Agent:  "architect_long",
-                Task:   fmt.Sprintf("展开第 %d 卷第 %d 弧（expand_next_arc）", b.NextVolume, b.NextArc),
-                Reason: "下一弧骨架待展开",
+                Task:   fmt.Sprintf("Expand volume %d arc %d (expand_next_arc)", b.NextVolume, b.NextArc),
+                Reason: "Next arc skeleton needs expansion",
             }
         }
         if b.NeedsNewVolume {

@@ -236,14 +236,14 @@ func ResumeSummary(st *store.Store) string {
 }
 
 // checkImportPreconditions 校验新导入前置条件（RFC §12.1）：
-// 没有既有作品信息、已完成章节和在途 PendingCommit。已有小说与新外部文本的合并语义不清楚，第一版明确拒绝。
+// No existing book metadata, completed chapters, or PendingCommit. Merging existing work and new external text is intentionally unsupported.
 func checkImportPreconditions(st *store.Store) error {
 	book, err := st.Book.Load()
 	if err != nil {
-		return fmt.Errorf("读取作品信息：%w", err)
+		return fmt.Errorf("read book metadata: %w", err)
 	}
 	if book != nil {
-		return fmt.Errorf("已有作品《%s》，拒绝把外部小说并入非空书籍", book.Title)
+		return fmt.Errorf("book %s already exists; refusing to merge an external novel into a nonempty book", book.Title)
 	}
 	prog, err := st.Progress.Load()
 	if err != nil {

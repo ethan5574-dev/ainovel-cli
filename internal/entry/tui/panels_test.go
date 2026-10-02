@@ -23,7 +23,7 @@ func TestRenderTopBarShowsVersion(t *testing.T) {
 
 func TestRenderDetailContentShowsSynopsis(t *testing.T) {
 	out := ansi.Strip(renderDetailContent(host.UISnapshot{Synopsis: "少年在永夜中寻找黎明。"}, 40))
-	if !strings.Contains(out, "简介") || !strings.Contains(out, "少年在永夜中寻找黎明。") {
+	if !strings.Contains(out, "Synopsis") || !strings.Contains(out, "少年在永夜中寻找黎明。") {
 		t.Fatalf("detail panel missing synopsis: %q", out)
 	}
 }

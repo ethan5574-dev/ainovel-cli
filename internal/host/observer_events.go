@@ -44,7 +44,7 @@ func (o *observer) handleThinkingProgress(ev agentcore.Event) {
 	if agent == "" || thinking == "" {
 		return
 	}
-	o.updateModelState(agent, "思考中")
+	o.updateModelState(agent, "Thinking")
 
 	prev := o.lastThinkingByAgent[agent]
 	delta := thinking

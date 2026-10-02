@@ -34,15 +34,15 @@ func (s *RevisionStore) ClearPending() error {
 	return s.io.RemoveFile(pendingRevisionPath)
 }
 
-// InvalidateChapterAggregates 删除输入范围包含修订章节的模型派生工件。
-// 章节级投影由 revision.Projector 单独重建。
+// InvalidateChapterAggregates removes model-derived artifacts whose input range includes revised chapters.
+// revision.Projector rebuilds chapter-level projections separately.
 func (s *Store) InvalidateChapterAggregates(fromChapter int) error {
 	if fromChapter <= 0 {
 		return fmt.Errorf("from chapter must be > 0")
 	}
 	volumes, err := s.Outline.LoadLayeredOutline()
 	if err != nil {
-		return fmt.Errorf("读取分层大纲: %w", err)
+		return fmt.Errorf("read layered outline: %w", err)
 	}
 	chapter := 1
 	arcEnds := make(map[[2]int]int)
@@ -72,11 +72,11 @@ func (s *Store) InvalidateChapterAggregates(fromChapter int) error {
 		}
 	}
 	if style, err := s.World.LoadStyleRules(); err != nil {
-		return fmt.Errorf("读取写作规则: %w", err)
+		return fmt.Errorf("read writing rules: %w", err)
 	} else if style != nil {
 		end, ok := arcEnds[[2]int{style.Volume, style.Arc}]
 		if !ok {
-			return fmt.Errorf("写作规则引用未知弧 V%dA%d", style.Volume, style.Arc)
+			return fmt.Errorf("writing rules reference unknown arc V%dA%d", style.Volume, style.Arc)
 		}
 		if end >= fromChapter {
 			if err := s.World.io.RemoveFile("meta/style_rules.json"); err != nil {

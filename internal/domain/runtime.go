@@ -40,8 +40,8 @@ const (
 type Progress struct {
 	Phase          Phase `json:"phase"`
 	CurrentChapter int   `json:"current_chapter"`
-	// TotalChapters 在非分层模式是详细大纲章数；在分层模式仅是包含骨架估算的
-	// 内部容量值，用于上下文策略，不代表全书固定总章数。
+	// TotalChapters is the detailed outline size in flat mode; in layered mode it is only an
+	// internal capacity estimate including skeletons, used for context policy, not a fixed whole-book total.
 	TotalChapters     int         `json:"total_chapters"`
 	CompletedChapters []int       `json:"completed_chapters"`
 	TotalWordCount    int         `json:"total_word_count"`
@@ -145,9 +145,9 @@ func NewChapterMemoryPolicy(progress *Progress, profile ContextProfile, currentO
 		ReadOnlyThreshold:   5,
 	}
 	if profile.Layered {
-		policy.SummaryStrategy = "卷摘要+弧摘要+最近章节摘要"
+		policy.SummaryStrategy = "Volume summaries + arc summaries + recent chapter summaries"
 	} else {
-		policy.SummaryStrategy = "最近章节摘要"
+		policy.SummaryStrategy = "Recent chapter summaries"
 	}
 	if progress != nil {
 		if progress.TotalChapters > 30 {
@@ -245,20 +245,20 @@ type AdvanceHold struct {
 	Reason        string           `json:"reason"`
 }
 
-// Validate 校验一次性暂停意图自身的结构约束。
+// Validate checks the structural constraints of a one-time pause intent.
 func (h AdvanceHold) Validate() error {
 	if !h.After.Valid() {
-		return fmt.Errorf("不支持的一次性暂停条件 %q", h.After)
+		return fmt.Errorf("unsupported one-time pause condition %q", h.After)
 	}
 	if h.After == AdvanceHoldAtChapter {
 		if h.TargetChapter <= 0 {
-			return fmt.Errorf("目标章节必须大于 0")
+			return fmt.Errorf("target chapter must be greater than 0")
 		}
 	} else if h.TargetChapter != 0 {
-		return fmt.Errorf("暂停条件 %q 不能设置目标章节", h.After)
+		return fmt.Errorf("pause condition %q cannot specify a target chapter", h.After)
 	}
 	if strings.TrimSpace(h.Reason) == "" {
-		return fmt.Errorf("一次性暂停原因不能为空")
+		return fmt.Errorf("one-time pause reason must not be empty")
 	}
 	return nil
 }

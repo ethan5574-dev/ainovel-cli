@@ -4,18 +4,18 @@ Before adding "a piece of text / a reference guide / a rule" to the system, sear
 
 | Directory | What to store | Consumer | Wiring Method |
 |---|---|---|---|
-| `prompts/` | Worker system prompt（writer / editor / architect×2）、Arbiter 裁定 prompt 与一次性任务 prompt（import / simulation / revision） | `agents/build.go`、`internal/arbiter`、imp / sim / revision runner | `load.go` Prompts 字段。注意：simulation_guidance 由 `load.go` 加载时注入，md 文件里看不到 |
-| `references/` | 题材无关的写作知识材料。不进 system prompt，由 novel_context 按角色 / 章节裁剪后注入 `reference_pack` | writer / editor / architect | **三处接线**：`tools.References` 加字段 + `load.go` loadReferences 读取 + `novel_context.go` writerReferences / architectReferences 注入。放进目录不会自动加载 |
-| `references/genres/<style>/` | 题材专属知识（style-references / arc-templates） | 同上，`style != default` 时加载 | `load.go` loadReferences |
-| `rules/` | 已废弃的旧内置规则目录；机械基线已迁到代码，用户规则来自 `~/.ainovel/rules/*.md` / `./.ainovel/rules/*.md` 的自然语言快照 | `userrules.Service` 归一化为 `meta/user_rules.json`；`novel_context` 注入；`commit_chapter` 检查 | 内置基线见 `internal/rules/snapshot.go` 的 `SystemDefaults()`；用户 `.md` 零格式、零 YAML，按自然语言归一化 |
-| `styles/<style>.md` | 题材写作风格指令 | 拼进 **writer** 的 system prompt（`agents/build.go`） | 文件名即 `config.style` 取值。与 `references/genres/<style>/` 是同一题材概念的两种载体：前者是风格指令，后者是知识材料 |
+| `prompts/` | Worker system prompts (writer / editor / two architects), Arbiter decision prompts, and one-shot task prompts (import / simulation / revision) | `agents/build.go`, `internal/arbiter`, import / simulation / revision runners | `load.go` Prompts fields. Note: simulation_guidance is injected by `load.go`, so it is not visible in the Markdown source |
+| `references/` | Genre-independent writing knowledge. Not part of the system prompt; `novel_context` selects it by role/chapter and injects `reference_pack` | writer / editor / architect | **Three wiring points**: add a `tools.References` field, read it in `loadReferences` in `load.go`, and inject it through writerReferences / architectReferences in `novel_context.go`. Adding a file alone does not load it |
+| `references/genres/<style>/` | Genre-specific knowledge (style-references / arc-templates) | Same consumers; loaded when `style != default` | `loadReferences` in `load.go` |
+| `rules/` | Deprecated built-in rule directory; mechanical defaults now live in code. User rules are natural-language snapshots from `~/.ainovel/rules/*.md` / `./.ainovel/rules/*.md` | `userrules.Service` normalizes them into `meta/user_rules.json`; `novel_context` injects them; `commit_chapter` checks them | Built-in defaults: `SystemDefaults()` in `internal/rules/snapshot.go`. User Markdown requires no special format or YAML |
+| `styles/<style>.md` | Genre-specific writing instructions | Included in the **writer** system prompt (`agents/build.go`) | The filename supplies `config.style`. These files and `references/genres/<style>/` express the same genre through instructions and knowledge respectively |
 
 ## New Content Ownership Judgment (Five Questions)
 
 1. Must this process be **guaranteed**? → Do not write prompts; write code constraints (`StopAfterTools` / Tool guards / Flow Router).
-2. Is this adjudication criteria (when to dispatch who)? → `prompts/coordinator.md`.
+2. Is this semantic adjudication criteria? → `prompts/arbiter-*.md`; routine dispatch rules belong in `internal/flow/`. The legacy `coordinator.md` is not the current runtime control prompt.
 3. Is this a specific role's aesthetic / execution standard? → `prompts/<role>.md`.
-4. Is this a mechanically enumerable rule (forbidden words / word counts / thresholds)? → `rules/` (code-enforced, zero LLM cost).
+4. Is this a mechanically enumerable rule (forbidden words / word counts / thresholds)? → Code defaults in `internal/rules/`, or user preferences in `.ainovel/rules/*.md` (the old assets `rules/` directory is deprecated).
 5. Is this writing knowledge material? → `references/` (remember the three-way wiring).
 
 ## Consistency Assurance

@@ -37,8 +37,8 @@ type architectContextEnvelope struct {
 	References map[string]any
 }
 
-// planningVolumeOutline 是 Architect 的只读结构投影。全局保留卷弧骨架，
-// 仅当前弧或显式聚焦弧携带章节详情，避免章节详情随规划规模线性膨胀。
+// planningVolumeOutline is Architect's read-only structural projection: preserve all volume/arc skeletons,
+// but include chapter details only for the current or explicitly focused arc to avoid linear context growth.
 type planningVolumeOutline struct {
 	Index int                  `json:"index"`
 	Title string               `json:"title"`
@@ -78,7 +78,7 @@ func newArchitectContextEnvelope() architectContextEnvelope {
 }
 
 func (e chapterContextEnvelope) apply(result map[string]any) {
-	// 章节路径会先后应用准备阶段和构建阶段的内容，因此合并已有分区。
+	// Chapter context applies preparation and building stages in sequence, so merge existing sections.
 	mergeEnvelopeSection(result, "working_memory", e.Working)
 	mergeEnvelopeSection(result, "episodic_memory", e.Episodic)
 	mergeEnvelopeSection(result, "reference_pack", e.References)
@@ -522,8 +522,8 @@ func (t *ContextTool) buildChapterWorkingMemory(envelope *chapterContextEnvelope
 	}
 }
 
-// buildOutlineWindow 为 Writer/Editor 保留与当前任务直接相关的大纲，而不是注入
-// 随全书增长的完整扁平大纲。分层模式使用当前弧；非分层模式使用最近一个评审周期。
+// buildOutlineWindow retains task-relevant outline data for Writer/Editor rather than injecting
+// the entire growing flat outline. Layered mode uses the current arc; flat mode uses the latest review interval.
 func (t *ContextTool) buildOutlineWindow(working map[string]any, state contextBuildState, reads *contextReads) {
 	outline := state.outline
 	if len(outline) == 0 {
@@ -572,7 +572,7 @@ func (t *ContextTool) buildChapterEpisodicMemory(envelope *chapterContextEnvelop
 		envelope.Episodic["foreshadow_ledger"] = state.foreshadow
 	}
 
-	// 召回最近活跃的次要角色，让 Writer 在引入旧角色时能保持口吻/定位一致。
+	// Recall recently active supporting characters so Writer preserves their established voice and role.
 	// 不召回所有条目（长篇会膨胀），只给最近活跃的前 N 个，按 LastSeenChapter 倒序
 	if recentCast := domain.RecentCast(state.cast, 15); len(recentCast) > 0 {
 		simplified := make([]map[string]any, 0, len(recentCast))
@@ -789,8 +789,8 @@ func (t *ContextTool) buildArchitectPlanning(envelope *architectContextEnvelope,
 	envelope.Planning["completion_signals"] = t.completionSignals(layered, compass, reads)
 }
 
-// planningDetailScope 选择本轮唯一携带完整章节的大纲弧。显式请求优先；
-// 默认使用当前进度弧，状态尚未建立时选择首个已展开弧。
+// planningDetailScope chooses the one arc with full chapter details in this turn, prioritizing explicit requests;
+// otherwise use the progress arc, or the first expanded arc if progress is uninitialized.
 func planningDetailScope(volumes []domain.VolumeOutline, progress *domain.Progress, requestedVolume, requestedArc int) (int, int) {
 	if requestedVolume > 0 {
 		return requestedVolume, requestedArc
@@ -944,7 +944,7 @@ func (t *ContextTool) buildArchitectFoundation(envelope *architectContextEnvelop
 		reads.require("foundation_status", err)
 	}
 	// Writer 反馈池:commit_chapter 落盘的大纲偏离/建议,规划下一弧/卷时必须参考;
-	// expand_next_arc / append_volume / update_compass 成功后自动清空(已消费)。
+	// Successful expand_next_arc / append_volume / update_compass consumes and clears feedback.
 	if fbs, err := t.store.Outline.LoadPendingOutlineFeedback(); err == nil && len(fbs) > 0 {
 		envelope.Foundation["writer_feedback"] = fbs
 	} else {

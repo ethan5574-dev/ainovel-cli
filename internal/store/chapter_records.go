@@ -29,10 +29,10 @@ func (s *ChapterRecordStore) Load(chapter int) (*domain.ChapterRecord, error) {
 		return nil, err
 	}
 	if err := validateChapterRecord(record); err != nil {
-		return nil, fmt.Errorf("读取第 %d 章接纳记录: %w", chapter, err)
+		return nil, fmt.Errorf("read chapter %d accepted record: %w", chapter, err)
 	}
 	if record.Chapter != chapter {
-		return nil, fmt.Errorf("读取第 %d 章接纳记录: 记录章节号为 %d", chapter, record.Chapter)
+		return nil, fmt.Errorf("read chapter %d accepted record: record chapter number is %d", chapter, record.Chapter)
 	}
 	return &record, nil
 }
@@ -44,7 +44,7 @@ func (s *ChapterRecordStore) Save(record domain.ChapterRecord) error {
 	return s.io.WriteJSON(ChapterRecordPath(record.Chapter), record)
 }
 
-// Prepare 构造下一版章节记录但不落盘，供跨记录不变量在写入前完成校验。
+// Prepare constructs the next record version without saving, enabling cross-record validation before writing.
 func (s *ChapterRecordStore) Prepare(chapter int, origin domain.ChapterOrigin, content string, facts domain.ChapterFacts, style domain.StyleDelta) (*domain.ChapterRecord, error) {
 	existing, err := s.Load(chapter)
 	if err != nil {
@@ -73,7 +73,7 @@ func prepareChapterRecord(existing *domain.ChapterRecord, chapter int, origin do
 	digest := domain.ChapterContentSHA256(content)
 	revision := 1
 	if existing != nil {
-		// 覆盖旧记录时保住本章自己种下的伏笔：重写只换正文，不该抹掉这一章的埋设事实。
+		// Preserve foreshadowing planted by this chapter when replacing its record; prose rewrites must not erase planting facts.
 		facts.ForeshadowUpdates = domain.RestoreOwnPlants(existing.Facts.ForeshadowUpdates, facts.ForeshadowUpdates)
 		if existing.ContentSHA256 == digest && existing.Origin == origin && reflect.DeepEqual(existing.Facts, facts) && reflect.DeepEqual(existing.StyleDelta, style) {
 			return existing, false
@@ -104,7 +104,7 @@ func (s *ChapterRecordStore) LoadCompleted(chapters []int) ([]domain.ChapterReco
 			return nil, err
 		}
 		if record == nil {
-			return nil, fmt.Errorf("第 %d 章缺少接纳记录", chapter)
+			return nil, fmt.Errorf("chapter %d lacks an accepted record", chapter)
 		}
 		records = append(records, *record)
 	}

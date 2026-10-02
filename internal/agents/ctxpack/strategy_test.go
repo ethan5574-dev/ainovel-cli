@@ -24,7 +24,7 @@ func TestWriterRestoreIncludesOptionalDataWarnings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("辅助数据损坏不应阻止恢复上下文: %v", err)
 	}
-	if !ok || !strings.Contains(text, "数据告警") || !strings.Contains(text, "style_rules") {
+	if !ok || !strings.Contains(text, "Data Warnings") || !strings.Contains(text, "style_rules") {
 		t.Fatalf("恢复上下文应向模型暴露读取告警: %q", text)
 	}
 }
@@ -228,7 +228,7 @@ func TestStoreSummaryCompactCompactsToolLoop(t *testing.T) {
 		if !ok || !strings.Contains(summary.Summary, taskHeading+task+"\n\n## ") {
 			t.Fatalf("summary must carry the task section verbatim, got %T", out[0])
 		}
-		for _, want := range []string{"最近章节摘要", "当前章节计划", "活跃伏笔", "待修审稿问题", "仓库线索需要再蓄压一拍"} {
+		for _, want := range []string{"Recent Chapter Summaries", "Current Chapter Plan", "Active Foreshadowing", "Pending Reviews", "warehouse clues need another beat of building tension"} {
 			if !strings.Contains(summary.Summary, want) {
 				t.Fatalf("expected %q in store checkpoint", want)
 			}
@@ -246,6 +246,6 @@ func TestStoreSummaryCompactCompactsToolLoop(t *testing.T) {
 	compact(append(first, toolGroup("t7", "read_chapter", strings.Repeat("a", 1600))...))
 
 	// 中间经过 FullSummary：LLM 摘要按 WriterSummaryPrompt 格式重写，任务仍在固定一节
-	llmSummary := corecontext.ContextSummary{Summary: taskHeading + task + "\n\n## 当前进度\n第 3 章进行中"}
+	llmSummary := corecontext.ContextSummary{Summary: taskHeading + task + "\n\n## Current Progress\n第 3 章进行中"}
 	compact(append([]agentcore.AgentMessage{llmSummary}, msgs[1:]...))
 }

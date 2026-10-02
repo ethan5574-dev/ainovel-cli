@@ -11,7 +11,7 @@ import (
 // SummaryStore 管理章节、弧、卷摘要。
 type SummaryStore struct {
 	io         *IO
-	outline    *OutlineStore // 只读依赖，用于获取弧/卷数量
+	outline    *OutlineStore // Read-only outline dependency for arc/volume counts.
 	titleMu    sync.RWMutex
 	titleCache map[int]string
 }
@@ -43,8 +43,8 @@ func (s *SummaryStore) LoadSummary(chapter int) (*domain.ChapterSummary, error) 
 	return &sum, nil
 }
 
-// LoadSummaryTitle 读取章节标题并在进程内缓存。标题仅在 SaveSummary 时变化，
-// 无需重复解码同一份章节摘要。
+// LoadSummaryTitle caches chapter titles in-process. Titles change only through SaveSummary,
+// so repeated reads need not decode the same summary again.
 func (s *SummaryStore) LoadSummaryTitle(chapter int) (string, error) {
 	s.titleMu.RLock()
 	title, ok := s.titleCache[chapter]

@@ -73,7 +73,7 @@ func (s *BudgetSentinel) OnCost(total float64) {
 	}
 	if prev := s.lastTotal.Swap(math.Float64bits(total)); total == math.Float64frombits(prev) {
 		if s.zeroStreak.Add(1) >= blindZeroStreak && s.blindWarned.CompareAndSwap(false, true) {
-			s.report("warn", fmt.Sprintf("预算盲区: 连续记账但累计成本停在 $%.2f 不再增长（当前模型注册表无价且 provider 未自报 cost，或为免费模型）——预算上限不会触发", total))
+			s.report("warn", fmt.Sprintf("Budget blind spot: cumulative cost remains at $%.2f despite repeated usage entries (model pricing is unavailable and the provider reports no cost, or the model is free); the budget limit will not trigger", total))
 		}
 	} else {
 		s.zeroStreak.Store(0)

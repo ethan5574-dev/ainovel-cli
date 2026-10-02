@@ -117,12 +117,12 @@ func (s *StoreSummaryCompactStrategy) apply(_ context.Context, msgs []agentcore.
 }
 
 const (
-	storeSummaryPreamble = "以下内容来自小说持久化 store，用于在压缩后恢复写作上下文。"
-	taskHeading          = "## 当前任务\n"
+	storeSummaryPreamble = "The following persisted novel-store facts restore writing context after compaction."
+	taskHeading          = "## Current Task\n"
 )
 
-// leadingTask 取回协调器下发的任务：首次压缩来自首条 user 消息，之后来自上一份摘要。
-// store 摘要与 LLM 摘要（WriterSummaryPrompt）都把"当前任务"作为固定一节，按下一个标题结束。
+// leadingTask retrieves the coordinator's task from the first user message initially, then from the preceding summary.
+// Store and LLM summaries both use a fixed Current Task section ending at the next heading.
 func leadingTask(msgs []agentcore.AgentMessage) string {
 	switch first := msgs[0].(type) {
 	case agentcore.Message:
@@ -130,9 +130,12 @@ func leadingTask(msgs []agentcore.AgentMessage) string {
 			return first.TextContent()
 		}
 	case corecontext.ContextSummary:
-		if _, rest, ok := strings.Cut(first.Summary, taskHeading); ok {
-			task, _, _ := strings.Cut(rest, "\n## ")
-			return strings.TrimSpace(task)
+		// Read legacy Chinese checkpoints as well as new English summaries.
+		for _, heading := range []string{taskHeading, "## 当前任务\n"} {
+			if _, rest, ok := strings.Cut(first.Summary, heading); ok {
+				task, _, _ := strings.Cut(rest, "\n## ")
+				return strings.TrimSpace(task)
+			}
 		}
 	}
 	return ""

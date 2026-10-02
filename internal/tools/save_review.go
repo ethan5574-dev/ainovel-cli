@@ -45,7 +45,7 @@ func (t *SaveReviewTool) Schema() map[string]any {
 		schema.Property("description", schema.String("问题描述")).Required(),
 		schema.Property("evidence", schema.String("证据：原文片段、具体情节或状态数据")).Required(),
 		schema.Property("suggestion", llmcontract.Nullable(schema.String("修改建议；无需建议时为 null"))).Required(),
-		schema.Property("chapters", schema.Array("该问题证据实际所在的章节；弧评审必须落在任务给定区间", schema.Int("章节号"))).Required(),
+		schema.Property("chapters", schema.Array("Chapters containing evidence of this issue; arc reviews must stay within the assigned range", schema.Int("Chapter number"))).Required(),
 		schema.Property("requires_change", schema.Bool("该问题是否应立即触发所列章节返工，由 Editor 结合整体阅读体验判断")).Required(),
 	)
 	dimensionSchema := schema.Object(
@@ -54,7 +54,7 @@ func (t *SaveReviewTool) Schema() map[string]any {
 		schema.Property("comment", schema.String("该维度的简要结论和证据；每个维度必填")).Required(),
 	)
 	return schema.Object(
-		schema.Property("chapter", schema.Int("审阅的章节号（全局审阅填最新章节号）")).Required(),
+		schema.Property("chapter", schema.Int("Reviewed chapter number (latest chapter number for a global review)")).Required(),
 		schema.Property("scope", schema.Enum("审阅范围", "chapter", "global", "arc")).Required(),
 		schema.Property("dimensions", schema.Array("分维度评分；基础 rubric 由 Editor 提示提供，可按任务补充更具体维度", dimensionSchema)).Required(),
 		schema.Property("issues", schema.Array("发现的问题", issueSchema)).Required(),
@@ -114,7 +114,7 @@ func (t *SaveReviewTool) Execute(_ context.Context, args json.RawMessage) (json.
 	}
 	if existing != nil {
 		if !reflect.DeepEqual(*existing, r) {
-			return nil, fmt.Errorf("第 %d 章聚合评审已存在且内容不同，拒绝覆盖: %w", r.Chapter, errs.ErrToolConflict)
+			return nil, fmt.Errorf("chapter %d aggregate review already exists with different content; refusing overwrite: %w", r.Chapter, errs.ErrToolConflict)
 		}
 		return t.finishReview(r, progress, scope, artifact)
 	}
@@ -152,7 +152,7 @@ func (t *SaveReviewTool) finishReview(
 		return nil, fmt.Errorf("checkpoint review: %w", err)
 	}
 
-	// 使用原子更新返回的 Progress 快照作为事实，避免二次读取产生新的失败窗口。
+	// Use the Progress snapshot returned by atomic update, avoiding a second-read failure window.
 	nextFlow := string(domain.FlowWriting)
 	nextChapter := 0
 	if progress != nil {

@@ -7,11 +7,15 @@ const backend = 'http://127.0.0.1:5173'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  build: {
+    outDir: '../webui',
+    emptyOutDir: true,
+  },
   server: {
     port: 5174,
     proxy: {
       // Vite's dev proxy streams by default (no buffering), which SSE requires.
-      '/api': { target: backend, changeOrigin: true },
+      '/api': { target: backend },
     },
   },
 })

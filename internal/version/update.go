@@ -32,7 +32,7 @@ type UpdateResult struct {
 
 type release struct {
 	TagName string         `json:"tag_name"`
-	Body    string         `json:"body"` // release notes 原文（markdown），版本检查提醒展示用
+	Body    string         `json:"body"` // Raw release notes (Markdown), displayed by update-check hints.
 	Assets  []releaseAsset `json:"assets"`
 }
 
@@ -62,7 +62,7 @@ func Update(ctx context.Context, opts UpdateOptions) (*UpdateResult, error) {
 		return nil, err
 	}
 	if rel.TagName == "" {
-		return nil, fmt.Errorf("release 缺少 tag_name")
+		return nil, fmt.Errorf("release lacks tag_name")
 	}
 	if sameVersion(opts.CurrentVersion, rel.TagName) {
 		return &UpdateResult{Version: rel.TagName, Path: executablePath()}, nil

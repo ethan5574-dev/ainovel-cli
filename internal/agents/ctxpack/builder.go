@@ -252,35 +252,35 @@ func writerStoreProgressSection(state *writerStoreSummaryState) map[string]any {
 
 func writerStoreSummarySections(state *writerStoreSummaryState) []writerStoreSection {
 	return []writerStoreSection{
-		{heading: "当前进度", data: writerStoreProgressSection(state)},
-		{heading: "数据告警", data: state.warnings},
-		{heading: "最近章节摘要", data: state.recentSummaries},
-		{heading: "当前章节计划", data: state.chapterPlan},
-		{heading: "当前章节大纲", data: state.currentOutline},
-		{heading: "当前弧摘要", data: state.currentArcSummary},
-		{heading: "当前卷摘要", data: state.currentVolSummary},
-		{heading: "角色快照", data: state.snapshots},
-		{heading: "活跃伏笔", data: state.foreshadow},
-		{heading: "待修审稿问题", data: state.pendingReviews},
-		{heading: "最近时间线", data: state.timeline},
-		{heading: "风格规则", data: state.styleRules},
+		{heading: "Current Progress", data: writerStoreProgressSection(state)},
+		{heading: "Data Warnings", data: state.warnings},
+		{heading: "Recent Chapter Summaries", data: state.recentSummaries},
+		{heading: "Current Chapter Plan", data: state.chapterPlan},
+		{heading: "Current Chapter Outline", data: state.currentOutline},
+		{heading: "Current Arc Summary", data: state.currentArcSummary},
+		{heading: "Current Volume Summary", data: state.currentVolSummary},
+		{heading: "Character Snapshots", data: state.snapshots},
+		{heading: "Active Foreshadowing", data: state.foreshadow},
+		{heading: "Pending Reviews", data: state.pendingReviews},
+		{heading: "Recent Timeline", data: state.timeline},
+		{heading: "Style Rules", data: state.styleRules},
 	}
 }
 
 func writerRestoreSections(state *writerStoreSummaryState) []writerStoreSection {
 	return []writerStoreSection{
-		{heading: "当前进度", data: writerStoreProgressSection(state)},
-		{heading: "数据告警", data: state.warnings},
-		{heading: "当前章节计划", data: state.chapterPlan},
-		{heading: "当前章节大纲", data: state.currentOutline},
-		{heading: "待修审稿问题", data: state.pendingReviews},
-		{heading: "角色快照", data: state.snapshots},
-		{heading: "最近章节摘要", data: state.recentSummaries},
-		{heading: "活跃伏笔", data: state.foreshadow},
-		{heading: "当前弧摘要", data: state.currentArcSummary},
-		{heading: "当前卷摘要", data: state.currentVolSummary},
-		{heading: "最近时间线", data: state.timeline},
-		{heading: "风格规则", data: state.styleRules},
+		{heading: "Current Progress", data: writerStoreProgressSection(state)},
+		{heading: "Data Warnings", data: state.warnings},
+		{heading: "Current Chapter Plan", data: state.chapterPlan},
+		{heading: "Current Chapter Outline", data: state.currentOutline},
+		{heading: "Pending Reviews", data: state.pendingReviews},
+		{heading: "Character Snapshots", data: state.snapshots},
+		{heading: "Recent Chapter Summaries", data: state.recentSummaries},
+		{heading: "Active Foreshadowing", data: state.foreshadow},
+		{heading: "Current Arc Summary", data: state.currentArcSummary},
+		{heading: "Current Volume Summary", data: state.currentVolSummary},
+		{heading: "Recent Timeline", data: state.timeline},
+		{heading: "Style Rules", data: state.styleRules},
 	}
 }
 

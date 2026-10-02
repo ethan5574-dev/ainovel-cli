@@ -5,21 +5,21 @@ import (
 	"strings"
 )
 
-// BookMetadata 是面向读者和出版物的作品信息。
-// 创作设定属于 Foundation，运行进度属于 Progress，二者都不承载这份数据。
+// BookMetadata contains reader/publication-facing book information.
+// Settings belong to Foundation and progress to Progress; neither stores this metadata.
 type BookMetadata struct {
 	Title    string `json:"title"`
 	Synopsis string `json:"synopsis"`
 }
 
-// Normalized 返回可持久化、可比较的规范值。
+// Normalized returns a canonical value suitable for persistence and comparison.
 func (b BookMetadata) Normalized() BookMetadata {
 	b.Title = strings.TrimSpace(b.Title)
 	b.Synopsis = strings.TrimSpace(b.Synopsis)
 	return b
 }
 
-// Validate 检查作品信息的必填字段。
+// Validate checks required book metadata fields.
 func (b BookMetadata) Validate() error {
 	b = b.Normalized()
 	if b.Title == "" {
@@ -103,9 +103,9 @@ type ArcExpansion struct {
 	Chapters []OutlineEntry `json:"chapters"`
 }
 
-// EstimatedChapterCapacity 计算分层大纲的内部容量估算：已展开弧按真实章节数，
-// 骨架弧按 EstimatedChapters。它只用于上下文策略，不是全书总章数；真正已细化、
-// 可写的章节始终来自 FlattenOutline，禁止把本值暴露给用户或模型。
+// EstimatedChapterCapacity estimates internal layered-outline capacity from actual expanded chapters,
+// and EstimatedChapters for skeletons. It is only for context policy, not a whole-book total;
+// writable detailed chapters come from FlattenOutline. Never expose this estimate to users or models.
 func EstimatedChapterCapacity(volumes []VolumeOutline) int {
 	n := 0
 	for _, v := range volumes {

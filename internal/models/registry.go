@@ -115,8 +115,8 @@ func (r *ModelRegistry) ResolveContextWindow(pattern string) int {
 	return 0
 }
 
-// MergeModels 按 provider+id 大小写不敏感合并。
-// 非零价格/窗口/MaxTokens/Name 会覆盖已有条目；新增条目直接追加。
+// MergeModels merges case-insensitively by provider+id.
+// Non-zero price/window/MaxTokens/Name values replace existing fields; append new entries.
 func (r *ModelRegistry) MergeModels(fetched []ModelEntry) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

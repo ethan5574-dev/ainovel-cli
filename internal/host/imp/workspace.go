@@ -225,7 +225,7 @@ type FailureMeta struct {
 	PrefixSalvage string `json:"prefix_salvage,omitempty"` // available:N / unavailable
 }
 
-// writeFailure best-effort 保存最近失败的元数据与未裁剪的原始模型响应到 failures/（RFC §14.2）。
+// writeFailure best-effort saves recent failure metadata and the untruncated raw model response in failures/ (RFC section 14.2).
 // 原始响应可能含正文，仅落在用户自己的书目录，不进普通日志或脱敏诊断导出。
 func (w *Workspace) writeFailure(meta FailureMeta, rawResponse string) {
 	_ = w.writeJSON(filepath.Join(dirFailures, "last.json"), meta)

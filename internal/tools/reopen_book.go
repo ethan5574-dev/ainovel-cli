@@ -9,14 +9,14 @@ import (
 	"github.com/voocel/ainovel-cli/internal/store"
 )
 
-// ReopenBook 把已完结的书重新打开进入返工态，由 Engine 在干预动作边界调用。
+// ReopenBook returns a completed book to rework, called by Engine at intervention boundaries.
 // 完本后 completePhaseGate 硬拦一切 subagent 派发，用户无法返工已写章节。
-// 本函数不经 subagent，complete 期可调：原子地把 phase 切回 writing、目标章入
+// This bypasses subagent and is allowed during complete: atomically return phase to writing and enqueue target chapters,
 // PendingRewrites、flow=rewriting，随后 Flow Router 照既有返工队列派 writer 逐章重写，
 // 队列跑完 commit_chapter 自动重新收尾完结。Gate / Router / edit / commit 重逻辑均无需改动。
 func ReopenBook(s *store.Store, chapters []int, reason string) error {
 	if len(chapters) == 0 {
-		return fmt.Errorf("chapters 不能为空，需指明要返工的章节: %w", errs.ErrToolArgs)
+		return fmt.Errorf("chapters must not be empty; specify the chapters to rework: %w", errs.ErrToolArgs)
 	}
 
 	progress, err := s.Progress.Load()
@@ -24,7 +24,7 @@ func ReopenBook(s *store.Store, chapters []int, reason string) error {
 		return fmt.Errorf("load progress: %w: %w", errs.ErrStoreRead, err)
 	}
 	if progress == nil {
-		return fmt.Errorf("progress 未初始化: %w", errs.ErrToolPrecondition)
+		return fmt.Errorf("progress is not initialized: %w", errs.ErrToolPrecondition)
 	}
 	// 只能返工已写章；不在已完成集合的章号属续写/越界，明确拒绝引导用户走篇幅调整。
 	var invalid []int
@@ -34,7 +34,7 @@ func ReopenBook(s *store.Store, chapters []int, reason string) error {
 		}
 	}
 	if len(invalid) > 0 {
-		return fmt.Errorf("第 %v 章尚未写完，reopen 只能返工已完成章节（新增/扩展剧情请走篇幅调整）: %w", invalid, errs.ErrToolPrecondition)
+		return fmt.Errorf("chapters %v are unfinished; reopen reworks completed chapters only (use length adjustment for new/expanded plot): %w", invalid, errs.ErrToolPrecondition)
 	}
 
 	// phase 前置校验在 store.Reopen 内兜底（仅 complete 可调）。

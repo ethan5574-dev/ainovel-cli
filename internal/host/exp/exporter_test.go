@@ -73,7 +73,7 @@ func TestRun_HappyPath_DefaultsToNovelDir(t *testing.T) {
 		t.Fatalf("read output: %v", err)
 	}
 	text := string(data)
-	for _, want := range []string{"《光斑》", "第 1 章  雨夜归人", "第 3 章  余烬"} {
+	for _, want := range []string{"《光斑》", "Chapter 1  雨夜归人", "Chapter 3  余烬"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("output missing %q\nfull:\n%s", want, text)
 		}
@@ -104,7 +104,7 @@ func TestRun_UsesCommittedTitleForCompletedChapter(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(data)
-	if !strings.Contains(text, "第 1 章  终稿标题") || strings.Contains(text, "计划标题") {
+	if !strings.Contains(text, "Chapter 1  终稿标题") || strings.Contains(text, "计划标题") {
 		t.Fatalf("export title projection is wrong:\n%s", text)
 	}
 }
@@ -150,7 +150,7 @@ func TestRun_ExistingFile_NoOverwrite(t *testing.T) {
 	if err == nil {
 		t.Fatal("expect error when target exists and !Overwrite")
 	}
-	if !strings.Contains(err.Error(), "已存在") {
+	if !strings.Contains(err.Error(), "already exists") {
 		t.Errorf("unexpected error: %v", err)
 	}
 
@@ -284,7 +284,7 @@ func TestRun_UnknownExtension(t *testing.T) {
 	if err == nil {
 		t.Fatal("expect error for unknown extension")
 	}
-	if !strings.Contains(err.Error(), "扩展名") {
+	if !strings.Contains(err.Error(), "extension") {
 		t.Errorf("error should mention extension: %v", err)
 	}
 }

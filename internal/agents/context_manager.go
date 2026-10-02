@@ -59,16 +59,16 @@ func newContextManager(cfg contextManagerConfig) *corecontext.ContextEngine {
 	return engine
 }
 
-// roleContextProfile 描述 Architect / Editor 这类"单任务、多次读取"Worker 的压缩档案：
-// 只清理旧的 novel_context 结果（落盘数据可随时重读），写工具结果与章节原文保留；
-// 仍超限时用角色专属提示词做全量摘要。
+// roleContextProfile describes compaction for single-task, repeated-read Workers such as Architect/Editor:
+// clear only old novel_context results (persisted data can be reread), retaining write results and prose;
+// if still over budget, use role-specific full summarization.
 type roleContextProfile struct {
 	Agent           string
-	KeepRecentReads int // 保留最近几次 novel_context 结果不清理
+	KeepRecentReads int // Number of recent novel_context reads to retain
 	Summary         corecontext.FullSummaryConfig
 }
 
-// newRoleContextManager 按当前模型窗口构建该档案的 ContextManager。
+// newRoleContextManager builds this profile for the current model window.
 func newRoleContextManager(p roleContextProfile, model agentcore.ChatModel, window int, contextToolName string) *corecontext.ContextEngine {
 	summary := p.Summary
 	return newContextManager(contextManagerConfig{
@@ -86,8 +86,8 @@ func newRoleContextManager(p roleContextProfile, model agentcore.ChatModel, wind
 	})
 }
 
-// contextRewriteCallback 创建上下文重写的日志回调。
-// 新架构简化为只写 slog,不再写 runtime queue 和 UIEvent。
+// contextRewriteCallback creates a logging callback for context rewrites.
+// The new architecture writes only slog, not runtime queue or UIEvent entries.
 func contextRewriteCallback(agent string) func(corecontext.RewriteEvent) {
 	return func(ev corecontext.RewriteEvent) {
 		attrs := []any{

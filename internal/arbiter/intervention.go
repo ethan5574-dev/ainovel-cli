@@ -25,7 +25,7 @@ type InterventionFacts struct {
 	DynamicPlanning          bool             `json:"dynamic_planning"`
 	NextChapter              int              `json:"next_chapter,omitempty"`
 	PendingRewrites          []int            `json:"pending_rewrites,omitempty"`
-	ReopenCount              int              `json:"reopen_count,omitempty"` // 用户显式 /reopen 重开完结书的累计次数
+	ReopenCount              int              `json:"reopen_count,omitempty"` // Number of explicit /reopen requests for a completed book
 	FoundationMissing        []string         `json:"foundation_missing,omitempty"`
 	PlanningTier             string           `json:"planning_tier,omitempty"`
 	AdvanceMode              string           `json:"advance_mode,omitempty"`
@@ -33,8 +33,8 @@ type InterventionFacts struct {
 	AdvanceHoldAfter         string           `json:"advance_hold_after,omitempty"`
 	AdvanceHoldTargetChapter int              `json:"advance_hold_target_chapter,omitempty"`
 	AdvanceHoldReason        string           `json:"advance_hold_reason,omitempty"`
-	Running                  bool             `json:"running"`                  // 干预到达时是否有 run 在进行
-	CheckpointSeq            int64            `json:"checkpoint_seq,omitempty"` // Collect 时刻最新 checkpoint;Engine 对账用
+	Running                  bool             `json:"running"`                  // Whether a run was active when the intervention arrived
+	CheckpointSeq            int64            `json:"checkpoint_seq,omitempty"` // Latest checkpoint at Collect time; used for Engine reconciliation
 	RecentDecisions          []RecentDecision `json:"recent_decisions,omitempty"`
 }
 
@@ -67,7 +67,7 @@ func CollectInterventionFacts(st *storepkg.Store) (InterventionFacts, error) {
 	f.FoundationMissing = missing
 	book, err := st.Book.Load()
 	if err != nil {
-		return f, fmt.Errorf("读取作品信息: %w", err)
+		return f, fmt.Errorf("read book metadata: %w", err)
 	}
 	if book != nil {
 		f.Title = book.Title
@@ -84,7 +84,7 @@ func CollectInterventionFacts(st *storepkg.Store) (InterventionFacts, error) {
 		if p.Layered {
 			outline, outlineErr := st.Outline.LoadOutline()
 			if outlineErr != nil {
-				return f, fmt.Errorf("读取当前详细大纲: %w", outlineErr)
+				return f, fmt.Errorf("read current detailed outline: %w", outlineErr)
 			}
 			f.OutlinedChapters = len(outline)
 		} else {
@@ -126,7 +126,7 @@ func CollectInterventionFacts(st *storepkg.Store) (InterventionFacts, error) {
 	return f, nil
 }
 
-// AdvanceHoldOp 一次性暂停动作：在工作边界、返工排空或目标章节完成后暂停，也可取消。
+// AdvanceHoldOp requests/cancels a one-time pause at a boundary, after rework drains, or after a target chapter.
 type AdvanceHoldOp struct {
 	Cancel        bool                    `json:"cancel,omitempty"`
 	After         domain.AdvanceHoldAfter `json:"after,omitempty"`
@@ -159,8 +159,8 @@ var interventionContract = llmcontract.Contract{
 		schema.Property("rules", llmcontract.Nullable(schema.String("要落盘的长效写作规则原文；无则为 null"))).Required(),
 		schema.Property("hold", llmcontract.Nullable(schema.Object(
 			schema.Property("cancel", schema.Bool("是否取消既有一次性暂停")).Required(),
-			schema.Property("after", llmcontract.Nullable(schema.Enum("暂停触发点；取消时为 null", string(domain.AdvanceHoldAtBoundary), string(domain.AdvanceHoldAfterRewritesDrained), string(domain.AdvanceHoldAtChapter)))).Required(),
-			schema.Property("target_chapter", llmcontract.Nullable(schema.Int("after=chapter 时的目标章节；其他情况为 null"))).Required(),
+			schema.Property("after", llmcontract.Nullable(schema.Enum("Pause trigger; null when canceled", string(domain.AdvanceHoldAtBoundary), string(domain.AdvanceHoldAfterRewritesDrained), string(domain.AdvanceHoldAtChapter)))).Required(),
+			schema.Property("target_chapter", llmcontract.Nullable(schema.Int("Target chapter for after=chapter; null otherwise"))).Required(),
 			schema.Property("reason", llmcontract.Nullable(schema.String("用户诉求摘要；取消时可为 null"))).Required(),
 		))).Required(),
 		schema.Property("reopen", llmcontract.Nullable(schema.Object(
@@ -209,14 +209,14 @@ func (d *InterventionDecision) ValidateAgainst(f InterventionFacts) error {
 		}
 		hold := domain.AdvanceHold{After: d.Hold.After, TargetChapter: d.Hold.TargetChapter, Reason: d.Hold.Reason}
 		if err := hold.Validate(); err != nil {
-			return fmt.Errorf("hold 无效: %w", err)
+			return fmt.Errorf("invalid hold: %w", err)
 		}
 		nextChapter := f.NextChapter
 		if nextChapter == 0 {
 			nextChapter = f.CompletedChapters + 1
 		}
 		if hold.After == domain.AdvanceHoldAtChapter && hold.TargetChapter < nextChapter {
-			return fmt.Errorf("目标章节 %d 早于当前下一章 %d", hold.TargetChapter, nextChapter)
+			return fmt.Errorf("target chapter %d precedes the next chapter %d", hold.TargetChapter, nextChapter)
 		}
 	}
 	return nil

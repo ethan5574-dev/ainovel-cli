@@ -28,14 +28,14 @@ Ordered by the most common troubleshooting path when something goes wrong:
 
 | Artifact | Path | What to inspect | Healthy | Unhealthy |
 |---|---|---|---|---|
-| 进度 | `meta/progress.json` | `phase` / `flow` / `completed_chapters` | phase 单调前进，flow 在合法集合内 | phase 倒退 / flow 卡在某状态 |
-| 指南针 | `meta/compass.json` | `last_updated` 与最新章节差距 | gap < 15 章 | gap > 15 章（CompassDrift 命中） |
-| 配角视图 | `meta/chapter_records/*.json` | `facts.characters` / `facts.cast_intros` | 有名字的次要角色稳定复用 | 同一角色反复换名 |
-| 伏笔台账 | `meta/foreshadow.json` | `status="planted"` 的最长停滞章数 | < 章数/3 | > 章数/3（StaleForeshadow 命中） |
-| 大纲 | `meta/layered_outline.json` | 当前卷剩余未写章数 | 提前 1-2 章已展开 | 写到当前章但下一章无 outline（OutlineExhausted） |
-| 角色档案 | `meta/characters.json` | 是否能在最近 N 章摘要里找到 core/important 角色 | 都能找到 | 缺席（GhostCharacter 命中） |
-| 检查点 | `meta/checkpoints.jsonl` | 最近一行的 `step` 是否对应 progress | 一致 | 不一致（崩溃恢复未自愈） |
-| 裁定审计 | `meta/decisions.jsonl` | 最近若干条裁定的 facts/decision | 分诊准确、动作合理 | 同类干预反复裁定失败 |
+| Progress | `meta/progress.json` | `phase` / `flow` / `completed_chapters` | Phase moves forward; flow stays valid | Phase regression / stuck flow |
+| Compass | `meta/compass.json` | Gap between `last_updated` and latest chapter | Gap < 15 chapters | Gap > 15 chapters (CompassDrift) |
+| Supporting cast | `meta/chapter_records/*.json` | `facts.characters` / `facts.cast_intros` | Named supporting characters are reused consistently | Repeated renaming |
+| Foreshadowing | `meta/foreshadow.json` | Longest inactivity for `status="planted"` | < chapter count / 3 | > chapter count / 3 (StaleForeshadow) |
+| Outline | `meta/layered_outline.json` | Remaining unwritten chapters in current volume | Expanded 1–2 chapters ahead | Next chapter lacks an outline (OutlineExhausted) |
+| Character profiles | `meta/characters.json` | Core/important characters in recent N summaries | All present | Missing (GhostCharacter) |
+| Checkpoints | `meta/checkpoints.jsonl` | Latest `step` matches progress | Consistent | Inconsistent (recovery did not heal) |
+| Decision audit | `meta/decisions.jsonl` | Recent facts and decisions | Accurate triage and appropriate actions | Repeated failures for similar interventions |
 
 ---
 
@@ -72,17 +72,17 @@ Compare before and after running long-form:
 
 ---
 
-## 4. 配角视图观测
+## 4. Observing the Supporting Cast
 
-配角视图由已完成章节的接纳记录实时投影，不再维护独立的 `cast_ledger.json`。`facts.characters` 决定角色在哪些章节出现，`facts.cast_intros` 提供最早的非空简介；`characters.json` 中的核心角色与别名会自动排除。
+The supporting-cast view is projected from accepted records of completed chapters, without a separate `cast_ledger.json`. `facts.characters` determines appearances; `facts.cast_intros` supplies the earliest non-empty introduction. Core characters and aliases in `characters.json` are excluded automatically.
 
-跑 5 章后，查看最近的 Writer 会话：
+After writing five chapters, inspect the latest Writer session:
 
 ```bash
 tail -50 output/{novel}/meta/sessions/agents/writer-*.jsonl
 ```
 
-如果第 1 章引入“老周”、第 5 章再次使用，后一次 `novel_context` 返回的 `episodic_memory.recent_cast` 应包含老周及其首次简介。看到了但正文仍换名或定位漂移，属于 Writer 没有消费上下文；视图缺失则检查对应 `meta/chapter_records/*.json` 的 `facts.characters` 与 `facts.cast_intros`。
+If chapter 1 introduces Old Zhou and chapter 5 reuses him, the later `novel_context` result should contain his name and first introduction in `episodic_memory.recent_cast`. If the data is present but the prose renames or repositions him, Writer failed to consume context. If the view is missing, inspect the chapter record's `facts.characters` and `facts.cast_intros`.
 
 ---
 
@@ -112,11 +112,11 @@ If the jsonl shows Writer repeatedly calling `novel_context` empty or calling ot
 
 When running a 100+ chapter novel, if any of the following items are hit, stop and investigate:
 
-- [ ] CompassDrift 命中且持续 2 个弧未消除
-- [ ] 同一角色出现疑似多名（"老李" / "李掌柜" 共存）
-- [ ] Writer 写新章时不读 recent_cast 中已有的旧角色（重复发明）
-- [ ] Worker session 中出现连续 ≥ 5 次空调 novel_context
-- [ ] 任意章节 commit 后 `meta/checkpoints.jsonl` 没有对应 `commit_chapter` step
+- [ ] CompassDrift persists for two arcs
+- [ ] A character appears under suspected duplicate names (e.g. Old Li / Shopkeeper Li)
+- [ ] Writer reinvents existing characters instead of using recent_cast
+- [ ] Worker session contains at least five consecutive empty novel_context calls
+- [ ] A chapter commit lacks its corresponding `commit_chapter` checkpoint
 ---
 
 ## 7. Document Maintenance Standards

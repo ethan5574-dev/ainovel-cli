@@ -19,3 +19,49 @@ services:
     volumes:
       - ./config:/root/.ainovel
       - ./workspace:/workspace
+
+  # Platform services (plan Phase 1). Optional — `ainovel` / `ainovel-web` above run
+  # standalone without these. Bring up with: docker compose --profile platform up
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["platform"]
+    environment:
+      POSTGRES_USER: ainovel
+      POSTGRES_PASSWORD: ainovel
+      POSTGRES_DB: ainovel_platform
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  ainovel-worker:
+    image: ghcr.io/voocel/ainovel-cli:latest
+    build:
+      context: .
+    profiles: ["platform"]
+    entrypoint: ["ainovel-worker"]
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: postgres://ainovel:ainovel@postgres:5432/ainovel_platform?sslmode=disable
+      # Provider credentials for every job this worker runs — see .ainovel/eval-configs/
+      # for the shape (same bootstrap.Config JSON the eval harness loads). Never commit
+      # the real file; mount your own here.
+      AINOVEL_CONFIG: /platform/config.json
+      WORKSPACE_ROOT: /workspace/platform
+      CHAPTER_ROOT: /workspace/chapters
+      # System-wide cost cap (plan's "cost layer 3"): once today's usage_ledger spend
+      # reaches this, the worker stops claiming new jobs until it resets at midnight —
+      # queued jobs wait, they don't fail. 0/unset = unlimited.
+      DAILY_BUDGET_USD: "20"
+      # Phase 5 (monetization): "model tốt hơn cho vai Writer" for tier=paid jobs. Left
+      # unset here on purpose — there's no real pricing/model decision yet (see
+      # docs/platform/roadmap.md's Phase 5). Both must be set together or not at all.
+      # PAID_WRITER_PROVIDER: ""
+      # PAID_WRITER_MODEL: ""
+    volumes:
+      - ./config/platform.json:/platform/config.json:ro
+      - ./workspace:/workspace
+
+volumes:
+  pgdata:

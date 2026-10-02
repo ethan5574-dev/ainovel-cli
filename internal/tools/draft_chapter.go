@@ -37,13 +37,13 @@ func (t *DraftChapterTool) Schema() map[string]any {
 	// 要求所有 properties 都在 required 列表中。原来的"省略 mode 走 write
 	// 默认"行为现在需要模型显式传 mode="write"，Execute 的 default 分支不变。
 	return schema.Object(
-		schema.Property("chapter", schema.Int("章节号")).Required(),
+		schema.Property("chapter", schema.Int("Chapter number")).Required(),
 		schema.Property("content", schema.String("章节正文")).Required(),
 		schema.Property("mode", schema.Enum("写入模式", "write", "append")).Required(),
 	)
 }
 
-// StrictSchema 要求 Provider 保证工具参数符合 schema。
+// StrictSchema requires providers to enforce tool argument schema.
 func (t *DraftChapterTool) StrictSchema() bool { return true }
 
 func (t *DraftChapterTool) Execute(_ context.Context, args json.RawMessage) (json.RawMessage, error) {

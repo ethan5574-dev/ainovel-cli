@@ -23,7 +23,7 @@ type RunOptions struct {
 
 // RunCase 驱动一次 case：装配 host → 启动 → 按章数上限推进 → 到点 Abort。
 // bundle 由调用方做过 variant 覆盖（如有）。返回的 error 即"运行时错误"（hard fail 依据）；
-// 正常写完或正常截停都返回 nil。
+// Normal completion and intentional truncation both return nil.
 //
 // RunCase 独占并重置 OutputDir：StartPrepared 只重置 progress/checkpoints，不清 chapters/
 // foundation 等工件，复用旧目录会让残留产物污染 diag 与 novel_context。故运行前清空，保证隔离。
@@ -48,7 +48,7 @@ func RunCase(cfg bootstrap.Config, bundle assets.Bundle, c Case, opts RunOptions
 	}
 	defer eng.Close()
 	if logErr := eng.FileLogError(); logErr != nil {
-		return fmt.Errorf("评测文件日志不可用: %w", logErr)
+		return fmt.Errorf("Evaluation file log unavailable: %w", logErr)
 	}
 
 	prompt, err := startup.PrepareQuick(c.Prompt)

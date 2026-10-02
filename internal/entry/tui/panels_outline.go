@@ -210,7 +210,7 @@ func renderDetailContent(snap host.UISnapshot, contentW int) string {
 	}
 
 	if snap.Synopsis != "" {
-		b.WriteString(panelTitleStyle.Render(":: 简介"))
+		b.WriteString(panelTitleStyle.Render(":: Synopsis"))
 		b.WriteString("\n")
 		for _, line := range wrapStreamText(snap.Synopsis, contentW) {
 			b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render(line))

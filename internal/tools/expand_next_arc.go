@@ -11,7 +11,7 @@ import (
 	"github.com/voocel/ainovel-cli/internal/store"
 )
 
-// ExpandNextArcTool 将当前已完成弧之后的骨架展开为详细章节。
+// ExpandNextArcTool expands the skeleton following the current completed arc into detailed chapters.
 type ExpandNextArcTool struct {
 	store *store.Store
 }
@@ -21,9 +21,9 @@ func NewExpandNextArcTool(store *store.Store) *ExpandNextArcTool {
 }
 
 func (t *ExpandNextArcTool) Name() string  { return "expand_next_arc" }
-func (t *ExpandNextArcTool) Label() string { return "展开下一弧" }
+func (t *ExpandNextArcTool) Label() string { return "Expand next arc" }
 func (t *ExpandNextArcTool) Description() string {
-	return "展开当前已完成弧之后的下一骨架弧。目标卷弧由系统根据进度和大纲确定；只需提交结合已完成事实校准后的 title、goal 和 chapters。"
+	return "Expand the next skeleton arc after the completed arc. The system selects its volume/arc from progress and outline; submit only title, goal, and chapters calibrated to completed facts."
 }
 
 func (t *ExpandNextArcTool) ReadOnly(json.RawMessage) bool        { return false }
@@ -32,15 +32,15 @@ func (t *ExpandNextArcTool) StrictSchema() bool                   { return true 
 
 func (t *ExpandNextArcTool) Schema() map[string]any {
 	chapter := schema.Object(
-		schema.Property("title", schema.String("章节标题")).Required(),
-		schema.Property("core_event", schema.String("本章核心事件")).Required(),
-		schema.Property("hook", schema.String("章末钩子")).Required(),
-		schema.Property("scenes", schema.Array("计划场景；无则为空数组", schema.String(""))).Required(),
+		schema.Property("title", schema.String("Chapter title")).Required(),
+		schema.Property("core_event", schema.String("Chapter core event")).Required(),
+		schema.Property("hook", schema.String("Chapter-ending hook")).Required(),
+		schema.Property("scenes", schema.Array("Planned scenes; empty array if none", schema.String(""))).Required(),
 	)
 	return schema.Object(
-		schema.Property("title", schema.String("结合已完成事实校准后的弧标题")).Required(),
-		schema.Property("goal", schema.String("结合已完成事实校准后的弧目标")).Required(),
-		schema.Property("chapters", schema.Array("该弧的详细章节计划", chapter)).Required(),
+		schema.Property("title", schema.String("Arc title calibrated to completed facts")).Required(),
+		schema.Property("goal", schema.String("Arc goal calibrated to completed facts")).Required(),
+		schema.Property("chapters", schema.Array("Detailed chapter plans for this arc", chapter)).Required(),
 	)
 }
 

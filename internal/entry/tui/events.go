@@ -24,7 +24,7 @@ type (
 	doneMsg        struct{ complete bool } // complete=true 全书完成，false 出错停止
 	abortResultMsg struct{ stopped bool }
 	bootstrapMsg   struct {
-		existing  bool // 已有作品；无论恢复是否成功都应进入工作台
+		existing  bool // Existing book; enter the workspace even if resume fails.
 		resumed   bool
 		completed bool // 目录里是本已完结的书：落完成态工作台而非欢迎页
 		err       error
@@ -55,11 +55,11 @@ type (
 	steerResultMsg      struct{ err error }
 	continueResultMsg   struct{ err error }
 	spinnerTickMsg      time.Time
-	eventSpinnerTickMsg time.Time // 事件流进行中事件的 spinner tick（更快、独立于顶栏/星星）
-	streamDeltaMsg      string    // 流式 token 增量
-	streamClearMsg      struct{}  // 清空流式缓冲（新消息开始）
-	streamFlushTickMsg  struct{}  // 流式刷新节流（仅有待刷数据时调度）
-	quitResetMsg        struct{}  // 双次 Ctrl+C 超时重置
+	eventSpinnerTickMsg time.Time // Independent, faster spinner tick for running events.
+	streamDeltaMsg      string    // Streamed token delta.
+	streamClearMsg      struct{}  // Clear the stream buffer when a new message starts.
+	streamFlushTickMsg  struct{}  // Throttled stream flush, scheduled only for pending data.
+	quitResetMsg        struct{}  // Reset the double-Ctrl+C timeout.
 	updateCheckMsg      struct {
 		result *buildversion.CheckResult
 		err    error
@@ -68,13 +68,13 @@ type (
 
 // --- Cmd 函数 ---
 
-// checkForUpdate 后台查询上游新版本（5s 超时，24h 缓存节流）。错误随消息
-// 返回，由 Update 写日志但不打扰用户界面。
+// checkForUpdate checks upstream in the background (5s timeout, 24h cache). Errors are returned
+// in the message for Update to log without disrupting the UI.
 func checkForUpdate(currentVersion string) tea.Cmd {
 	return func() tea.Msg {
 		configDir := bootstrap.DefaultConfigDir()
 		if configDir == "" {
-			return updateCheckMsg{err: fmt.Errorf("无法确定更新检查缓存目录")}
+			return updateCheckMsg{err: fmt.Errorf("cannot determine the update-check cache directory")}
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -86,16 +86,16 @@ func checkForUpdate(currentVersion string) tea.Cmd {
 	}
 }
 
-// updateNotesPreviewWidth 是欢迎页与事件流共用的单行摘要宽度。远端 release
-// 文本不直接进入终端：先移除 ANSI/控制字符，再显式截断，避免终端控制序列和超长行。
+// updateNotesPreviewWidth is the shared single-line preview width. Remote release
+// text is stripped of ANSI/control characters and truncated before terminal rendering.
 const updateNotesPreviewWidth = 56
 
 func formatUpdateNotice(result *buildversion.CheckResult) string {
-	notice := fmt.Sprintf("新版本 %s 已发布", result.Latest)
+	notice := fmt.Sprintf("New version %s is available", result.Latest)
 	if preview := updateNotesPreview(result.Notes); preview != "" {
 		notice += " · " + preview
 	}
-	return notice + " · 运行 ainovel-cli update 升级"
+	return notice + " · Run ainovel-cli update to upgrade"
 }
 
 func updateNotesPreview(notes string) string {
@@ -319,15 +319,15 @@ func tickSpinner() tea.Cmd {
 	})
 }
 
-// tickEventSpinner 驱动事件流"进行中"行的 spinner。独立于 tickSpinner，节奏更快（150ms）。
+// tickEventSpinner animates running event rows independently of tickSpinner (150ms).
 func tickEventSpinner() tea.Cmd {
 	return tea.Tick(150*time.Millisecond, func(t time.Time) tea.Msg {
 		return eventSpinnerTickMsg(t)
 	})
 }
 
-// tickStreamFlush 合并一个 16ms 窗口内的流式增量。它由首个待刷 delta 启动，
-// 刷完即停止，空闲时不会持续唤醒 TUI。
+// tickStreamFlush coalesces streamed deltas within a 16ms window, starting on the first delta.
+// It stops after flushing, avoiding TUI wakeups while idle.
 func tickStreamFlush() tea.Cmd {
 	return tea.Tick(16*time.Millisecond, func(t time.Time) tea.Msg {
 		return streamFlushTickMsg{}

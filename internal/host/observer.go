@@ -36,8 +36,8 @@ func errorKind(err error, msg string) string {
 		return "tool_validation"
 	case strings.Contains(lower, "too many concurrent requests"):
 		return "overloaded"
-	// providerError 会把 litellm 的结构化类型附在文本末尾。
-	// HTTP/2 INTERNAL_ERROR 本身没有可分类关键词，保留这个显式 network 标记即可。
+	// providerError appends the structured litellm error type to the text.
+	// HTTP/2 INTERNAL_ERROR has no classifiable keyword, so retain its explicit network marker.
 	case strings.Contains(lower, "[network,"):
 		return "network"
 	}
@@ -51,7 +51,7 @@ func nextEventID() string {
 	return fmt.Sprintf("e%d", atomic.AddUint64(&eventIDCounter, 1))
 }
 
-// activeCall 记录一次正在进行的调用的 ID、起点时间与 summary。
+// activeCall stores an in-flight call's ID, start time, and summary.
 // summary 在完成事件时回填进 finish Event，保证 replay（runtime queue）能还原行内容。
 type activeCall struct {
 	id      string
@@ -73,7 +73,7 @@ type observer struct {
 	streamThinking      bool
 	lastThinkingByAgent map[string]string          // agent → 最近的累积 thinking 文本（用于提取增量 delta）
 	dispatchStarts      map[string]*activeCall     // dispatched agent → 进行中的 DISPATCH 调用
-	modelStarts         map[string]*activeCall     // agent → 进行中的模型响应
+	modelStarts         map[string]*activeCall     // Agent to in-flight model response.
 	toolStarts          map[string]*activeCall     // agent → 进行中的 TOOL 调用
 	streamExtractors    map[string]*agentExtractor // agent → 当前工具调用 JSON 参数的内容抽取器
 	retryEvents         map[string]string          // retry scope → event ID，用同一行原地更新 (2/7)
@@ -145,7 +145,7 @@ func (o *observer) dispatchStart(agent, task, reason string) {
 }
 
 // dispatchFinish 把 DISPATCH 行落成完成态并复位 Worker 状态;
-// 清理该 Worker 名下未结束的 MODEL / TOOL 行。
+// Clean up unfinished MODEL / TOOL rows belonging to this Worker.
 func (o *observer) dispatchFinish(agent string, runErr error) {
 	o.updateAgent(agent, func(a *agentState) {
 		a.state = "idle"

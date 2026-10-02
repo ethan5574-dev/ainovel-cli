@@ -65,47 +65,47 @@ type Model struct {
 	compItems          []commandPaletteItem
 	compIdx            int
 	compActive         bool
-	commandToken       string // 当前已注册的命令 token；仅渲染该段，不染参数
+	commandToken       string // Registered command token; style only the command, not its arguments.
 	snapshot           host.UISnapshot
 	events             []host.Event
-	eventIndex         map[string]int   // event.ID → m.events 下标；调用类事件到达时原地更新
-	viewport           viewport.Model   // 事件流 viewport
-	streamVP           viewport.Model   // 流式输出 viewport
-	detailVP           viewport.Model   // 右侧详情 viewport
-	stateVP            viewport.Model   // 左侧状态侧栏 viewport（可滚动）
-	streamBuf          *strings.Builder // 流式文本累积缓冲
+	eventIndex         map[string]int   // event.ID to m.events index; update call events in place.
+	viewport           viewport.Model   // Event viewport.
+	streamVP           viewport.Model   // Streaming-output viewport.
+	detailVP           viewport.Model   // Right-hand detail viewport.
+	stateVP            viewport.Model   // Scrollable left state sidebar.
+	streamBuf          *strings.Builder // Accumulated streamed text.
 	streamRounds       []string
 	textarea           textarea.Model
 	width              int
 	height             int
 	autoScroll         bool
-	streamScroll       bool      // 流式面板自动跟随
-	streamDirty        bool      // streamRounds 有尚未刷新的 delta
-	flushPending       bool      // 已调度一次流式刷新，避免每个 delta 重复启动 timer
-	lastKeyAt          time.Time // 上次非 Enter 按键时间；KeyEnter 节流防粘贴 \n 流误触发提交
-	inputHistory       []string  // 已提交的输入历史（去重：相邻不重复）
-	historyIdx         int       // 当前浏览索引；== len(inputHistory) 表示"未浏览，正在编辑草稿"
-	historyDraft       string    // 进入历史浏览前保存的草稿，回到末端时恢复
+	streamScroll       bool      // Automatically follow the streaming pane.
+	streamDirty        bool      // streamRounds contains unflushed deltas.
+	flushPending       bool      // A stream flush is scheduled; avoid a timer per delta.
+	lastKeyAt          time.Time // Last non-Enter key time; throttle Enter to prevent pasted newlines from submitting.
+	inputHistory       []string  // Submitted input history, deduplicated consecutively.
+	historyIdx         int       // History cursor; len(inputHistory) means editing the current draft.
+	historyDraft       string    // Draft saved before history browsing, restored at the end.
 	focusPane          focusPane
 	hoverPane          focusPane
 	hoverActive        bool
 	mode               appMode
-	starting           bool // UI 已进入工作台，Host 正在执行启动初始化
+	starting           bool // UI entered workspace; Host is initializing startup.
 	startupMode        startupMode
-	importHint         string // 启动时检测到未完成导入的提示（欢迎屏显示；发起导入后清空）
-	updateHint         string // 启动版本检查发现新版本的提示（欢迎屏与事件流显示）
-	disableUpdateCheck bool   // 配置关闭启动版本检查（bootstrap.Config.DisableUpdateCheck）
+	importHint         string // Incomplete-import hint on welcome screen; cleared when import starts.
+	updateHint         string // New-version hint on welcome screen and event stream.
+	disableUpdateCheck bool   // Disable startup update checking via bootstrap.Config.DisableUpdateCheck.
 	cocreateSeq        int
 	reportSeq          int
 	err                error
 	spinnerIdx         int
-	eventSpinnerIdx    int  // 事件流进行中行的独立帧索引（150ms tick，不影响顶栏/星星）
-	eventSpinnerActive bool // 已启动事件动画 timer；无运行事件时自动停止
-	cursorIdx          int  // 流式光标帧索引（随主动画推进）
-	streamRound        int  // 流式输出轮次计数
-	quitPending        bool // 双次 Ctrl+C 退出确认
-	abortPending       bool // 等待 Done 回来的手动暂停
-	mouseOff           bool // true 时已禁用鼠标上报，让用户原生拖拽选中复制；再次切换恢复
+	eventSpinnerIdx    int  // Independent running-event frame (150ms; does not affect header/stars).
+	eventSpinnerActive bool // Event animation timer active; stops when no events are running.
+	cursorIdx          int  // Stream cursor frame, advanced by the main animation.
+	streamRound        int  // Streaming round counter.
+	quitPending        bool // Double-Ctrl+C exit confirmation.
+	abortPending       bool // Manual pause awaiting Done.
+	mouseOff           bool // Mouse reporting disabled for native drag-selection/copy; toggle to restore.
 }
 
 // NewModel 创建 TUI Model。
@@ -171,7 +171,7 @@ func (m Model) Init() tea.Cmd {
 		bootstrapRuntime(m.runtime),
 		tickSpinner(),
 	}
-	// 启动版本检查：后台一次；错误仅写日志，命中新版本才浮出提醒。
+	// One background startup update check; log errors and show a hint only for a newer version.
 	if !m.disableUpdateCheck {
 		cmds = append(cmds, checkForUpdate(m.version))
 	}
@@ -221,7 +221,7 @@ func (m *Model) paneHighlighted(pane focusPane) bool {
 }
 
 // hasRunningEvent 是否存在未完成（spinner 仍在转）的调用类事件。
-// tickEventSpinner 用此判断是否值得重渲：没有 running 事件时 spinner 帧不影响输出，
+// tickEventSpinner uses this to skip rerendering when no event is running,
 // 整个 refreshEventViewport 是确定的无效工作。
 func (m *Model) hasRunningEvent() bool {
 	for i := range m.events {
@@ -824,8 +824,8 @@ func (m Model) handleCoCreateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// 数字键 1/2/3 可连续组合建议：首次填入，后续用分号追加，重复选择忽略。
-	// 任意手动编辑都会退出快捷组合状态，之后的数字保持普通输入语义。
+	// Number keys 1/2/3 compose suggestions: fill initially, append with semicolons, ignore duplicates.
+	// Manual edits exit shortcut composition; subsequent digits are ordinary input.
 	if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && !state.awaiting {
 		if r := msg.Runes[0]; r >= '1' && r <= '3' {
 			if value, handled := state.appendSuggestion(int(r-'1'), m.textarea.Value()); handled {

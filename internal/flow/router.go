@@ -56,7 +56,7 @@ type AggregateRefresh struct {
 type State struct {
 	Progress *domain.Progress
 
-	// 已完成章节中的最大章节号；为 0 表示尚未开始写作。
+	// Maximum completed chapter number; zero means writing has not started.
 	LastCompleted int
 
 	// 上一章的弧边界信息；IsArcEnd=false 时其他字段无意义。
@@ -79,11 +79,11 @@ type State struct {
 	//（仅在 ShouldReview 触发点有意义；分层书恒 false）。
 	HasGlobalReview bool
 
-	// 必须在续写前由 Architect 处理的外部修订影响。普通 Writer 反馈留到下一次
-	// 自然结构操作统一吸收，不为每章额外派发规划师。
+	// External revision impacts that Architect must handle before continuation. Ordinary Writer feedback waits for
+	// the next natural structural operation rather than causing an extra planner dispatch per chapter.
 	ImmediateFeedbackCount int
 
-	// 外部修订后最早一个需要由 Editor 重新生成的弧/卷工件。
+	// Earliest arc/volume artifact requiring Editor regeneration after an external revision.
 	AggregateRefresh *AggregateRefresh
 }
 
@@ -95,13 +95,13 @@ type State struct {
 //  3. PendingRewrites 非空  → writer 按队列重写/打磨
 //  4. Flow=Reviewing        → nil（dormant：当前无写入者，评审期 Flow 实为 writing）
 //  5. Flow=Steering         → nil（用户干预处理中）
-//  6. 外部修订导致聚合工件失效 → editor 重建
-//  7. 外部修订影响后续规划     → architect 处理
-//  8. 分层书到达弧末          → 评审、摘要、扩弧或续卷
-//  9. 非分层全局审阅到期       → editor(global review)
+//  6. External revision invalidates aggregates -> editor rebuilds
+//  7. External revision affects future plans -> architect handles it
+//  8. Layered arc end -> review, summaries, expansion, or next volume
+//  9. Flat global review due -> editor(global review)
 //
-// 10. 非分层大纲已耗尽        → architect(决定完结或续接大纲)
-// 11. 其它                   → writer(写 next_chapter)
+// 10. Flat outline exhausted -> architect decides completion or extension
+// 11. Otherwise -> writer(next_chapter)
 func Route(s State) *Instruction {
 	p := s.Progress
 	if p == nil {
@@ -118,14 +118,14 @@ func Route(s State) *Instruction {
 	//    尚未落盘任何设定（选型是语义判断），由 Engine 的 planStartFallback 补裁。
 	if p.Phase != domain.PhaseWriting {
 		if len(s.FoundationMissing) > 0 && s.PlanningTier != "" {
-			task := fmt.Sprintf("补齐基础设定与作品信息缺项：%s；book 使用 save_book，其余基础设定使用 save_foundation 落盘", strings.Join(s.FoundationMissing, "、"))
+			task := fmt.Sprintf("Fill missing foundation and book metadata: %s; use save_book for book metadata and save_foundation for other foundation artifacts", strings.Join(s.FoundationMissing, "、"))
 			if len(s.FoundationMissing) == 1 && s.FoundationMissing[0] == "foundation_audit" {
-				task = "基础设定已齐全：重新调用 novel_context 读取全部已落盘工件与 foundation_status.fingerprint，审查跨文件语义一致性后调用 audit_foundation；有问题先修正并重新审查"
+				task = "Foundation artifacts are complete: call novel_context again to read all saved artifacts and foundation_status.fingerprint, check cross-file semantic consistency, then call audit_foundation; fix issues and repeat the audit first if necessary"
 			}
 			return &Instruction{
 				Agent:  plannerForTier(s.PlanningTier),
 				Task:   task,
-				Reason: "基础设定缺项未齐，照缺项续派同一规划师",
+				Reason: "Foundation artifacts are missing; dispatch the same planner to fill them",
 			}
 		}
 		return nil
@@ -134,14 +134,14 @@ func Route(s State) *Instruction {
 	// 3. 重写/打磨队列优先（事实已在工具层落盘，Router 只照单派发）
 	if len(p.PendingRewrites) > 0 {
 		ch := p.PendingRewrites[0]
-		verb := "重写"
+		verb := "Rewrite"
 		if p.Flow == domain.FlowPolishing {
-			verb = "打磨"
+			verb = "Polish"
 		}
 		return &Instruction{
 			Agent:   "writer",
-			Task:    fmt.Sprintf("%s第 %d 章", verb, ch),
-			Reason:  fmt.Sprintf("PendingRewrites 队列剩余 %d 章", len(p.PendingRewrites)),
+			Task:    fmt.Sprintf("%s chapter %d", verb, ch),
+			Reason:  fmt.Sprintf("PendingRewrites has %d chapters remaining", len(p.PendingRewrites)),
 			Chapter: ch,
 		}
 	}
@@ -164,28 +164,28 @@ func Route(s State) *Instruction {
 			return &Instruction{
 				Agent: "editor",
 				Task: fmt.Sprintf(
-					"审阅第 %d 卷第 %d 弧（第 %d-%d 章）：调用 novel_context(chapter=%d)，save_review 使用 scope=arc、chapter=%d",
+					"Review volume %d arc %d (chapters %d-%d): call novel_context(chapter=%d), then save_review with scope=arc and chapter=%d",
 					refresh.Volume, refresh.Arc, refresh.StartChapter, refresh.EndChapter, refresh.EndChapter, refresh.EndChapter,
 				),
-				Reason: "弧级审阅缺失",
+				Reason: "Arc review missing",
 			}
 		case AggregateArcSummary:
 			return &Instruction{
 				Agent:  "editor",
-				Task:   fmt.Sprintf("生成第 %d 卷第 %d 弧摘要、角色快照与写作规则（save_arc_summary）", refresh.Volume, refresh.Arc),
-				Reason: "弧级摘要缺失",
+				Task:   fmt.Sprintf("Generate a summary, character snapshot, and writing rules for volume %d arc %d (save_arc_summary)", refresh.Volume, refresh.Arc),
+				Reason: "Arc summary missing",
 			}
 		case AggregateVolumeSummary:
 			return &Instruction{
 				Agent:  "editor",
-				Task:   fmt.Sprintf("生成第 %d 卷卷摘要（save_volume_summary）", refresh.Volume),
-				Reason: "卷摘要缺失",
+				Task:   fmt.Sprintf("Generate a summary for volume %d (save_volume_summary)", refresh.Volume),
+				Reason: "Volume summary missing",
 			}
 		case AggregateGlobalReview:
 			return &Instruction{
 				Agent:  "editor",
-				Task:   fmt.Sprintf("审阅前 %d 章：调用 novel_context(chapter=%d)，save_review 使用 scope=global、chapter=%d", refresh.EndChapter, refresh.EndChapter, refresh.EndChapter),
-				Reason: "全局审阅缺失",
+				Task:   fmt.Sprintf("Review the first %d chapters: call novel_context(chapter=%d), then save_review with scope=global and chapter=%d", refresh.EndChapter, refresh.EndChapter, refresh.EndChapter),
+				Reason: "Global review missing",
 			}
 		}
 	}
@@ -193,12 +193,12 @@ func Route(s State) *Instruction {
 	if s.ImmediateFeedbackCount > 0 {
 		return &Instruction{
 			Agent:  plannerForTier(s.PlanningTier),
-			Task:   "仅处理 novel_context 中的外部修订 writer_feedback：核对已发生剧情与后续计划，需要调整时调用 revise_outline 或相应结构工具，无需调整时调用 resolve_outline_feedback；不得处理 foundation_status 或其它规划，落盘后用一句话结束",
-			Reason: fmt.Sprintf("有 %d 条外部修订影响尚未传播到后续规划", s.ImmediateFeedbackCount),
+			Task:   "Handle only external-revision writer_feedback in novel_context: compare established events with future plans, call revise_outline or the appropriate structural tool when changes are needed, or resolve_outline_feedback when no changes are needed; do not handle foundation_status or other planning, and end with one sentence after saving",
+			Reason: fmt.Sprintf("%d external-revision impacts have not been propagated to future plans", s.ImmediateFeedbackCount),
 		}
 	}
 
-	// 8. 分层模式的弧末后处理
+	// 8. End-of-arc processing in layered mode.
 	if p.Layered && s.ArcBoundary != nil && s.ArcBoundary.IsArcEnd {
 		b := s.ArcBoundary
 		switch {
@@ -206,34 +206,34 @@ func Route(s State) *Instruction {
 			return &Instruction{
 				Agent: "editor",
 				Task: fmt.Sprintf(
-					"对第 %d 卷第 %d 弧（第 %d-%d 章）做弧级评审：调用 novel_context(chapter=%d)，save_review 使用 scope=arc、chapter=%d；issues[].chapters 只能落在该区间",
+					"Perform an arc review for volume %d arc %d (chapters %d-%d): call novel_context(chapter=%d), then save_review with scope=arc and chapter=%d; issues[].chapters must stay within this range",
 					b.Volume, b.Arc, b.StartChapter, b.EndChapter, b.EndChapter, b.EndChapter,
 				),
-				Reason: "弧末评审未完成",
+				Reason: "End-of-arc review incomplete",
 			}
 		case !s.HasArcSummary:
 			return &Instruction{
 				Agent:  "editor",
-				Task:   fmt.Sprintf("生成第 %d 卷第 %d 弧摘要、角色快照与写作规则（save_arc_summary）", b.Volume, b.Arc),
-				Reason: "弧摘要未完成",
+				Task:   fmt.Sprintf("Generate a summary, character snapshot, and writing rules for volume %d arc %d (save_arc_summary)", b.Volume, b.Arc),
+				Reason: "Arc summary incomplete",
 			}
 		case b.IsVolumeEnd && !s.HasVolumeSummary:
 			return &Instruction{
 				Agent:  "editor",
-				Task:   fmt.Sprintf("生成第 %d 卷卷摘要（save_volume_summary）", b.Volume),
-				Reason: "卷摘要未完成",
+				Task:   fmt.Sprintf("Generate a summary for volume %d (save_volume_summary)", b.Volume),
+				Reason: "Volume summary incomplete",
 			}
 		case b.NeedsExpansion && b.NextArc > 0:
 			return &Instruction{
 				Agent:  "architect_long",
-				Task:   fmt.Sprintf("展开第 %d 卷第 %d 弧（expand_next_arc）", b.NextVolume, b.NextArc),
-				Reason: "下一弧骨架待展开",
+				Task:   fmt.Sprintf("Expand volume %d arc %d (expand_next_arc)", b.NextVolume, b.NextArc),
+				Reason: "Next arc skeleton needs expansion",
 			}
 		case b.NeedsNewVolume:
 			return &Instruction{
 				Agent:  "architect_long",
-				Task:   "创建下一卷：按完结判定清单评估后调用 save_foundation——故事继续 → type=append_volume；故事接近终点 → type=append_volume 且卷 JSON 顶层带 \"final\": true（收官卷，整卷收线，写完自动完结）；全部完结条件当下已满足 → type=complete_book。三选一均须附 reason 参数写明判定理由",
-				Reason: "卷末需决定追加新卷、收官卷或结束全书",
+				Task:   "Create the next volume: evaluate the completion checklist, then call save_foundation. If the story continues, use type=append_volume; if it is nearing its end, use type=append_volume with \"final\": true at the volume JSON top level (finale volume: resolve remaining threads throughout it, with automatic completion afterward); if all completion conditions are already met, use type=complete_book. All three choices require a reason explaining the decision",
+				Reason: "End of volume: decide whether to append another volume, append a finale volume, or complete the book",
 			}
 		}
 	}
@@ -245,7 +245,7 @@ func Route(s State) *Instruction {
 		if due, reason := domain.ShouldReview(len(p.CompletedChapters)); due && !s.HasGlobalReview {
 			return &Instruction{
 				Agent:  "editor",
-				Task:   fmt.Sprintf("对前 %d 章做全局审阅（save_review scope=global, chapter=%d）", s.LastCompleted, s.LastCompleted),
+				Task:   fmt.Sprintf("Review the first %d chapters globally (save_review scope=global, chapter=%d)", s.LastCompleted, s.LastCompleted),
 				Reason: reason,
 			}
 		}
@@ -261,18 +261,18 @@ func Route(s State) *Instruction {
 		return &Instruction{
 			Agent: plannerForTier(s.PlanningTier),
 			Task: fmt.Sprintf(
-				"非分层大纲已写完（已完成 %d 章，共 %d 章）：若故事已收束，调用 save_foundation(type=complete_book)；若仍需继续，用 revise_outline 从第 %d 章续接后续计划",
+				"The flat outline is exhausted (%d chapters completed out of %d): if the story has concluded, call save_foundation(type=complete_book); otherwise use revise_outline to extend the plan from chapter %d",
 				len(p.CompletedChapters), p.TotalChapters, next,
 			),
-			Reason: "非分层大纲已耗尽，需决定完结或续接",
+			Reason: "Flat outline exhausted: decide whether to complete or extend the story",
 		}
 	}
 
 	// 13. 正常续写
 	return &Instruction{
 		Agent:   "writer",
-		Task:    fmt.Sprintf("写第 %d 章", next),
-		Reason:  "续写下一章",
+		Task:    fmt.Sprintf("Write chapter %d", next),
+		Reason:  "Write the next chapter",
 		Chapter: next,
 	}
 }

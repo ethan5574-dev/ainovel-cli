@@ -10,7 +10,7 @@ import (
 	"github.com/voocel/ainovel-cli/internal/store"
 )
 
-// Projector 从章节记录重建所有章节级派生状态。
+// Projector rebuilds all chapter-level derived state from chapter records.
 type Projector struct{ store *store.Store }
 
 func NewProjector(st *store.Store) *Projector { return &Projector{store: st} }
@@ -28,7 +28,7 @@ type projection struct {
 	style         domain.AuthorRevisionStyle
 }
 
-// ValidateRecords 校验完整章节记录集能否被确定性重放，不写入任何投影。
+// ValidateRecords checks deterministic replay of a complete chapter-record set without writing projections.
 func ValidateRecords(records []domain.ChapterRecord) error {
 	records, err := prepareRecords(records)
 	if err != nil {
@@ -42,12 +42,12 @@ func prepareRecords(records []domain.ChapterRecord) ([]domain.ChapterRecord, err
 	records = slices.Clone(records)
 	slices.SortFunc(records, func(a, b domain.ChapterRecord) int { return a.Chapter - b.Chapter })
 	for _, record := range records {
-		// legacy 记录由旧版 store 状态重建，只受当时的合同约束；Validate 是新模型输出的合同。
+		// Legacy records reconstructed from old store state follow their historical contract; Validate governs new model output.
 		if record.Origin == domain.ChapterOriginLegacy {
 			continue
 		}
 		if err := chapterfacts.Validate(record.Facts); err != nil {
-			return nil, fmt.Errorf("第 %d 章事实无效: %w", record.Chapter, err)
+			return nil, fmt.Errorf("chapter %d facts are invalid: %w", record.Chapter, err)
 		}
 	}
 	return records, nil
@@ -91,26 +91,26 @@ func (p *Projector) Apply(records []domain.ChapterRecord) error {
 
 	for _, summary := range result.summaries {
 		if err := p.store.Summaries.SaveSummary(summary); err != nil {
-			return fmt.Errorf("保存第 %d 章摘要: %w", summary.Chapter, err)
+			return fmt.Errorf("save chapter %d summary: %w", summary.Chapter, err)
 		}
 	}
 	if err := p.store.World.SaveTimeline(result.timeline); err != nil {
-		return fmt.Errorf("重建时间线: %w", err)
+		return fmt.Errorf("rebuild timeline: %w", err)
 	}
 	if err := p.store.World.SaveForeshadowLedger(result.foreshadow); err != nil {
-		return fmt.Errorf("重建伏笔账本: %w", err)
+		return fmt.Errorf("rebuild foreshadowing ledger: %w", err)
 	}
 	if err := p.store.World.SaveRelationships(result.relationships); err != nil {
-		return fmt.Errorf("重建人物关系: %w", err)
+		return fmt.Errorf("rebuild character relationships: %w", err)
 	}
 	if err := p.store.World.SaveStateChanges(result.stateChanges); err != nil {
-		return fmt.Errorf("重建状态变化: %w", err)
+		return fmt.Errorf("rebuild state changes: %w", err)
 	}
 	if err := p.updateProgress(result); err != nil {
 		return err
 	}
 	if err := p.store.World.SaveAuthorRevisionStyle(result.style); err != nil {
-		return fmt.Errorf("保存用户修订风格: %w", err)
+		return fmt.Errorf("save user-revision style: %w", err)
 	}
 	return nil
 }
@@ -141,7 +141,7 @@ func projectWorld(records []domain.ChapterRecord) ([]domain.TimelineEvent, []dom
 			switch update.Action {
 			case "plant":
 				if strings.TrimSpace(update.ID) == "" {
-					return nil, nil, nil, nil, fmt.Errorf("第 %d 章伏笔 plant 缺少 id", chapter)
+					return nil, nil, nil, nil, fmt.Errorf("chapter %d foreshadowing plant lacks an id", chapter)
 				}
 				if exists {
 					if ledger[idx].Description == "" {
@@ -153,17 +153,17 @@ func projectWorld(records []domain.ChapterRecord) ([]domain.TimelineEvent, []dom
 				ledger = append(ledger, domain.ForeshadowEntry{ID: update.ID, Description: update.Description, PlantedAt: chapter, Status: "planted"})
 			case "advance":
 				if !exists {
-					return nil, nil, nil, nil, fmt.Errorf("第 %d 章推进未知伏笔 %q", chapter, update.ID)
+					return nil, nil, nil, nil, fmt.Errorf("chapter %d advances unknown foreshadowing %q", chapter, update.ID)
 				}
 				ledger[idx].Status = "advanced"
 			case "resolve":
 				if !exists {
-					return nil, nil, nil, nil, fmt.Errorf("第 %d 章回收未知伏笔 %q", chapter, update.ID)
+					return nil, nil, nil, nil, fmt.Errorf("chapter %d resolves unknown foreshadowing %q", chapter, update.ID)
 				}
 				ledger[idx].Status = "resolved"
 				ledger[idx].ResolvedAt = chapter
 			default:
-				return nil, nil, nil, nil, fmt.Errorf("第 %d 章伏笔操作非法: %q", chapter, update.Action)
+				return nil, nil, nil, nil, fmt.Errorf("chapter %d has invalid foreshadowing action %q", chapter, update.Action)
 			}
 		}
 	}
@@ -181,17 +181,17 @@ func projectWorld(records []domain.ChapterRecord) ([]domain.TimelineEvent, []dom
 func (p *Projector) updateProgress(result projection) error {
 	progress, err := p.store.Progress.Load()
 	if err != nil {
-		return fmt.Errorf("读取进度: %w", err)
+		return fmt.Errorf("read progress: %w", err)
 	}
 	if progress == nil {
-		return fmt.Errorf("progress 未初始化")
+		return fmt.Errorf("progress is not initialized")
 	}
 	progress.ChapterWordCounts = result.wordCounts
 	progress.TotalWordCount = result.totalWords
 	progress.HookHistory = result.hookHistory
 	progress.StrandHistory = result.strandHistory
 	if err := p.store.Progress.Save(progress); err != nil {
-		return fmt.Errorf("更新章节进度投影: %w", err)
+		return fmt.Errorf("update chapter-progress projection: %w", err)
 	}
 	return nil
 }

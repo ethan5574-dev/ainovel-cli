@@ -63,7 +63,7 @@ type engine struct {
 	repeats int
 	// 失败重试:同指令键仅重试一次,再败问 Arbiter。
 	failedKey string
-	// 保留同指令最近一次 Worker 错误，让僵局裁定看到真实失败原因。
+	// Keep the latest Worker error for this instruction so deadlock adjudication sees the real cause.
 	lastWorkerErrorKey string
 	lastWorkerError    error
 }
@@ -200,14 +200,14 @@ func (e *engine) run(ctx context.Context) {
 				e.pauseWithNotify(notify.KindWorkerFailure, "路由事实读取失败，已暂停: "+err.Error())
 				return
 			}
-			// 卷摘要可能已落盘而进程尚未来得及 MarkComplete。聚合工件全部齐备时
-			// 先按事实补做完结判定，再交给 Router，避免收官卷被误派去续卷。
+			// A volume summary may be saved before the process reaches MarkComplete. When aggregates are complete,
+			// reconcile completion from facts before routing, avoiding an erroneous next-volume dispatch for a finale.
 			if state.AggregateRefresh == nil && state.Progress != nil && state.Progress.Layered &&
 				state.Progress.Phase == domain.PhaseWriting && state.ArcBoundary != nil &&
 				state.ArcBoundary.IsVolumeEnd && state.HasArcReview && state.HasArcSummary && state.HasVolumeSummary {
 				complete, reconcileErr := tools.ReconcileLayeredCompletion(e.store)
 				if reconcileErr != nil {
-					e.pauseWithNotify(notify.KindWorkerFailure, "完结状态恢复失败，已暂停: "+reconcileErr.Error())
+					e.pauseWithNotify(notify.KindWorkerFailure, "Completion-state recovery failed; paused: "+reconcileErr.Error())
 					return
 				}
 				if complete {
@@ -258,8 +258,8 @@ func (e *engine) run(ctx context.Context) {
 		}
 		e.rememberWorkerError(inst, err)
 		if err != nil {
-			// trackDeadlock 在派发前预记本次尝试。未进入有效 Worker
-			// 语义执行的错误不能被计为“同一任务无进展”。
+			// trackDeadlock prerecords this attempt before dispatch. Failures that never enter effective Worker
+			// semantic execution do not count as repeated task attempts without progress.
 			e.discardNonSemanticDeadlockAttempt(inst, err)
 			if stop := e.handleWorkerError(ctx, inst, err); stop {
 				return
@@ -355,7 +355,7 @@ func (e *engine) retryPlanStart(ctx context.Context, prompt string) *flow.Instru
 		slog.Warn("启动补裁审计落盘失败", "module", "engine", "err", recErr)
 	}
 	if derr != nil {
-		e.pauseWithNotify(notify.KindPlanStart, "启动裁定失败,已暂停(请检查模型/网络配置后继续): "+derr.Error())
+		e.pauseWithNotify(notify.KindPlanStart, "Startup decision failed; paused (check model/network configuration before continuing): "+derr.Error())
 		return nil
 	}
 	if err := e.store.RunMeta.SetPlanStart(domain.PlanStartRecord{
@@ -401,7 +401,7 @@ func (e *engine) precheck(inst *flow.Instruction) (*flow.Instruction, error) {
 				// 是说给 LLM 的;Engine 直接做正确的事)。
 				return &flow.Instruction{
 					Agent:  "architect_long",
-					Task:   fmt.Sprintf("下一弧为骨架(%s)。调用 expand_next_arc 展开下一弧；若当前卷已写完，改用 save_foundation(type=append_volume) 追加并展开下一卷。", err),
+					Task:   fmt.Sprintf("The next arc is a skeleton (%s). Expand it with expand_next_arc; if the volume is finished, use save_foundation(type=append_volume) to append and detail the next volume.", err),
 					Reason: "写作目标章未展开,先展开再续写",
 				}, nil
 			}
@@ -447,7 +447,7 @@ func (e *engine) trackDeadlock(ctx context.Context, inst **flow.Instruction) (st
 		return false
 	}
 	if e.repeats >= deadlockAbortAt {
-		e.pauseStuck(notify.KindDeadlock, in, fmt.Sprintf("僵局熔断: 指令连续 %d 次无进展(%s),已暂停等待人工介入", e.repeats, in.Agent))
+		e.pauseStuck(notify.KindDeadlock, in, fmt.Sprintf("Deadlock circuit breaker: no progress after %d consecutive dispatches (%s); paused for human intervention", e.repeats, in.Agent))
 		return true
 	}
 	// Arbiter 僵局咨询(repeats ∈ [consultAt, abortAt))。裁定 retry 不清零计数。
@@ -467,7 +467,7 @@ func (e *engine) trackDeadlock(ctx context.Context, inst **flow.Instruction) (st
 		*inst = &flow.Instruction{Agent: decision.Dispatch.Agent, Task: decision.Dispatch.Task, Reason: decision.Reason}
 		return false
 	default: // abort
-		e.pauseStuck(notify.KindDeadlock, in, "僵局裁定: "+decision.Reason)
+		e.pauseStuck(notify.KindDeadlock, in, "Deadlock decision: "+decision.Reason)
 		return true
 	}
 }
@@ -483,7 +483,7 @@ func (e *engine) runWorker(ctx context.Context, inst *flow.Instruction) error {
 			return runErr
 		}
 		if err := e.store.Progress.StartChapter(inst.Chapter); err != nil {
-			runErr := fmt.Errorf("%w: 预标第 %d 章进行中失败: %w", errInvalidWriteTarget, inst.Chapter, err)
+			runErr := fmt.Errorf("%w: failed to mark chapter %d in progress: %w", errInvalidWriteTarget, inst.Chapter, err)
 			e.observer.dispatchFinish(inst.Agent, runErr)
 			return runErr
 		}
@@ -534,24 +534,24 @@ func (e *engine) handleWorkerError(ctx context.Context, inst *flow.Instruction, 
 		e.mu.Unlock()
 		return false
 	default: // abort
-		e.pauseStuck(notify.KindWorkerFailure, inst, "失败裁定: "+decision.Reason+contentFilterAdvice(werr))
+		e.pauseStuck(notify.KindWorkerFailure, inst, "Failure decision: "+decision.Reason+contentFilterAdvice(werr))
 		return true
 	}
 }
 
-// pauseStuck 在引擎放弃一条指令时暂停:返工章先出队再停。仅用于引擎已判定该指令
-// 走不通的出路(僵局熔断、僵局/失败裁定 abort),裁定不可用等基础设施故障仍走
-// pauseWithNotify——那是外部问题,不该赔上一章返工。
+// pauseStuck pauses when Engine abandons an instruction, first removing its rework chapter. Only use for
+// a proven dead end (deadlock termination or adjudicated abort); infrastructure failures such as unavailable adjudication
+// still use pauseWithNotify, because external problems must not sacrifice a rework chapter.
 func (e *engine) pauseStuck(kind string, inst *flow.Instruction, body string) {
 	if e.dropStuckRewrite(inst) {
-		body += fmt.Sprintf("；第 %d 章已移出返工队列(保留上一版终稿),继续创作将从后续章节推进", inst.Chapter)
+		body += fmt.Sprintf("; chapter %d was removed from rework (previous final version retained); continuation advances to later chapters", inst.Chapter)
 	}
 	e.pauseWithNotify(kind, body)
 }
 
-// dropStuckRewrite 把卡死的返工章移出队列。PendingRewrites 是持久化事实,引擎放弃
-// 这条指令时不出队的话,重启会立刻重放同一条死指令,把整本书永久锁死(issue #110)。
-// 返回 true 表示确实出队了。
+// dropStuckRewrite removes an abandoned rework chapter from the persistent queue. Otherwise restart
+// would immediately replay the same dead instruction and permanently lock the book (issue #110).
+// Returns true only when an entry was removed.
 func (e *engine) dropStuckRewrite(inst *flow.Instruction) bool {
 	if inst == nil || inst.Agent != "writer" || inst.Chapter <= 0 {
 		return false
@@ -561,15 +561,15 @@ func (e *engine) dropStuckRewrite(inst *flow.Instruction) bool {
 		return false
 	}
 	if err := e.store.Progress.CompleteRewrite(inst.Chapter); err != nil {
-		slog.Warn("卡死返工章出队失败", "module", "engine", "chapter", inst.Chapter, "err", err)
+		slog.Warn("Failed to dequeue a stuck rework chapter", "module", "engine", "chapter", inst.Chapter, "err", err)
 		return false
 	}
 	return true
 }
 
-// discardNonSemanticDeadlockAttempt 撤销 trackDeadlock 为本次派发预记的
-// 语义尝试。只排除模型调用未完整执行的稳定错误类型；content_filter
-// 保留在原有自愈路径，max_turns、stop_guard、取消等真实无进展仍计数。
+// discardNonSemanticDeadlockAttempt reverses the semantic attempt prerecorded by trackDeadlock
+// for this dispatch. Only stable errors proving incomplete model execution are excluded; content_filter
+// retains existing recovery, while max_turns, stop_guard, and cancellation still count as no progress.
 func (e *engine) discardNonSemanticDeadlockAttempt(inst *flow.Instruction, werr error) {
 	if inst == nil || !isNonSemanticWorkerFailure(werr) {
 		return
@@ -584,8 +584,8 @@ func (e *engine) discardNonSemanticDeadlockAttempt(inst *flow.Instruction, werr 
 	}
 }
 
-// isNonSemanticWorkerFailure 仅识别“本次模型执行没有产生可判断语义”的错误。
-// 优先依赖 agentcore 的错误链契约；错误链被供应商扁平化时复用日志分类。
+// isNonSemanticWorkerFailure recognizes only failures without assessable model semantics.
+// Prefer agentcore error-chain contracts; reuse log classification when providers flatten errors.
 func isNonSemanticWorkerFailure(err error) bool {
 	if err == nil {
 		return false
@@ -829,9 +829,9 @@ func (e *engine) pauseWithNotify(kind, body string) {
 	e.abort()
 }
 
-// completionSummary 完本的确定性收尾报告，不花 LLM 调用。
+// completionSummary produces a deterministic completion report without an LLM call.
 func completionSummary(progress domain.Progress, book domain.BookMetadata) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "《%s》创作完成: 共 %d 章 %d 字", book.Title, len(progress.CompletedChapters), progress.TotalWordCount)
+	fmt.Fprintf(&b, "%s completed: %d chapters, %d characters", book.Title, len(progress.CompletedChapters), progress.TotalWordCount)
 	return b.String()
 }

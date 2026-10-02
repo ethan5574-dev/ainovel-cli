@@ -17,6 +17,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
   return <SSEStoreContext.Provider value={store}>{children}</SSEStoreContext.Provider>
 }
 
+// oxlint-disable-next-line react/only-export-components -- the hook must share this private context.
 export function useSSEStore(): SSEStore {
   const store = useContext(SSEStoreContext)
   if (!store) throw new Error('useSSEStore must be used within an SSEProvider')

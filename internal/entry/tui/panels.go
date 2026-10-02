@@ -13,7 +13,7 @@ import (
 func renderTopBar(snap host.UISnapshot, width int, spinnerFrame, version string) string {
 	bookTitle := snap.BookTitle
 	if bookTitle == "" {
-		bookTitle = "未定书名"
+		bookTitle = "Untitled"
 	}
 
 	var infoParts []string
@@ -220,10 +220,10 @@ func renderWelcome(width, height int, errMsg string, mode startupMode, importHin
 			Render("! " + importHint))
 	} else {
 		b.WriteString(lipgloss.NewStyle().Foreground(colorDim).
-			Render("已有设定/大纲？/start <文件路径> 创建新书 · 已有小说存稿？/import <文件路径> 导入续写"))
+			Render("Have settings/an outline? /start <path> creates a book · Have a manuscript? /import <path> imports it for continuation"))
 	}
 	if updateHint != "" {
-		// 启动版本检查命中新版本：与 importHint 同款强调样式追加一行。
+		// Show a new-version hint with the same emphasized style as importHint.
 		b.WriteString("\n")
 		b.WriteString(lipgloss.NewStyle().Foreground(colorAccent2).Bold(true).
 			Render("! " + updateHint))

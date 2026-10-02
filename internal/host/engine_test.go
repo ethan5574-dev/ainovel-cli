@@ -191,7 +191,8 @@ func testTextMsg(text string) agentcore.Message {
 	}
 }
 
-var chapterRe = regexp.MustCompile(`写第 (\d+) 章`)
+// Accept English routing tasks and legacy/user-supplied Chinese instructions.
+var chapterRe = regexp.MustCompile(`(?:(?:Write|Rewrite|Polish) chapter |(?:写|重写|打磨)第 )(\d+)(?: 章)?`)
 
 // scriptedWriterModel 按对话内已有的 tool 结果数决定下一步,
 // 走完整 plan → draft → check → commit 序列(真实工具,真实落盘)。
@@ -554,7 +555,7 @@ func TestEngine_DeadlockAbortDropsStuckRewrite(t *testing.T) {
 	}
 	var notified bool
 	for _, ev := range *events {
-		if strings.Contains(ev.Summary, "移出返工队列") {
+		if strings.Contains(ev.Summary, "removed from rework") {
 			notified = true
 		}
 	}
@@ -777,7 +778,7 @@ func TestEngine_PlanStartRetryFailurePauses(t *testing.T) {
 	}
 	var paused bool
 	for _, ev := range *events {
-		if strings.Contains(ev.Summary, "启动裁定失败") {
+		if strings.Contains(ev.Summary, "Startup decision failed") {
 			paused = true
 		}
 	}

@@ -119,8 +119,8 @@ func TestStartingSnapshotShowsStartingNotIdle(t *testing.T) {
 	if !got.snapshot.IsRunning {
 		t.Fatal("启动期不应显示为已停止")
 	}
-	if label := snapshotRuntimeStateLabel(got.snapshot.RuntimeState); label != "启动中" {
-		t.Fatalf("侧栏标签 = %q, want 启动中", label)
+	if label := snapshotRuntimeStateLabel(got.snapshot.RuntimeState); label != "Starting" {
+		t.Fatalf("侧栏标签 = %q, want Starting", label)
 	}
 }
 
