@@ -154,7 +154,8 @@ func loadBook(rt *host.Host) (bookResponse, error) {
 
 	completed := make(map[int]bool)
 	total := len(outline)
-	response := bookResponse{Premise: premise}
+	// Keep the API collection-shaped even when planning has not produced an outline yet.
+	response := bookResponse{Premise: premise, Chapters: make([]chapterListItem, 0, total)}
 	if book != nil {
 		response.Name = book.Title
 	}

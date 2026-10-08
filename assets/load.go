@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/voocel/ainovel-cli/internal/apphome"
 	"github.com/voocel/ainovel-cli/internal/tools"
 )
 
@@ -68,8 +69,8 @@ func DefaultLoadOptions(outputDir string) LoadOptions {
 	if outputDir != "" {
 		opts.BookStyleDir = filepath.Join(outputDir, "style")
 	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		opts.HomeStyleDir = filepath.Join(home, ".ainovel", "style")
+	if home := apphome.Dir(); home != "" {
+		opts.HomeStyleDir = filepath.Join(home, "style")
 	}
 	return opts
 }

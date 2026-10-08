@@ -14,3 +14,7 @@ tasks
 refer
 output*
 *.log
+**/node_modules
+**/*.tsbuildinfo
+# Build embedded assets from source in the webui-builder stage, not host bundles.
+internal/web/webui

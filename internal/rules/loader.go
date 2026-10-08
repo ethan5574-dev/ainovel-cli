@@ -3,6 +3,8 @@ package rules
 import (
 	"os"
 	"path/filepath"
+
+	"github.com/voocel/ainovel-cli/internal/apphome"
 )
 
 // LoadOptions 枚举 rules 文件来源目录，供 RawFileSources 扫描归一化。
@@ -29,14 +31,14 @@ func DefaultProjectRulesDir(projectDir string) string {
 	return filepath.Join(projectDir, ainovelDirName, "rules")
 }
 
-// DefaultHomeRulesDir 拼出 ~/.ainovel/rules/ 目录的绝对路径。
+// DefaultHomeRulesDir 拼出 $AINOVEL_HOME/rules/ 目录；未设置时使用 ~/.ainovel/rules/。
 // home 解析失败返回空串（调用方据此跳过该来源）。
 func DefaultHomeRulesDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
+	home := apphome.Dir()
+	if home == "" {
 		return ""
 	}
-	return filepath.Join(home, ainovelDirName, "rules")
+	return filepath.Join(home, "rules")
 }
 
 // homeRulesReadme 是首次引导时写入 ~/.ainovel/rules/README.txt 的说明。

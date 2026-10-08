@@ -8,36 +8,35 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/voocel/ainovel-cli/internal/apphome"
 )
 
 const configDirName = ".ainovel"
 
-// DefaultConfigPath returns the global config path ~/.ainovel/config.json.
+// DefaultConfigPath returns $AINOVEL_HOME/config.json, falling back to
+// ~/.ainovel/config.json when AINOVEL_HOME is unset.
 func DefaultConfigPath() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
+	dir := apphome.Dir()
+	if dir == "" {
 		return ""
 	}
-	return filepath.Join(home, configDirName, "config.json")
+	return filepath.Join(dir, "config.json")
 }
 
-// DefaultConfigDir returns ~/.ainovel, or an empty string when the home directory is unavailable.
+// DefaultConfigDir returns the shared Ainovel data directory, or an empty string
+// when neither AINOVEL_HOME nor the platform home directory is available.
 // It is used for optional files such as the model cache and does not create the directory.
 func DefaultConfigDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(home, configDirName)
+	return apphome.Dir()
 }
 
-// configDir returns ~/.ainovel and creates it when necessary.
+// configDir returns the shared Ainovel data directory and creates it when necessary.
 func configDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("home dir: %w", err)
+	dir := apphome.Dir()
+	if dir == "" {
+		return "", fmt.Errorf("Ainovel home directory is unavailable (set AINOVEL_HOME)")
 	}
-	dir := filepath.Join(home, configDirName)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("create config dir: %w", err)
 	}
@@ -65,7 +64,7 @@ func EffectiveConfigPath() string {
 }
 
 // LoadConfig loads and merges configuration by priority:
-//  1. ~/.ainovel/config.json (global)
+//  1. $AINOVEL_HOME/config.json (global; defaults to ~/.ainovel/config.json)
 //  2. ./.ainovel/config.json (project override)
 func LoadConfig() (Config, error) {
 	var cfg Config

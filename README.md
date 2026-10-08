@@ -261,6 +261,16 @@ docker compose run --rm ainovel
 docker compose run --rm ainovel --headless --prompt "Write a short mystery novel"
 ```
 
+For the local Web UI, build and start the cloned source:
+
+```bash
+docker compose up --build -d ainovel-web
+```
+
+Open <http://127.0.0.1:5173> and complete provider setup in the browser. Docker builds the frontend and embeds it in the Go binary; Node and Go are not required on the host. Configuration and novels persist in `./config` and `./workspace`.
+
+To use another local port, run `AINOVEL_WEB_PORT=8080 docker compose up --build -d ainovel-web`, then open <http://127.0.0.1:8080>. The host port is localhost-only by default because the Web UI has no authentication. See [Local Web UI](docs/web-ui.md) for logs, stopping the service, and direct Docker commands.
+
 After entering the TUI, two initial interaction modes are supported at startup:
 
 - `Quick Start`: begin writing from a one-line idea
@@ -278,13 +288,32 @@ For an existing detailed world setting or outline, create a new book from a file
 
 ### Managing Multiple Novels
 
-Each novel is bound to the directory where the command is launched, and output artifacts are stored in `{cwd}/output/novel/`. Starting in a different directory = starting a new novel; returning (`cd`) and starting again = automatically resuming from the last checkpoint. Configuration in `~/.ainovel/config.json` is shared globally and does not need to be copied.
+Each novel is bound to the directory where the command is launched, and output artifacts are stored in `{cwd}/output/novel/`. Starting in a different directory = starting a new novel; returning (`cd`) and starting again = automatically resuming from the last checkpoint. Configuration in `$AINOVEL_HOME/config.json` is shared globally and does not need to be copied. If unset, `AINOVEL_HOME` defaults to `~/.ainovel`.
 
 ### Configuration File
 
-A configuration file `~/.ainovel/config.json` is automatically generated on the first run. You can edit this file directly to adjust settings later. If you delete the configuration file, running the command will trigger the setup wizard again.
+A configuration file `$AINOVEL_HOME/config.json` is automatically generated on the first run (`~/.ainovel/config.json` by default). You can edit this file directly to adjust settings later. If you delete the configuration file, running the command will trigger the setup wizard again.
 
-You can also create the configuration file manually, referencing `~/.ainovel/config.example.jsonc` (automatically generated during setup).
+Set `AINOVEL_HOME` to make native TUI/CLI/Web runs use the same persistent directory as Docker. In this repository, Docker Compose mounts `./config` at `/root/.ainovel`; for local development, point `AINOVEL_HOME` at that same host directory:
+
+```bash
+export AINOVEL_HOME="$PWD/config"
+go run ./cmd/ainovel-cli                 # TUI
+go run ./cmd/ainovel-cli web             # Go Web backend
+```
+
+For Web UI frontend development, run the backend above in one terminal and Vite in another:
+
+```bash
+export AINOVEL_HOME="/absolute/path/to/ainovel-cli/config"
+cd internal/web/webui-src
+npm ci                                  # once, or after dependency changes
+npm run dev
+```
+
+Open <http://127.0.0.1:5174>. The project override `./.ainovel/config.json`, when present in the current working directory, still takes precedence over the shared home config.
+
+You can also create the configuration file manually, referencing `$AINOVEL_HOME/config.example.jsonc` (automatically generated during setup; defaults to `~/.ainovel/config.example.jsonc`).
 
 ```jsonc
 {
@@ -307,7 +336,7 @@ You can also create the configuration file manually, referencing `~/.ainovel/con
 
 #### Configuration Lookup Order (Later Sources Override Earlier Ones)
 
-1. `~/.ainovel/config.json` — Global configuration
+1. `$AINOVEL_HOME/config.json` (defaults to `~/.ainovel/config.json`) — Global configuration
 2. `./.ainovel/config.json` — Optional project override
 3. `--config path/to/config.json` — Explicit command-line configuration
 

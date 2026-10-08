@@ -86,7 +86,10 @@ export function completeSetup(req: SetupCompleteRequest): Promise<{ ok: boolean 
 }
 
 export function getBook(): Promise<BookSnapshot> {
-  return request('/api/book')
+  return request<BookSnapshot>('/api/book').then((book) => ({
+    ...book,
+    chapters: Array.isArray(book.chapters) ? book.chapters : [],
+  }))
 }
 
 export function getChapter(chapter: number): Promise<ChapterDetail> {

@@ -20,6 +20,7 @@ const validGlobal = `{
 func writeGlobal(t *testing.T, content string) string {
 	t.Helper()
 	home := t.TempDir()
+	t.Setenv("AINOVEL_HOME", "")
 	t.Setenv("HOME", home)
 	// Windows 的 os.UserHomeDir 读 USERPROFILE；不设它会读到本机真实 ~/.ainovel。
 	t.Setenv("USERPROFILE", home)
@@ -33,6 +34,17 @@ func writeGlobal(t *testing.T, content string) string {
 		}
 	}
 	return home
+}
+
+func TestAINOVELHOMESelectsSharedConfigDirectory(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("AINOVEL_HOME", dir)
+	if got, want := DefaultConfigPath(), filepath.Join(dir, "config.json"); got != want {
+		t.Fatalf("DefaultConfigPath() = %q, want %q", got, want)
+	}
+	if got := DefaultConfigDir(); got != dir {
+		t.Fatalf("DefaultConfigDir() = %q, want %q", got, dir)
+	}
 }
 
 // writeProjectConfig 在当前工作目录的 ./.ainovel/ 下写入项目级配置。

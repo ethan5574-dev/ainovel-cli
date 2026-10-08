@@ -3,6 +3,8 @@ services:
     image: ghcr.io/voocel/ainovel-cli:latest
     build:
       context: .
+    environment:
+      AINOVEL_HOME: /root/.ainovel
     volumes:
       - ./config:/root/.ainovel
       - ./workspace:/workspace
@@ -10,15 +12,27 @@ services:
     tty: true
 
   ainovel-web:
-    image: ghcr.io/voocel/ainovel-cli:latest
+    # Always build the cloned source, including its Web UI, rather than pulling upstream.
+    image: ainovel-cli:local
+    pull_policy: build
     build:
       context: .
+    init: true
     command: ["web", "--addr", "0.0.0.0:5173"]
+    environment:
+      AINOVEL_HOME: /root/.ainovel
     ports:
-      - "5173:5173"
+      # Local-only: the Web UI has no user authentication.
+      - "127.0.0.1:${AINOVEL_WEB_PORT:-5173}:5173"
     volumes:
       - ./config:/root/.ainovel
       - ./workspace:/workspace
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5173/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
 
   # Platform services (plan Phase 1). Optional — `ainovel` / `ainovel-web` above run
   # standalone without these. Bring up with: docker compose --profile platform up
